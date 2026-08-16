@@ -33,7 +33,9 @@ HUB_LAST_SEG = {
     'newsletter', 'newsletters', 'release-calendar', 'events', 'webinars',
 }
 HUB_ANY_SEG = {'news', 'media', 'releases', 'announcements', 'publications', 'speeches'}
-RSS_END = ('.xml', '.rss', 'rss', 'feed', 'feed.xml', 'atom')
+# 真实 feed 路径：仅当末段是 feed/rss/atom 文件名或 .xml 扩展名
+RSS_END = ('.xml', '.rss', '.atom', 'feed.xml', 'rss.xml', 'atom.xml', 'index.xml')
+RSS_LAST_SEG = {'feed', 'rss', 'atom', 'feeds', 'rss.xml', 'feed.xml', 'atom.xml', 'index.xml', 'news.xml'}
 
 def norm_host(u):
     if not u: return ''
@@ -88,15 +90,15 @@ def classify(url):
     pl = path.rstrip('/')
     last = pl.split('/')[-1] if pl else ''
     l = last.lower()
+    # 排除 sitemap / robots / 静态资源
+    if 'sitemap' in pl.lower() or 'robots' in l or l in ('favicon.ico',):
+        return None
     # 仅接受 feed / 末段中枢词命中。绝不用"中段含 news"来判定——
     # 否则单篇文章 /news/<slug> 会被误判为列表页。
-    if url.lower().endswith(RSS_END) or 'feed' in l or 'atom' in l or l == 'rss' or l.startswith('rss'):
+    if url.lower().endswith(RSS_END) or l in RSS_LAST_SEG:
         return 'rss'
     if l in HUB_LAST_SEG:
         return 'list_page_hub'
-    # 年份/月份归档列表页（如 /news/media-releases/2025 ）→ 也是时间排序列表
-    if re.fullmatch(r'(19|20)\d{2}', l) or re.fullmatch(r'(19|20)\d{2}-\d{1,2}', l):
-        return 'list_page_archive'
     return None
 
 def process(host, baseurl, reg_urls):
