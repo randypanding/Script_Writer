@@ -1,0 +1,11 @@
+id: STR-008
+title: 伏笔必须闭环且顺序正确
+domain: structure
+severity: block
+stage: after_p3
+select: setup_payoffs[*]
+assert: order_of(item.setup_beat_id) < order_of(item.payoff_beat_id)
+message: 伏笔 {item.id}（{item.description}）的回收点在埋设点之前（setup@{order_of(item.setup_beat_id)}
+  vs payoff@{order_of(item.payoff_beat_id)}）。这会让观众先看到答案再看到问题。请交换或重新定位。
+tags:
+- setup_payoff

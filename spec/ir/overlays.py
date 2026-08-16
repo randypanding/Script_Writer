@@ -1,4 +1,5 @@
 """Narrative IR · 覆盖层（旁挂，引用主干 ID）。"""
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -14,8 +15,8 @@ class CharacterRole(StrEnum):
     antagonist = "antagonist"
     ally = "ally"
     foil = "foil"
-    customer_proxy = "customer_proxy"   # 目标人群代理，营销短剧核心角色
-    expert = "expert"                   # 权威/背书者
+    customer_proxy = "customer_proxy"  # 目标人群代理，营销短剧核心角色
+    expert = "expert"  # 权威/背书者
     bystander = "bystander"
 
 
@@ -55,10 +56,10 @@ class Prop(BaseModel):
 
 
 class BrandMomentType(StrEnum):
-    scene = "scene"            # 场景背景出现
-    usage = "usage"            # 角色使用产品
-    dialogue = "dialogue"      # 台词提及
-    prop = "prop"              # 作为道具推动情节
+    scene = "scene"  # 场景背景出现
+    usage = "usage"  # 角色使用产品
+    dialogue = "dialogue"  # 台词提及
+    prop = "prop"  # 作为道具推动情节
     testimonial = "testimonial"  # 角色口碑/见证
     before_after = "before_after"  # 前后对比
 
@@ -66,6 +67,7 @@ class BrandMomentType(StrEnum):
 class BrandMoment(BaseModel):
     """植入时刻。modality / plot_connection 字段借鉴 Russell(2002) 的
     modality × plot-connection congruence 框架（见 docs/BORROW_MAP.md #15）。"""
+
     model_config = ConfigDict(extra="forbid")
     id: ULID
     anchor_beat_id: ULID
@@ -99,6 +101,7 @@ class Motif(BaseModel):
 class Constraint(BaseModel):
     """从 BrandBrief / Profile / Client Pack 编译出的硬约束（D4）。
     `check_rule_id` 指向 spec/checks 中的规则；`params` 注入该规则的上下文。"""
+
     model_config = ConfigDict(extra="forbid")
     id: ULID
     source: Literal["brand_brief", "profile", "client_pack", "compliance"]
@@ -119,6 +122,7 @@ class ToneSpec(BaseModel):
 
 class NarrativeVoice(BaseModel):
     """小说渲染参数（D27）。不是 IR 主干的一部分。"""
+
     model_config = ConfigDict(extra="forbid")
     person: Literal["first", "third_limited", "third_omniscient"] = "third_limited"
     tense: Literal["past", "present"] = "past"

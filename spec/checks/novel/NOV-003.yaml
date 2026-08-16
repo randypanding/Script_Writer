@@ -1,0 +1,13 @@
+id: NOV-003
+title: 小说段落长度受限
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+bind:
+  cap: '@.__ctx.ir.voice.paragraph_max_chars'
+assert: chars(item) <= cap
+message: 存在 {chars(item)} 字的段落，超过 {cap} 字。手机端阅读长段落会被直接跳过，商家在手机上看不完就等于没确认。
+tags:
+- novel
+- readability

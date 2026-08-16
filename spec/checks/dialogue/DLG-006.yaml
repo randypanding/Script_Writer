@@ -1,0 +1,14 @@
+id: DLG-006
+title: 台词总字数匹配时长预算
+domain: dialogue
+severity: block
+stage: after_p5
+select: episodes[*]
+bind:
+  cps: '@.__ctx.profile.chars_per_second'
+  tol: '@.__ctx.profile.duration_tolerance'
+assert: abs(pct(item.__dialogue_chars, cps * item.duration_target_s) - 1) <= tol
+message: 第 {item.no} 集对白共 {item.__dialogue_chars} 字，按 {cps} 字/秒需 {item.__dialogue_chars
+  / cps} 秒，目标时长 {item.duration_target_s} 秒（容差 ±{tol}）。字数与时长不匹配会导致成片被迫删戏或注水。
+tags:
+- duration

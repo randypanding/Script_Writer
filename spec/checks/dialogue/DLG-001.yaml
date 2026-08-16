@@ -1,0 +1,12 @@
+id: DLG-001
+title: 禁用词零出现
+domain: dialogue
+severity: block
+stage: after_p5
+select: episodes[*].scenes[*].beats[*].lines[*]
+bind:
+  banned: '@.__ctx.brand.__all_banned_words'
+assert: not contains_any(item.text, banned)
+message: 台词 {item.id}「{item.text}」命中禁用词。禁用词表来自品牌方与合规清单，无例外。请改写为同义的合规表述。
+tags:
+- banned

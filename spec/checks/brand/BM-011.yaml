@@ -1,0 +1,13 @@
+id: BM-011
+title: 竞品名零出现
+domain: brand
+severity: block
+stage: after_p5
+select: project
+bind:
+  comp: '@.__ctx.brand.legal.competitor_names'
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, comp)
+message: 交付文本中出现了竞品名：{[x for x in comp if contains_any(all_text, [x])]}。这是合同红线，会直接导致拒收。
+tags:
+- legal

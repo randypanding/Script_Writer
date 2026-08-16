@@ -1,0 +1,13 @@
+id: BM-004
+title: 全季至少 N 处高情节关联植入
+domain: brand
+severity: block
+stage: after_p3
+select: project
+bind:
+  high: '@.__ctx.ir.brand_moments[?plot_connection==''high'']'
+  need: '@.__ctx.brand.placement.require_high_plot_connection'
+assert: count(high) >= need
+message: 全剧只有 {count(high)} 处 plot_connection=='high' 的植入，要求至少 {need} 处。只有当产品是推动剧情的必要条件时，品牌记忆与态度提升才成立；纯背景出现几乎无效。请把某处植入改造成'没有这个产品情节就走不下去'。
+tags:
+- plot_connection

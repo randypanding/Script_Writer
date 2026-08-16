@@ -1,0 +1,16 @@
+id: STR-001
+title: 每集恰好 1 个 Hook Beat 且位于前 20%
+domain: structure
+severity: block
+stage: after_p3
+select: episodes[*]
+bind:
+  hooks: beats[?beat_kind=='hook']
+  total: length(beats)
+assert: count(hooks) == 1 and hooks[0].order <= max(1, int(total * 0.2))
+message: 第 {item.no} 集的 Hook Beat 数量={count(hooks)}、位置={hooks[0].order if hooks else
+  'N/A'}（共 {total} 个 Beat）。短视频账号的短剧前 3 秒决定去留，Hook 必须是全集第一个或第二个 Beat 且只能有一个焦点。请把开场收敛为单一悬念。
+fix_hint: 把非首位的 hook 降级为 escalation，或把真正的钩子提到 order=0。
+tags:
+- hook
+- retention

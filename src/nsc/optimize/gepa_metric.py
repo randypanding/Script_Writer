@@ -16,6 +16,7 @@ GEPA 契约（已核实 dspy 3.x）：
 5. **分趟优化 + 教师强制。** 不要端到端优化 8 趟（rollout 太贵、归因太难）。
    优化 p3 时，p0-p2 用黄金 IR 教师强制；优化 p5 时，p0-p4 用黄金 IR。见 gepa_run.py。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,10 +68,10 @@ FEEDBACK_ROUTING: dict[str, dict[str, Any]] = {
 
 #: score 的权重。sum == 1.0（测试会检查）
 WEIGHTS: dict[str, float] = {
-    "structure_match": 0.30,   # 与黄金 IR 的结构一致度（可算，稳定）
-    "checker": 0.30,           # L0 通过率（可算，稳定）
-    "rubric": 0.25,            # 判官（会漂，权重刻意压低）
-    "edit_distance": 0.15,     # 与人类改后文本的接近度（仅 trainset 有）
+    "structure_match": 0.30,  # 与黄金 IR 的结构一致度（可算，稳定）
+    "checker": 0.30,  # L0 通过率（可算，稳定）
+    "rubric": 0.25,  # 判官（会漂，权重刻意压低）
+    "edit_distance": 0.15,  # 与人类改后文本的接近度（仅 trainset 有）
 }
 
 FEEDBACK_BUDGET_CHARS = 2600
@@ -78,19 +79,21 @@ FEEDBACK_BUDGET_CHARS = 2600
 
 # ---------------------------------------------------------------- 数据结构
 
+
 @dataclass(slots=True)
 class MetricParts:
     structure_match: float
     checker: float
     rubric: float
     edit_distance: float | None
-    findings: list[Any]                 # list[Finding]
+    findings: list[Any]  # list[Finding]
     rubric_detail: dict[str, float]
     human_edits: list[dict[str, Any]]
     notes: list[str]
 
 
 # ---------------------------------------------------------------- 主入口
+
 
 def make_metric(
     *,
@@ -147,6 +150,7 @@ def _aggregate(parts: MetricParts, *, has_edits: bool) -> float:
 
 # ---------------------------------------------------------------- feedback 构造
 
+
 def build_feedback(
     parts: MetricParts,
     *,
@@ -192,7 +196,9 @@ def build_feedback(
     raise NotImplementedError("T-12")
 
 
-def _compute_parts(gold: dspy.Example, pred: dspy.Prediction, *, judge_enabled: bool) -> MetricParts:
+def _compute_parts(
+    gold: dspy.Example, pred: dspy.Prediction, *, judge_enabled: bool
+) -> MetricParts:
     """计算四个分量。
 
     structure_match 的定义（p3 为例）：

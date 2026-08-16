@@ -4,6 +4,11 @@
 所有节点携带内容无关的稳定 ULID，`provenance_id` 指向一次编译记录。
 剧本/小说文本只是本 IR 的渲染视图（D24）。
 """
+
+# pyright: reportIncompatibleVariableOverride=false
+# 原因：子类用 Literal 收窄 kind/parent_id/order 是 Pydantic 的标准惯用法，
+# pyright 的"覆写类型不兼容"告警在此是误报，本文件统一豁免。
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -38,31 +43,33 @@ HIERARCHY: dict[NodeKind, NodeKind | None] = {
 
 class BeatKind(StrEnum):
     """Beat 功能受控词表。营销短剧专用词表，扩展需 ADR。"""
-    hook = "hook"                 # 开场钩子
-    setup = "setup"               # 铺垫/伏笔埋设
-    inciting = "inciting"         # 引爆事件
-    escalation = "escalation"     # 升级
-    complication = "complication" # 意外阻碍
-    reversal = "reversal"         # 反转
-    crisis = "crisis"             # 至暗
-    climax = "climax"             # 高潮
-    brand_moment = "brand_moment" # 品牌植入（必须关联 BrandMoment）
-    payoff = "payoff"             # 伏笔回收
-    resolution = "resolution"     # 收束
-    cliffhanger = "cliffhanger"   # 集末悬念
-    cta = "cta"                   # 行动号召（短视频常用）
+
+    hook = "hook"  # 开场钩子
+    setup = "setup"  # 铺垫/伏笔埋设
+    inciting = "inciting"  # 引爆事件
+    escalation = "escalation"  # 升级
+    complication = "complication"  # 意外阻碍
+    reversal = "reversal"  # 反转
+    crisis = "crisis"  # 至暗
+    climax = "climax"  # 高潮
+    brand_moment = "brand_moment"  # 品牌植入（必须关联 BrandMoment）
+    payoff = "payoff"  # 伏笔回收
+    resolution = "resolution"  # 收束
+    cliffhanger = "cliffhanger"  # 集末悬念
+    cta = "cta"  # 行动号召（短视频常用）
 
 
 class LineType(StrEnum):
     dialogue = "dialogue"
     action = "action"
     voiceover = "voiceover"
-    caption = "caption"      # 屏幕字幕/花字
+    caption = "caption"  # 屏幕字幕/花字
     sfx = "sfx"
 
 
 class Emotion(BaseModel):
     """单 Beat 的情绪坐标。曲线是计算视图，不单独存储（见 container.emotion_curve）。"""
+
     model_config = ConfigDict(extra="forbid")
     valence: float = Field(ge=-1.0, le=1.0, description="情绪效价：-1 极负，+1 极正")
     arousal: float = Field(ge=0.0, le=1.0, description="唤醒度：0 平静，1 强烈")
@@ -134,6 +141,7 @@ class Beat(_Node):
 
 class Line(_Node):
     """戏剧真相层（D24）。小说与剧本都从这里派生。"""
+
     kind: Literal[NodeKind.line] = NodeKind.line
     line_type: LineType
     character_id: ULID | None = Field(default=None, description="dialogue/voiceover 必填")

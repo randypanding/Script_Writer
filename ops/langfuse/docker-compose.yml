@@ -1,0 +1,57 @@
+# Langfuse 本地自托管（T-01 观测层）
+# 参考官方 docker-compose：https://langfuse.com/self-hosting
+# 注意：Langfuse 依赖 postgres + redis，全栈启动较重。此处使用官方 compose 的最小可变子集。
+#
+# 使用：docker compose -f ops/langfuse/docker-compose.yml up -d
+# 首次访问 http://localhost:3000 创建项目后，把公钥/私钥填入 .env 的 LANGFUSE_*。
+
+services:
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: langfuse-db
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse-redis:
+    image: redis:7-alpine
+    container_name: langfuse-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  langfuse-web:
+    image: langfuse/langfuse:2
+    container_name: langfuse
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      REDIS_URL: redis://langfuse-redis:6379
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: change-me-in-production
+      SALT: change-me-in-production
+      ENCRYPTION_KEY: change-me-in-production
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  langfuse-pgdata:

@@ -1,0 +1,12 @@
+id: PRD-002
+title: 角色数不超预算
+domain: producibility
+severity: block
+stage: after_p1
+select: project
+bind:
+  cap: '@.__ctx.profile.max_characters'
+assert: count(@.__ctx.ir.characters) <= cap
+message: 全剧有 {count(@.__ctx.ir.characters)} 个角色，超过上限 {cap}。商家自拍短剧的常态是 2–4 个可用演员，超出就拍不了。
+tags:
+- producibility

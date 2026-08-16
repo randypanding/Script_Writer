@@ -1,4 +1,5 @@
 """Narrative IR 容器：扁平表 + 邻接（parent_id），计算式嵌套视图供 checker/renderer 使用。"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -22,6 +23,7 @@ from .overlays import (
 
 class Provenance(BaseModel):
     """D20 全链路溯源清单。每个产物必须可二分定位到某次运行。"""
+
     model_config = ConfigDict(extra="forbid")
     run_id: str
     pass_name: str
@@ -43,6 +45,7 @@ class Provenance(BaseModel):
 
 class NovelChapter(BaseModel):
     """Pass6 产物：小说章节。anchor_map 把每个段落映射回 Beat/Line（反馈锚定的命脉）。"""
+
     model_config = ConfigDict(extra="forbid")
     id: ULID
     episode_id: ULID
@@ -80,7 +83,9 @@ class NarrativeIR(BaseModel):
     provenance: list[Provenance] = Field(default_factory=list)
 
     # --- 计算视图（不序列化进 JSON 真相，由 runtime 生成） ---
-    def view(self) -> dict[str, Any]:
+    def view(
+        self, profile: dict[str, Any] | None = None, brand: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """产出嵌套文档，供 JMESPath 规则查询。实现见 src/nsc/runtime/ir_io.py::build_view。
 
         形如：
@@ -90,8 +95,12 @@ class NarrativeIR(BaseModel):
          "characters": [...], "brand_moments":[...], "setup_payoffs":[...],
          "profile": {...}, "brand": {...}}
         """
-        raise NotImplementedError("→ src/nsc/runtime/ir_io.py::build_view (T-03)")
+        from nsc.runtime.ir_io import build_view
+
+        return build_view(self.model_dump(), profile or {}, brand or {})
 
     def emotion_curve(self, episode_id: ULID) -> list[tuple[int, float, float]]:
         """[(linear_index, valence, arousal)]。曲线是计算量，绝不存储。"""
-        raise NotImplementedError("→ src/nsc/runtime/ir_io.py (T-03)")
+        from nsc.runtime.ir_io import emotion_curve
+
+        return emotion_curve(self, episode_id)

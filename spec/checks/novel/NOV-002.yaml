@@ -1,0 +1,12 @@
+id: NOV-002
+title: 小说与剧本对白一致
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].__dialogue_pairs[*]
+assert: sim(item.novel_text, item.line_text) >= 0.7
+message: 章节 {item.chapter_id} 中对应 Line {item.line_id} 的对白与剧本差异过大（相似度 {sim(item.novel_text,
+  item.line_text)}）。小说和剧本必须是同一个故事的两个视图；若确需改写请同时更新 Line。
+tags:
+- novel
+- consistency

@@ -1,0 +1,14 @@
+id: CMP-001
+title: 广告绝对化用语零出现
+domain: compliance
+severity: block
+stage: after_p6
+select: project
+bind:
+  words: '@.__ctx.compliance.absolute_terms'
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, words)
+message: 交付文本中出现绝对化用语：{[x for x in words if contains_any(all_text, [x])]}。此类表述在商业宣传中存在明确合规风险，必须替换为可证实的相对表述。
+legal_ref: spec/checks/compliance/_legal_sources.md#absolute-terms
+tags:
+- legal

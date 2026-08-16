@@ -1,0 +1,11 @@
+id: DLG-005
+title: 台词重复率受限
+domain: dialogue
+severity: warn
+stage: after_p5
+select: episodes[*]
+assert: pct(item.__duplicate_line_count, item.__line_count) <= 0.05
+message: 第 {item.no} 集有 {item.__duplicate_line_count} 条重复台词（占 {pct(item.__duplicate_line_count,
+  item.__line_count)}）。重复通常意味着模型在填时长而不是推进剧情。
+tags:
+- quality

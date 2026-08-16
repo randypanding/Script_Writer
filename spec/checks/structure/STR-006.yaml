@@ -1,0 +1,11 @@
+id: STR-006
+title: 情绪曲线不得平坦
+domain: structure
+severity: warn
+stage: after_p3
+select: episodes[*]
+assert: emotion_range(item.beats) >= @.__ctx.profile.min_emotion_range
+message: 第 {item.no} 集的情绪效价极差只有 {emotion_range(item.beats)}，低于阈值 {@.__ctx.profile.min_emotion_range}。全程情绪平坦意味着没有落差，观众不会产生'想看下去'的张力。请压低某个
+  Beat 的 valence 制造至暗时刻。
+tags:
+- emotion

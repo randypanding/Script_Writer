@@ -1,0 +1,13 @@
+id: BM-002
+title: 植入间隔不低于下限
+domain: brand
+severity: block
+stage: after_p3
+select: episodes[*]
+bind:
+  moments: beats[?beat_kind=='brand_moment']
+  gap: '@.__ctx.brand.placement.min_gap_beats'
+assert: min_gap(moments) >= gap
+message: 第 {item.no} 集有两处植入相隔仅 {min_gap(moments)} 个 Beat（要求 ≥{gap}）。连续植入会让观众立刻识别为广告并划走。请把其中一处移到本集后半段或下一集。
+tags:
+- density

@@ -1,0 +1,10 @@
+id: DLG-003
+title: 说话人必须在场
+domain: dialogue
+severity: block
+stage: after_p5
+select: episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']
+assert: item.character_id in item.__scene_present_character_ids
+message: 台词 {item.id} 的说话人不在所属场景的在场角色列表中。这类错误会让制作团队在拍摄现场卡住。
+tags:
+- consistency

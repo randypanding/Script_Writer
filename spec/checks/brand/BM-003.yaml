@@ -1,0 +1,13 @@
+id: BM-003
+title: 植入不得落在禁止的 Beat 类型内
+domain: brand
+severity: block
+stage: after_p3
+select: brand_moments[*]
+bind:
+  forbid: '@.__ctx.brand.placement.forbid_in_beat_kinds'
+assert: item.__anchor_beat_kind not in forbid
+message: 植入 {item.id} 落在了 {item.__anchor_beat_kind} Beat 上，该类型被禁止（{forbid}）。开场 Hook
+  一旦出现品牌，观众会在 3 秒内判定为广告，前功尽弃。请把这处植入下移到 escalation 之后。
+tags:
+- placement_position

@@ -1,0 +1,340 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "01M04TVA6Q0V5DY3JHQ814H6JP",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea",
+    "client_note": "",
+    "provenance_id": "run-minimal-000001",
+    "locked": false
+  },
+  "seasons": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JQ",
+      "kind": "season",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6JP",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚",
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JZ",
+      "kind": "episode",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6JQ",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "嗯",
+      "cliffhanger": "",
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "scenes": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K0",
+      "kind": "scene",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6JZ",
+      "order": 0,
+      "location_id": "01M04TVA6Q0V5DY3JHQ814H6JW",
+      "time_of_day": "day",
+      "interior": true,
+      "present_character_ids": [
+        "01M04TVA6Q0V5DY3JHQ814H6JR",
+        "01M04TVA6Q0V5DY3JHQ814H6JS"
+      ],
+      "goal": "林晚要确认报告读数",
+      "conflict": "陈经理催着要她签字",
+      "turn": "她发现同一杯茶两种说法",
+      "entry": "林晚刚坐下",
+      "exit": "她抓起杯子出门",
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "beats": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K1",
+      "kind": "beat",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K0",
+      "order": 0,
+      "beat_kind": "hook",
+      "summary": "第1集第0拍：hook",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.3,
+        "arousal": 0.4
+      },
+      "est_duration_s": 14,
+      "brand_moment_id": null,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K3",
+      "kind": "beat",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K0",
+      "order": 1,
+      "beat_kind": "setup",
+      "summary": "第1集第1拍：setup",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.44999999999999996,
+        "arousal": 0.5
+      },
+      "est_duration_s": 16,
+      "brand_moment_id": null,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K5",
+      "kind": "beat",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K0",
+      "order": 2,
+      "beat_kind": "escalation",
+      "summary": "第1集第2拍：escalation",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.6,
+        "arousal": 0.6000000000000001
+      },
+      "est_duration_s": 20,
+      "brand_moment_id": null,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K7",
+      "kind": "beat",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K0",
+      "order": 3,
+      "beat_kind": "brand_moment",
+      "summary": "第1集第3拍：brand_moment",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.75,
+        "arousal": 0.7000000000000001
+      },
+      "est_duration_s": 20,
+      "brand_moment_id": "01M04TVA6Q0V5DY3JHQ814H6K7",
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K9",
+      "kind": "beat",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K0",
+      "order": 4,
+      "beat_kind": "cta",
+      "summary": "第1集第4拍：cta",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.8999999999999999,
+        "arousal": 0.8
+      },
+      "est_duration_s": 20,
+      "brand_moment_id": null,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "lines": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K2",
+      "kind": "line",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K1",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA6Q0V5DY3JHQ814H6JR",
+      "text": "这杯茶，不额外加蔗糖。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K4",
+      "kind": "line",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K3",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA6Q0V5DY3JHQ814H6JR",
+      "text": "这杯茶，不额外加蔗糖。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K6",
+      "kind": "line",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K5",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA6Q0V5DY3JHQ814H6JR",
+      "text": "这杯茶，不额外加蔗糖。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K8",
+      "kind": "line",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K7",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA6Q0V5DY3JHQ814H6JR",
+      "text": "这杯茶，不额外加蔗糖。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": true,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6KA",
+      "kind": "line",
+      "parent_id": "01M04TVA6Q0V5DY3JHQ814H6K9",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA6Q0V5DY3JHQ814H6JR",
+      "text": "这杯茶，不额外加蔗糖。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "characters": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JR",
+      "name": "林晚",
+      "role": "protagonist",
+      "want": "想在不靠节食的前提下控糖",
+      "need": "接受自己的不完美",
+      "voice_notes": "短句、爱反问",
+      "voice_tics": [
+        "完了",
+        "真的假的"
+      ],
+      "persona_ref": "office_woman_28"
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JS",
+      "name": "小满",
+      "role": "customer_proxy",
+      "want": "下午别再说教",
+      "need": "被当成朋友而不是病人",
+      "voice_notes": "吐槽、损友式",
+      "voice_tics": [
+        "你听我说",
+        "就这"
+      ],
+      "persona_ref": "office_woman_28"
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JT",
+      "name": "阿哲",
+      "role": "ally",
+      "want": "把店做下去",
+      "need": "被信任",
+      "voice_notes": "慢、诚恳",
+      "persona_ref": ""
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JV",
+      "name": "陈经理",
+      "role": "antagonist",
+      "want": "压预算",
+      "need": "被看见价值",
+      "voice_notes": "公事公办",
+      "persona_ref": ""
+    }
+  ],
+  "locations": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JW",
+      "name": "办公室工位",
+      "cost_tier": "free"
+    },
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JX",
+      "name": "清野茶事门店",
+      "cost_tier": "cheap"
+    }
+  ],
+  "props": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6JY",
+      "name": "清野轻乳茶",
+      "is_brand_product": true,
+      "sku_ref": "light_milk_tea"
+    }
+  ],
+  "brand_moments": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6K7",
+      "anchor_beat_id": "01M04TVA6Q0V5DY3JHQ814H6K7",
+      "type": "usage",
+      "intensity": 2,
+      "modality": "both",
+      "plot_connection": "high",
+      "selling_point_id": "no_sucrose",
+      "proof_mode": "reaction",
+      "integration_note": "林晚顺手把无蔗糖的茶递给小满",
+      "prop_id": "01M04TVA6Q0V5DY3JHQ814H6JY"
+    }
+  ],
+  "setup_payoffs": [
+    {
+      "id": "01M04TVA6Q0V5DY3JHQ814H6KB",
+      "setup_beat_id": "01M04TVA6Q0V5DY3JHQ814H6K3",
+      "payoff_beat_id": "01M04TVA6Q0V5DY3JHQ814H6K9",
+      "kind": "prop",
+      "description": "茶杯标签在集末被看清"
+    }
+  ],
+  "motifs": [],
+  "constraints": [],
+  "tone": null,
+  "voice": null,
+  "chapters": [],
+  "provenance": [
+    {
+      "run_id": "run-minimal-000001",
+      "pass_name": "p0_intake",
+      "spec_sha": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "profile_ver": "1.0",
+      "brand_ver": "1.0",
+      "ruleset_ver": "xxxxxxxxxxxx",
+      "promptset_ver": "1.0",
+      "model_id": "openai/gpt-5.1",
+      "temperature": 0.7,
+      "seed": 1,
+      "input_hash": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "case_refs": [],
+      "created_at": "2026-01-01T00:00:00+00:00",
+      "cost_usd": 0.01,
+      "tokens_in": 10,
+      "tokens_out": 10
+    }
+  ]
+}

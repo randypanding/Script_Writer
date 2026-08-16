@@ -1,0 +1,13 @@
+id: FCT-002
+title: 不得复用案例库原文
+domain: fact
+severity: block
+stage: after_p6
+select: project
+bind:
+  snips: '@.__ctx.ir.__retrieved_case_snippets'
+assert: all_of(snips, 'lcs_len(x, @.__ctx.ir.__all_text) <= 12')
+message: 交付文本与检索到的参考案例存在超过 12 字的连续重合（本次检索到 {count(snips)} 条案例）。案例库仅用于学习结构与手法，不得复用文字（见 COMPLIANCE.md §1）。
+tags:
+- legal
+- plagiarism

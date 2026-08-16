@@ -1,4 +1,5 @@
 """内容寻址缓存（D5）。这是"改一集不重跑全季"的唯一实现点。"""
+
 from __future__ import annotations
 
 import functools
@@ -35,9 +36,16 @@ def cache_key(
     """D5 缓存键。任何一项变化都必须导致缓存失效——不要"优化"掉任何一项。"""
     payload = canonical_json(
         {
-            "p": pass_name, "i": input_fragment, "pv": promptset_ver, "prv": profile_ver,
-            "bv": brand_ver, "rv": ruleset_ver, "m": model_id, "t": temperature,
-            "s": seed, "spec": spec_sha,
+            "p": pass_name,
+            "i": input_fragment,
+            "pv": promptset_ver,
+            "prv": profile_ver,
+            "bv": brand_ver,
+            "rv": ruleset_ver,
+            "m": model_id,
+            "t": temperature,
+            "s": seed,
+            "spec": spec_sha,
         }
     )
     return hashlib.sha256(payload.encode()).hexdigest()
@@ -51,9 +59,12 @@ def cached_pass(pass_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
       2. 未命中时记录 tokens/cost 到 runs 表
       3. 支持 NSC_NO_CACHE=1 环境变量强制绕过
     """
+
     def deco(fn: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             raise NotImplementedError("T-04")
+
         return wrapper
+
     return deco

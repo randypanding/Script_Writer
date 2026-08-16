@@ -1,0 +1,12 @@
+id: STR-004
+title: 场景数不超过 Profile 上限
+domain: structure
+severity: block
+stage: after_p4
+select: episodes[*]
+bind:
+  cap: '@.__ctx.profile.max_scenes_per_episode'
+assert: count(item.scenes) <= cap
+message: 第 {item.no} 集有 {count(item.scenes)} 个场景，超过上限 {cap}。每增加一个场景就增加一次转场与布景成本，制作团队的实际预算撑不住。请合并发生在同一地点的相邻场景。
+tags:
+- producibility

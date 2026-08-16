@@ -1,0 +1,15 @@
+id: CMP-002
+title: 功效表述白名单外零出现
+domain: compliance
+severity: block
+stage: after_p6
+select: project
+bind:
+  claims: '@.__ctx.compliance.regulated_claim_patterns'
+  wl: '@.__ctx.brand.legal.claim_whitelist'
+  all_text: '@.__ctx.ir.__all_text'
+assert: not regex_any(all_text, [c for c in claims if c not in wl])
+message: 交付文本出现了受管制的功效/疗效类表述，且不在该品牌的 claim_whitelist 中（whitelist 共 {count(wl)} 条、受管制的正则 {count(claims)} 条、交付文本 {count(all_text)} 段）。请改为体验描述（'喝完觉得很舒服'）而非功效断言。
+legal_ref: spec/checks/compliance/_legal_sources.md#health-claims
+tags:
+- legal

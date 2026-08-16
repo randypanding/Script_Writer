@@ -5,6 +5,7 @@
   - 不写 few-shot（few-shot 由 1 档案例检索在运行时注入）。
   - 保持简短：种子越干净，GEPA 的搜索空间越有意义。
 """
+
 from __future__ import annotations
 
 import dspy
@@ -19,6 +20,7 @@ class Bible(dspy.Signature):
     - 每个角色必须有可区分的说话方式（voice_notes）与 1-3 个标记词（voice_tics）。
     - 地点必须从 brand.usage_scenes 中 shootable=true 的场景派生，或标注 cost_tier。
     """
+
     normalized_brief: str = dspy.InputField(desc="归一化后的商家需求")
     brand_brief_json: str = dspy.InputField(desc="BrandBrief 的 JSON")
     profile_json: str = dspy.InputField(desc="Format Profile 的约束摘要")
@@ -40,12 +42,15 @@ class Arc(dspy.Signature):
     - 全季至少 require_high_plot_connection 处 plot_connection=high。
     - 每集必须给出 hook_promise（本集向观众承诺解答的问题）；除末集外必须给出 cliffhanger。
     """
+
     bible_json: str = dspy.InputField()
     brand_brief_json: str = dspy.InputField()
     profile_json: str = dspy.InputField()
     retrieved_cases: str = dspy.InputField()
 
-    episodes_json: str = dspy.OutputField(desc="Episode[] 的 JSON（no/title/logline/hook_promise/cliffhanger）")
+    episodes_json: str = dspy.OutputField(
+        desc="Episode[] 的 JSON（no/title/logline/hook_promise/cliffhanger）"
+    )
     placement_plan_json: str = dspy.OutputField(
         desc="[{episode_no, selling_point_id, type, intensity, modality, plot_connection, intent}]"
     )
@@ -64,6 +69,7 @@ class BeatSheet(dspy.Signature):
     - 必须声明至少一组 setup→payoff；跨集回收时 payoff 写 "PENDING:<slug>"。
     - summary 必须是"谁做了什么导致什么"，不得是抽象概括（如"两人产生矛盾"）。
     """
+
     episode_json: str = dspy.InputField(desc="本集的 Episode 骨架")
     bible_json: str = dspy.InputField()
     placement_for_episode: str = dspy.InputField(desc="本集需要承载的植入计划")
@@ -86,6 +92,7 @@ class SceneCards(dspy.Signature):
     - present_character_ids 必须覆盖该场景所有 Beat 涉及的角色。
     - 不得引入 Bible 之外的地点或角色。
     """
+
     beats_json: str = dspy.InputField()
     bible_json: str = dspy.InputField()
     profile_json: str = dspy.InputField()
@@ -107,6 +114,7 @@ class Dialogue(dspy.Signature):
     - 必提台词（must_include_lines）若分配到本场，必须原文出现。
     - 禁用词零出现。
     """
+
     scene_json: str = dspy.InputField()
     beats_json: str = dspy.InputField(desc="本场承载的 Beat[]")
     characters_json: str = dspy.InputField(desc="在场角色的完整定义（含 voice_notes/voice_tics）")
@@ -129,6 +137,7 @@ class Prose(dspy.Signature):
     - 单段不超过 paragraph_max_chars 字（手机阅读）。
     - 视角与时态严格遵循 NarrativeVoice。
     """
+
     episode_json: str = dspy.InputField()
     scenes_with_lines_json: str = dspy.InputField()
     bible_json: str = dspy.InputField()
@@ -148,12 +157,15 @@ class IntakeNormalize(dspy.Signature):
     - 不得编造商家未提供的产品事实；缺失项必须列进 missing_fields。
     - 不得替商家做创意决策（不写故事），只做信息归一。
     """
+
     raw_input: str = dspy.InputField()
     brand_brief_json: str = dspy.InputField(desc="已有的 BrandBrief（可能为空）")
     profile_json: str = dspy.InputField()
 
     normalized_brief: str = dspy.OutputField()
-    missing_fields_json: str = dspy.OutputField(desc="list[{field, why_needed, suggested_question}]")
+    missing_fields_json: str = dspy.OutputField(
+        desc="list[{field, why_needed, suggested_question}]"
+    )
 
 
 class EditClassify(dspy.Signature):
@@ -165,12 +177,15 @@ class EditClassify(dspy.Signature):
     - rule_hint 必须是可判定的陈述句（"X 时应该 Y"），不得是感想。
     - 若这处修改只反映个别客户偏好而非通用规律，dimension 必须是 taste。
     """
+
     node_context: str = dspy.InputField(desc="被改节点及其上下文（场景卡 + 相邻台词）")
     original_text: str = dspy.InputField()
     revised_text: str = dspy.InputField()
     human_comment: str = dspy.InputField(desc="人类批注，可能为空")
 
-    dimension: str = dspy.OutputField(desc="structural|character|placement|dialogue|factual|compliance|producibility|taste")
+    dimension: str = dspy.OutputField(
+        desc="structural|character|placement|dialogue|factual|compliance|producibility|taste"
+    )
     severity: int = dspy.OutputField(desc="1-5")
     rule_hint: str = dspy.OutputField(desc="一句可判定的经验陈述")
     rationale: str = dspy.OutputField()
@@ -186,6 +201,7 @@ class RuleInduce(dspy.Signature):
     - 必须列出这条规则不适用的反例场景（防止过度泛化）。
     - scope 必须是能被这组证据支撑的最小范围。
     """
+
     observations_json: str = dspy.InputField(desc="同簇的 L0 观察，含原文/改后/批注/case_id")
     existing_rules_json: str = dspy.InputField(desc="同域已有的 L2/L3 规则，用于避免重复与冲突")
 

@@ -1,0 +1,15 @@
+id: BM-012
+title: 无证据卖点禁止用演示形式
+domain: brand
+severity: block
+stage: after_p3
+select: brand_moments[*]
+bind:
+  unproven: '@.__ctx.brand.selling_points[?proof==''''].id'
+assert: not (item.proof_mode == 'demo' and item.selling_point_id in unproven)
+message: 植入 {item.id} 用 demo（当场演示效果）承载卖点 {item.selling_point_id}，但该卖点在 BrandBrief
+  中没有 proof 字段。演示无法证实的效果构成虚假宣传风险。请改为 reaction 或 contrast 形式。
+legal_ref: 内部风控：无证据卖点不得演示
+tags:
+- legal
+- proof

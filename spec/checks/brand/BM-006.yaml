@@ -1,0 +1,14 @@
+id: BM-006
+title: 必覆盖卖点全部被覆盖
+domain: brand
+severity: block
+stage: after_p3
+select: project
+bind:
+  need: '@.__ctx.brand.selling_points[?must_cover].id'
+  got: '@.__ctx.ir.brand_moments[*].selling_point_id'
+assert: all_of(need, 'x in got')
+message: 以下必覆盖卖点没有任何 BrandMoment 承载：{[x for x in need if x not in got]}。这是商家付费的直接目标，缺失等于交付未完成。请为每个缺失卖点新增或改造一处植入，优先用
+  usage 或 before_after 形式。
+tags:
+- coverage

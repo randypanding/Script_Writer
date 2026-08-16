@@ -1,0 +1,13 @@
+id: STR-002
+title: 每集必须有终态 Beat（cliffhanger 或 resolution）
+domain: structure
+severity: block
+stage: after_p3
+select: episodes[*]
+bind:
+  last: beats[-1]
+assert: last.beat_kind in ['cliffhanger','resolution','cta']
+message: 第 {item.no} 集最后一个 Beat 是 {last.beat_kind}，不是终态 Beat。观众在集末需要一个明确的'钩住'或'满足'，否则不会点下一集。请把末
+  Beat 改为 cliffhanger（非末集）或 resolution/cta（末集）。
+tags:
+- structure

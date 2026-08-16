@@ -1,0 +1,10 @@
+id: PRD-003
+title: 不得使用不可拍摄的场景/道具
+domain: producibility
+severity: warn
+stage: after_p4
+select: episodes[*].scenes[*]
+assert: item.__location_cost_tier != 'unavailable'
+message: 场景 {item.id} 使用了标记为 unavailable 的场地。请替换为 BrandBrief 中 shootable==true 的使用场景。
+tags:
+- producibility

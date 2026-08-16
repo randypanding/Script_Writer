@@ -1,0 +1,12 @@
+id: STR-009
+title: 跨集伏笔跨度不过长
+domain: structure
+severity: warn
+stage: after_p3
+select: setup_payoffs[*]
+bind:
+  span: '@.__ctx.profile.max_payoff_span_episodes'
+assert: item.span_episodes <= span
+message: 伏笔 {item.id} 跨越了 {item.span_episodes} 集，超过建议跨度 {span} 集。短视频观众的记忆窗口很短，跨度太大等于没埋。
+tags:
+- setup_payoff

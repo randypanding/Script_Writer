@@ -1,0 +1,13 @@
+id: FCT-001
+title: 产品参数必须来自 BrandBrief
+domain: fact
+severity: block
+stage: after_p6
+select: project
+bind:
+  claims: '@.__ctx.ir.__numeric_claims'
+assert: all_of(claims, 'x.value in @.__ctx.brand.__all_fact_values')
+message: 交付文本中出现了 BrandBrief 未提供的产品参数/数字：{[x for x in claims if x.value not in @.__ctx.brand.__all_fact_values]}。模型自造参数是最危险的失败模式，会造成商家的法律风险。
+tags:
+- hallucination
+- legal

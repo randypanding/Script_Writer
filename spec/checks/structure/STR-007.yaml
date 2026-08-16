@@ -1,0 +1,15 @@
+id: STR-007
+title: 每集至少一组伏笔闭环（按 Profile 要求）
+domain: structure
+severity: block
+stage: after_p3
+scope:
+  profiles:
+  - short_drama_v1
+select: episodes[*]
+bind:
+  sp: '@.__ctx.ir.setup_payoffs'
+assert: count([x for x in sp if x.episode_no == item.no]) >= 1
+message: 第 {item.no} 集没有任何 setup→payoff 闭环。营销短剧的复看与转发主要来自'原来这里是埋的'，无伏笔的单集观感等同于流水账。请在前段埋一个道具/一句话，在后段回收。
+tags:
+- setup_payoff

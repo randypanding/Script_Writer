@@ -1,0 +1,12 @@
+id: NOV-001
+title: 小说章节必须 100% 覆盖对应 Beat
+domain: novel
+severity: block
+stage: after_p6
+select: chapters[*]
+assert: item.__beat_coverage == 1.0
+message: 章节 {item.id} 只覆盖了对应集 {pct(item.__covered_beats, item.__total_beats)} 的 Beat（未覆盖：{item.__missing_beat_ids}）。小说是商家的确认物，漏掉的
+  Beat 意味着商家确认了一个和剧本不同的故事。
+tags:
+- novel
+- anchor

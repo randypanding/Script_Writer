@@ -1,0 +1,13 @@
+id: BM-008
+title: 植入不得全部集中在尾部
+domain: brand
+severity: warn
+stage: after_p3
+select: episodes[*]
+bind:
+  bms: "beats[?beat_kind=='brand_moment']"
+  total: "length(beats)"
+assert: "count(bms) == 0 or min(positions(bms, total, 'order')) <= 0.8"
+message: 第 {item.no} 集所有植入都在后 20%（位置={positions(bms, total, 'order')}）。观众流失主要发生在前半段，全部植入压在结尾意味着大部分人根本没看到。
+tags:
+- placement_position

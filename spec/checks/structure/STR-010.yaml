@@ -1,0 +1,12 @@
+id: STR-010
+title: 主角每集出场
+domain: structure
+severity: block
+stage: after_p4
+select: episodes[*]
+bind:
+  pro: '@.__ctx.ir.characters[?role==''protagonist''].id'
+assert: all_of(pro, 'x in item.__present_character_ids')
+message: 第 {item.no} 集缺少主角出场。观众追的是人不是事，主角缺席会直接掉粉。
+tags:
+- character

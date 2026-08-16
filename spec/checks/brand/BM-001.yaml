@@ -1,0 +1,15 @@
+id: BM-001
+title: 单集品牌植入不超过预算
+domain: brand
+severity: block
+stage: after_p3
+select: episodes[*]
+bind:
+  moments: beats[?beat_kind=='brand_moment']
+  limit: '@.__ctx.brand.placement.max_moments_per_episode'
+assert: count(moments) <= limit
+message: 第 {item.no} 集有 {count(moments)} 处品牌植入，超过预算 {limit} 处。植入密度过高会打断叙事沉浸并显著降低完播率。请合并讲同一卖点的植入，优先删除
+  intensity<=2 且 plot_connection=='none' 的那处。
+evidence: []
+tags:
+- density

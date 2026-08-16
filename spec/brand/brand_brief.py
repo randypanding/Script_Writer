@@ -1,4 +1,5 @@
 """BrandBrief（D4）：跨项目复用的品牌资产。每个字段都要能编译成 checker 规则（见 mapping.md）。"""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -27,7 +28,9 @@ class SellingPoint(BaseModel):
     id: Slug
     claim: NonEmpty
     priority: int = Field(ge=1, le=5, description="1 最高")
-    must_cover: bool = Field(default=False, description="true ⇒ 必须被至少一个 BrandMoment 覆盖（BM-006）")
+    must_cover: bool = Field(
+        default=False, description="true ⇒ 必须被至少一个 BrandMoment 覆盖（BM-006）"
+    )
     proof: str = Field(default="", description="可展示的证据；无证据的卖点禁止用 demo 形式")
     forbidden_phrasings: list[str] = Field(default_factory=list)
 
@@ -93,4 +96,6 @@ class BrandBrief(BaseModel):
     legal: Legal = Field(default_factory=Legal)
 
     account_context: str = Field(default="", description="商家账号现状：粉丝画像、已有内容风格")
-    business_goal: Literal["awareness", "consideration", "conversion", "retention"] = "consideration"
+    business_goal: Literal["awareness", "consideration", "conversion", "retention"] = (
+        "consideration"
+    )

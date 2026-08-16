@@ -1,0 +1,13 @@
+id: PRD-001
+title: 场地成本不超预算档
+domain: producibility
+severity: warn
+stage: after_p4
+select: episodes[*]
+bind:
+  cap: '@.__ctx.profile.location_cost_budget'
+assert: sum_of(item.__locations, 'cost_weight') <= cap
+message: 第 {item.no} 集的场地成本权重合计 {sum_of(item.__locations, 'cost_weight')}，超过预算档 {cap}。制作团队通常只能拿到
+  1–2 个可控场地。
+tags:
+- producibility

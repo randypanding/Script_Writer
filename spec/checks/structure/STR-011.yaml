@@ -1,0 +1,11 @@
+id: STR-011
+title: 开场承诺非空且是疑问/悬念型
+domain: structure
+severity: block
+stage: after_p2
+select: episodes[*]
+assert: chars(item.hook_promise) >= 6
+message: 第 {item.no} 集的 hook_promise 为空或过短。hook_promise 是'这一集向观众承诺解答的问题'，它是写 Hook
+  Beat 的依据，缺失会导致开场无目的。
+tags:
+- hook

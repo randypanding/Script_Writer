@@ -67,7 +67,7 @@ placement:
 
 legal:
   banned_words: [最好喝, 第一名, 唯一, 治疗]
-  competitor_names: []      # 按需填
+  competitor_names: [茗香茶语]      # 竞品名：交付文本中零出现（BM-011 合同红线）
   claim_whitelist: ["不额外添加蔗糖", "用真茶"]
   ip_assignment: 交付后著作权归甲方所有
   legal_refs: []

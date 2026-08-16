@@ -1,0 +1,13 @@
+id: DLG-004
+title: 主要角色语音特征可辨识
+domain: dialogue
+severity: warn
+stage: after_p5
+select: characters[?role=='protagonist' || role=='customer_proxy']
+bind:
+  ratio: '@.__ctx.profile.min_voice_tic_ratio'
+assert: count(item.voice_tics) == 0 or item.__tic_hit_ratio >= ratio
+message: 角色「{item.name}」的台词只有 {pct(item.__tic_hit_count, item.__line_count)} 命中其 voice_tics（要求
+  ≥{ratio}）。所有人说话一个腔是 AI 剧本最容易被识破的地方。
+tags:
+- voice

@@ -1,0 +1,13 @@
+id: BM-007b
+title: 必现视觉符号出现
+domain: brand
+severity: block
+stage: after_p5
+select: project
+bind:
+  need: '@.__ctx.brand.must_include_visuals'
+  desc: '@.__ctx.ir.__all_action_and_scene_text'
+assert: all_of(need, 'contains_any(desc, [x])')
+message: 以下必现视觉符号未在任何动作描述或场景描述中出现：{[x for x in need if not contains_any(desc, [x])]}。制作团队按剧本布景，剧本没写就拍不到。
+tags:
+- must_include

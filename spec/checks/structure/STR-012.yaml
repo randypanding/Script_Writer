@@ -1,0 +1,11 @@
+id: STR-012
+title: 无声明未出场的角色
+domain: structure
+severity: warn
+stage: after_p4
+select: characters[*]
+assert: item.__appearance_count >= 1
+message: 角色「{item.name}」在人物表中声明但从未在任何场景出场。多余角色会增加选角与片酬成本，且暗示 Bible 与 BeatSheet 脱节。请删除或安排出场。
+tags:
+- character
+- producibility

@@ -1,0 +1,12 @@
+id: STR-005
+title: 场景卡三要素完整
+domain: structure
+severity: block
+stage: after_p4
+select: episodes[*].scenes[*]
+assert: chars(item.goal) >= 4 and chars(item.conflict) >= 4 and chars(item.turn) >=
+  4
+message: 场景 {item.id} 的 goal/conflict/turn 至少一项为空或过短（goal={chars(item.goal)}字, conflict={chars(item.conflict)}字,
+  turn={chars(item.turn)}字）。没有'谁要什么/什么挡着/发生了什么不可逆变化'的场景一定是水戏，会被商家一眼看出来。
+tags:
+- scene

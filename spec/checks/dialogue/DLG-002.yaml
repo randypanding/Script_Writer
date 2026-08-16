@@ -1,0 +1,12 @@
+id: DLG-002
+title: 单条台词长度受限
+domain: dialogue
+severity: block
+stage: after_p5
+select: episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']
+bind:
+  cap: '@.__ctx.profile.max_line_chars'
+assert: chars(item.text) <= cap
+message: 台词 {item.id} 有 {chars(item.text)} 字，超过上限 {cap} 字。短剧的镜头节奏容不下长句，演员也念不自然。请拆成两句或交给对手角色一半。
+tags:
+- length

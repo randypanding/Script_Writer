@@ -1,0 +1,12 @@
+id: BM-010
+title: 植入渠道不得单一
+domain: brand
+severity: warn
+stage: after_p3
+select: episodes[*]
+bind:
+  mods: beats[?beat_kind=='brand_moment'].__modality
+assert: count(mods) <= 1 or distinct(mods) >= 2
+message: 第 {item.no} 集的植入 modality 全部为 {distinct(mods) and mods[0]}。视觉+口语双通道的品牌记忆显著优于单通道；请把其中一处改为另一种通道。
+tags:
+- modality

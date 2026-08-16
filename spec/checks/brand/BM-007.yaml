@@ -1,0 +1,13 @@
+id: BM-007
+title: 必提台词原文出现
+domain: brand
+severity: block
+stage: after_p5
+select: project
+bind:
+  need: '@.__ctx.brand.must_include_lines'
+  all_text: '@.__ctx.ir.__all_line_text'
+assert: all_of(need, 'contains_any(all_text, [x])')
+message: 以下必提台词未在剧本中原文出现：{[x for x in need if not contains_any(all_text, [x])]}。这些是商家指定的口播/Slogan，必须逐字出现。请安排给最合适的角色，避免生硬念广告。
+tags:
+- must_include

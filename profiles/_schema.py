@@ -1,4 +1,5 @@
 """Format Profile 的可执行模式（D18）。新增 Profile 不得改本文件之外的内核代码。"""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -27,6 +28,7 @@ class NovelSettings(BaseModel):
 
 class BeatTemplate(BaseModel):
     """Beat 模板先验。来源标注为 craft（Save the Cat / Story Circle）或 mined（逆向标注统计）。"""
+
     model_config = ConfigDict(extra="forbid")
     id: Slug
     source: Literal["craft", "mined", "client"] = "mined"
@@ -63,7 +65,15 @@ class Profile(BaseModel):
 
     render_targets: list[Slug] = Field(default_factory=lambda: ["novel_docx", "script_fountain"])
     enabled_check_domains: list[str] = Field(
-        default_factory=lambda: ["structure", "brand", "dialogue", "novel", "compliance", "producibility", "fact"]
+        default_factory=lambda: [
+            "structure",
+            "brand",
+            "dialogue",
+            "novel",
+            "compliance",
+            "producibility",
+            "fact",
+        ]
     )
     model_tiers: dict[str, str] = Field(
         default_factory=dict, description="pass_name -> tier（→ config/models.yaml）"

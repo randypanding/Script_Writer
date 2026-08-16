@@ -1,0 +1,14 @@
+id: BM-005
+title: 高强度植入数量受限
+domain: brand
+severity: block
+stage: after_p3
+select: episodes[*]
+bind:
+  hi: beats[?beat_kind=='brand_moment'].__intensity
+  cap: '@.__ctx.brand.placement.max_high_intensity_per_episode'
+assert: count([x for x in hi if x >= 4]) <= cap
+message: 第 {item.no} 集有 {count([x for x in hi if x >= 4])} 处 intensity>=4 的显性植入，超过上限
+  {cap}。硬广每集只能有一次，且应放在情绪高点之后。
+tags:
+- intensity

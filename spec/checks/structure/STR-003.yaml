@@ -1,0 +1,14 @@
+id: STR-003
+title: Beat 数落在 Profile 区间内
+domain: structure
+severity: block
+stage: after_p3
+select: episodes[*]
+bind:
+  lo: '@.__ctx.profile.beats_per_episode[0]'
+  hi: '@.__ctx.profile.beats_per_episode[1]'
+assert: lo <= length(item.beats) <= hi
+message: 第 {item.no} 集有 {count(item.beats)} 个 Beat，Profile 要求 {lo}–{hi} 个。Beat 过少会导致节奏拖沓、单个
+  Beat 撑不满时长；过多会导致每个 Beat 只有几秒、观众跟不上。
+tags:
+- pacing

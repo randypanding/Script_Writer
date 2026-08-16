@@ -1,0 +1,13 @@
+id: STR-013
+title: 必须有目标人群代理角色
+domain: structure
+severity: block
+stage: after_p1
+select: project
+bind:
+  proxies: '@.__ctx.ir.characters[?role==''customer_proxy'']'
+assert: count(proxies) >= 1 and all_of(proxies, 'chars(x.persona_ref) > 0')
+message: 全剧没有 role=customer_proxy 且绑定了 brand.audience persona 的角色（当前 customer_proxy 角色 {count(proxies)} 个）。营销短剧的代入感来自'那个人就是我'，缺少人群代理角色时观众不会把产品和自己联系起来。
+tags:
+- brand
+- character

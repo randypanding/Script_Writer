@@ -1,5 +1,6 @@
 """规则 DSL 一致性测试。自动发现 spec/checks/**.yaml，要求每条规则都有 pass/fail fixture。
 组织方式借鉴 CheckList 的 MFT（docs/BORROW_MAP.md #13）。"""
+
 from __future__ import annotations
 
 import json
@@ -8,8 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-CHECKS = sorted(p for p in Path("spec/checks").rglob("*.yaml")
-                if not p.name.startswith("_"))
+CHECKS = sorted(p for p in Path("spec/checks").rglob("*.yaml") if not p.name.startswith("_"))
 FIX = Path("tests/fixtures/checks")
 
 
@@ -33,11 +33,16 @@ def test_every_rule_has_fixtures(path):
 def test_rule_pass_and_fail(path, profiles, demo_brand):
     from nsc.checker.interpreter import RuleSet, evaluate
     from nsc.runtime.ir_io import build_view
+
     rule = _rule(path)
     rid = rule["id"]
-    rs = RuleSet.load(profile_id="short_drama_v1", industry="beverage",
-                      brand_id="demo_tea", stage=rule["stage"],
-                      enabled_domains=[rule["domain"]])
+    rs = RuleSet.load(
+        profile_id="short_drama_v1",
+        industry="beverage",
+        brand_id="demo_tea",
+        stage=rule["stage"],
+        enabled_domains=[rule["domain"]],
+    )
     rs.rules = [rule]  # 只测这一条
     for name, should_fire in (("pass.json", False), ("fail.json", True)):
         raw = json.loads((FIX / rid / name).read_text("utf-8"))
@@ -56,5 +61,6 @@ def test_message_quality(path):
     assert len(msg) >= 30, f"{r['id']} 的 message 过短，无法作为 GEPA 反馈"
     assert "{" in msg, f"{r['id']} 的 message 未引用任何具体数值/节点"
     banned = ["invalid", "error", "违规", "不合法", "不符合要求"]
-    assert not any(b in msg and len(msg) < 60 for b in banned), \
+    assert not any(b in msg and len(msg) < 60 for b in banned), (
         f"{r['id']} 的 message 像日志而不是诊断"
+    )

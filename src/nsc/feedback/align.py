@@ -18,6 +18,7 @@ L3 必须保持单调（段落顺序不可交叉），否则会把第 5 集的�
 优先直接解析 OOXML 的 w:ins / w:del / w:comment（拿到作者与时间戳）。
 pandoc --track-changes=all 作为兜底。见 docs/BORROW_MAP.md #18。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -44,9 +45,11 @@ class EditRecord:
     rule_hint: str = ""
 
 
-def extract_revisions(path: Path) -> list[dict]: ...            # T-10
+def extract_revisions(path: Path) -> list[dict]: ...  # T-10
 def recover_anchors(edits: list[dict], delivered_ir_path: Path) -> list[EditRecord]: ...  # T-10
-def align_paragraphs(delivered: list[str], returned: list[str]) -> list[tuple[int | None, int | None]]:
+def align_paragraphs(
+    delivered: list[str], returned: list[str]
+) -> list[tuple[int | None, int | None]]:
     """单调对齐。返回 (delivered_idx, returned_idx) 对，None 表示增/删。
 
     禁止用贪心最近邻——那会在段落重排时崩掉。必须 DP。

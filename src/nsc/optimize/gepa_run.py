@@ -4,6 +4,7 @@
     nsc optimize --pass p3_beatsheet --auto light
 会构造一个只含 p3 的 dspy.Module，输入直接取黄金 IR 的 p0-p2 产物。
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,7 +13,14 @@ from typing import Literal
 PassName = Literal["p1_bible", "p2_arc", "p3_beatsheet", "p4_scene", "p5_dialogue", "p6_prose"]
 
 # 优化顺序（先结构后文字：结构错了优化台词是浪费）
-OPTIMIZE_ORDER: tuple[PassName, ...] = ("p3_beatsheet", "p2_arc", "p5_dialogue", "p6_prose", "p4_scene", "p1_bible")
+OPTIMIZE_ORDER: tuple[PassName, ...] = (
+    "p3_beatsheet",
+    "p2_arc",
+    "p5_dialogue",
+    "p6_prose",
+    "p4_scene",
+    "p1_bible",
+)
 
 
 def run(
