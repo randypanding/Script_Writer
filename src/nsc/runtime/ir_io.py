@@ -53,9 +53,11 @@ def _brand_view(brand: dict[str, Any]) -> dict[str, Any]:
         banned += sp.get("forbidden_phrasings", [])
     facts_vals = [v for p in products for v in p.get("facts", {}).values() if isinstance(v, str)]
     canonical = [p.get("canonical_name") or p.get("name") for p in products if p.get("name")]
-    # 错误写法 = 别名中非 canonical 的写法 + 去空格/单位变体
+    # 错误写法 = 别名中非 canonical 的写法。别名含规范名子串也没关系：
+    # BM-009 用 contains_name_variant（被规范名覆盖的出现不算违规，见 ADR-0009）。
+    # 去空格变体只有在与规范名不同时才算变体（无空格规范名不得禁自己）。
     forbidden = {a for p in products for a in p.get("aliases", []) if a not in canonical}
-    forbidden |= {c.replace(" ", "") for c in canonical}
+    forbidden |= {c.replace(" ", "") for c in canonical if c.replace(" ", "") != c}
     return {
         **brand,
         "placement": brand.get("placement", {}),

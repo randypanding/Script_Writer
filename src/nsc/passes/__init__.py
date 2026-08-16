@@ -17,7 +17,13 @@ from ulid import ULID
 from nsc.runtime.cache import cached_pass
 from nsc.runtime.provenance import RunRecord, RunsStore
 
-__all__ = ["PassContext", "PassFailure", "cached_pass", "generate_json", "new_id"]
+__all__ = ["PassContext", "PassFailure", "cached_pass", "generate_json", "new_id", "with_diag"]
+
+
+def with_diag(inputs: dict[str, Any], fragment: dict[str, Any]) -> dict[str, Any]:
+    """把重试诊断（_previous_failure）从 fragment 转发进 LLM 输入（D13 反馈驱动再生成）。"""
+    diag = str(fragment.get("_previous_failure", "") or "")
+    return {**inputs, "_previous_failure": diag} if diag else inputs
 
 
 class PassFailure(Exception):  # noqa: N818  名字由 docs/HANDOFF_STRONG_MODEL.md 约定
@@ -127,16 +133,12 @@ def _load_prompt(pass_name: str) -> str:
 
 
 def parse_json_loose(text: str, pass_name: str) -> dict[str, Any]:
-    """容错解析模型输出：剥代码围栏后 json.loads。失败即 PassFailure。"""
-    t = text.strip()
-    if t.startswith("```"):
-        t = t.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    try:
-        data = json.loads(t)
-    except json.JSONDecodeError as e:
-        raise PassFailure(None, f"{pass_name} 输出不是合法 JSON：{e}") from e
+    """容错解析模型输出：平衡括号扫描提取 JSON 对象（兼容推理内容夹带）。失败即 PassFailure。"""
+    from nsc.runtime.json_extract import extract_json
+
+    data = extract_json(text)
     if not isinstance(data, dict):
-        raise PassFailure(None, f"{pass_name} 输出应为 JSON 对象")
+        raise PassFailure(None, f"{pass_name} 输出不是合法 JSON 对象")
     return data
 
 
@@ -152,10 +154,13 @@ def generate_json(
     for name, f in signature.output_fields.items():
         extra: Any = getattr(f, "json_schema_extra", None) or {}
         out_fields[name] = str(extra.get("desc", ""))
+    _inner_example = json.dumps({"items_json": json.dumps([{"name": "甲"}], ensure_ascii=False)})
     system = (
         f"{instructions}\n\n"
         "只输出一个 JSON 对象，键与含义如下（值为字符串，列表/对象请序列化为 JSON 字符串）：\n"
         + json.dumps(out_fields, ensure_ascii=False, indent=2)
+        + "\n嵌套序列化必须保证整体可被 json.loads 解析，内层引号要转义。正确示例："
+        + _inner_example
     )
     user = json.dumps(inputs, ensure_ascii=False)
     res = ctx.router.complete(
@@ -178,10 +183,20 @@ def generate_json(
 
 
 def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
-    """输出字段里的嵌套 JSON 字符串 → Python 对象。"""
+    """输出字段里的嵌套 JSON 字符串 → Python 对象。坏串先试平衡扫描修复；失败诊断可直接喂重试。"""
     if isinstance(value, (list, dict)):
         return value
+    text = str(value or "")
     try:
-        return json.loads(value or "")
+        return json.loads(text)
     except json.JSONDecodeError as e:
-        raise PassFailure(None, f"{pass_name}.{field_name} 不是合法 JSON：{e}") from e
+        from nsc.runtime.json_extract import extract_json
+
+        repaired = extract_json(text)
+        if isinstance(repaired, (list, dict)):
+            return repaired
+        raise PassFailure(
+            None,
+            f"{pass_name}.{field_name} 不是合法 JSON：{e}；原始开头：{text[:100]!r}。"
+            f"请重新输出完整且转义正确的 {field_name}。",
+        ) from e

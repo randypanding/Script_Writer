@@ -5,9 +5,16 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from spec.ir.overlays import BrandMoment
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id
+from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
+from .schema_bridge import schema_hint
+
+#: placement_plan 的取值真相在 BrandMoment（spec/ir）；机械派生给模型看。
+_PLACEMENT_HINT = schema_hint(
+    BrandMoment, skip=("id", "anchor_beat_id", "integration_note", "prop_id")
+)
 
 
 class Module(DSPyPass):
@@ -19,12 +26,16 @@ class Module(DSPyPass):
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     out = Module()(
         ctx,
-        {
-            "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
-            "brand_brief_json": json.dumps(ctx.brand, ensure_ascii=False),
-            "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-            "retrieved_cases": fragment.get("retrieved_cases", ""),
-        },
+        with_diag(
+            {
+                "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
+                "brand_brief_json": json.dumps(ctx.brand, ensure_ascii=False),
+                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
+                "retrieved_cases": fragment.get("retrieved_cases", ""),
+                "placement_schema_hint": _PLACEMENT_HINT + "；intensity 必须是 1-5 的整数",
+            },
+            fragment,
+        ),
     )
     episodes = inner_json(out["episodes_json"], "p2_arc", "episodes_json")
     placement = inner_json(out["placement_plan_json"], "p2_arc", "placement_plan_json")

@@ -1,7 +1,7 @@
 # D18 的泛化压测：这个 Profile 的存在是为了防止内核长歪。接入它不得修改 src/nsc/{runtime,checker}。
 schema_version: "1.0"
 id: short_video_v1
-version: "1.0.0"
+version: "1.1.0"
 display_name: 单条营销短视频（30-60 秒）
 
 layers: {season: false, episode: true, scene: true, beat: true, line: true}
@@ -9,7 +9,9 @@ layers: {season: false, episode: true, scene: true, beat: true, line: true}
 episode_count: [1, 1]
 duration_target_s: 45
 duration_tolerance: 0.20
-beats_per_episode: [3, 5]
+# 上限 6：承载 2 处植入时 BM-002（间隔≥2）+ hook 位 + 尾 Beat 必须 cta 的组合
+# 在 5 Beat 内数学上无解；6 Beat（约 7.5s/Beat）才有合法排布（hook→植入→过场→植入→过场→cta）。
+beats_per_episode: [4, 6]
 max_scenes_per_episode: 2
 max_characters: 3
 max_line_chars: 28
@@ -28,6 +30,10 @@ beat_templates:
   - id: contrast_before_after
     source: mined
     sequence: [hook, setup, brand_moment, resolution, cta]
+  - id: dual_point_spaced
+    source: craft
+    note: 两个卖点各需一处植入时的合法排布：两处植入之间至少隔 1 个 Beat（BM-002）
+    sequence: [hook, setup, brand_moment, escalation, brand_moment, cta]
 
 novel:
   enabled: true                     # 仍出"小说"，但形态是一段 300-500 字的短文，供商家确认

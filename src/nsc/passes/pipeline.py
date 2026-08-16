@@ -7,6 +7,7 @@ feedback 文本可直接进 GEPA（D13）。
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,38 @@ def _field_match(pattern: str, field_name: str) -> bool:
         if "." not in alt and field_name.endswith("." + alt):
             return True
     return False
+
+
+def _dbg(msg: str) -> None:
+    """NSC_DEBUG_PIPELINE=1 时把编排轨迹追加到 out/pipeline_debug.log（排障用）。"""
+    if not os.environ.get("NSC_DEBUG_PIPELINE"):
+        return
+    out = Path("out/pipeline_debug.log")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("a", encoding="utf-8") as f:
+        f.write(msg + "\n")
+
+
+def _accum(diag: str, new: str) -> str:
+    """累积相位诊断：让重试同时看到历史全部问题，避免"修一个引入一个"的打地鼠。"""
+    return f"{diag}\n---\n{new}" if diag else new
+
+
+def _retry_pass(fn: Any, ctx: PassContext, fragment: dict[str, Any], *, attempts: int = 2) -> Any:
+    """生成型 Pass 的输出波动重试：把上次失败诊断注入重试输入（D13 反馈驱动再生成）。
+
+    LLM 输出有随机性（漏字段/数错个数），带诊断的重试能显著降低端到端失败率；
+    失败语义不变（全部失败照样抛 PassFailure，GEPA 反馈信号不受影响），缓存只存成功产物。
+    """
+    last_reason = ""
+    for i in range(attempts):
+        frag = {**fragment, "_previous_failure": last_reason} if last_reason else fragment
+        try:
+            return fn(ctx, frag)
+        except PassFailure as e:
+            last_reason = str(e)
+            if i == attempts - 1:
+                raise
 
 
 def check_stage(
@@ -143,7 +176,8 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     }
     st["constraints"] = r0["constraints"]
 
-    r1 = p1_bible.run(
+    r1 = _retry_pass(
+        p1_bible.run,
         ctx,
         {
             "normalized_brief": r0["normalized_brief"],
@@ -154,7 +188,8 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     bible = {k: r1[k] for k in ("characters", "locations", "props", "motifs", "tone")}
     st.update(bible)
 
-    r2 = p2_arc.run(
+    r2 = _retry_pass(
+        p2_arc.run,
         ctx,
         {
             "bible": bible,
@@ -169,60 +204,115 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     check_stage(ctx, cur(), "after_p2", "after_p2")
 
     episodes = r2["episodes"]
-    prev_summary = ""
-    for i, ep in enumerate(episodes):
-        r3 = p3_beatsheet.run(
-            ctx,
-            {
-                "episode": ep,
-                "bible": bible,
-                "placement": [
+    # p3（逐集）+ p4 + after_p3/p4 检查作为一个相位：L0 拦截（如 BM-002 植入间隔）时
+    # 带诊断整体重试（D13 反馈驱动再生成，诊断累积）；重试前恢复相位前的状态。
+    diag = ""
+    for attempt in range(3):
+        snapshot = {k: list(st[k]) for k in ("beats", "setup_payoffs", "brand_moments", "scenes")}
+        try:
+            prev_summary = ""
+            for i, ep in enumerate(episodes):
+                placement = [
                     p for p in r2["placement_plan"] if int(p.get("episode_no", -1)) == ep["no"]
-                ],
-                "prev_episode_summary": prev_summary,
-                "next_episode_promise": episodes[i + 1]["hook_promise"]
-                if i + 1 < len(episodes)
-                else "",
-                "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
-            },
-        )
-        track()
-        prev_summary = "；".join(b["summary"] for b in r3["beats"])
-        st["beats"] += r3["beats"]
-        st["setup_payoffs"] += r3["setup_payoffs"]
-        st["brand_moments"] += r3["brand_moments"]
+                ]
+                frag3: dict[str, Any] = {
+                    "episode": ep,
+                    "bible": bible,
+                    "placement": placement,
+                    "required_brand_moment_beats": len(placement),
+                    "prev_episode_summary": prev_summary,
+                    "next_episode_promise": episodes[i + 1]["hook_promise"]
+                    if i + 1 < len(episodes)
+                    else "",
+                    "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
+                }
+                if diag:
+                    frag3["_previous_failure"] = diag
+                r3 = _retry_pass(p3_beatsheet.run, ctx, frag3)
+                track()
+                prev_summary = "；".join(b["summary"] for b in r3["beats"])
+                st["beats"] += r3["beats"]
+                st["setup_payoffs"] += r3["setup_payoffs"]
+                st["brand_moments"] += r3["brand_moments"]
 
-    for ep in episodes:
-        ep_beats = [b for b in st["beats"] if b["_episode_id"] == ep["id"]]
-        r4 = p4_scene.run(ctx, {"episode": ep, "beats": ep_beats, "bible": bible})
-        track()
-        st["scenes"] += r4["scenes"]
-        st["beats"] = [b for b in st["beats"] if b["_episode_id"] != ep["id"]] + r4["beats"]
-    st["setup_payoffs"] = p3_beatsheet.resolve_pending(st["setup_payoffs"])
-    check_stage(ctx, cur(), "after_p3", "after_p4")
+            for ep in episodes:
+                ep_beats = [b for b in st["beats"] if b["_episode_id"] == ep["id"]]
+                r4 = _retry_pass(
+                    p4_scene.run, ctx, {"episode": ep, "beats": ep_beats, "bible": bible}
+                )
+                track()
+                st["scenes"] += r4["scenes"]
+                st["beats"] = [b for b in st["beats"] if b["_episode_id"] != ep["id"]] + r4["beats"]
+            st["setup_payoffs"] = p3_beatsheet.resolve_pending(st["setup_payoffs"])
+            check_stage(ctx, cur(), "after_p3", "after_p4")
+            _dbg("p3/p4-phase check passed")
+            break
+        except PassFailure as e:
+            _dbg(f"p3/p4-phase caught: {str(e)[:160]!r}")
+            st.update(snapshot)
+            diag = _accum(diag, str(e))
+            if attempt == 2:
+                raise
 
-    for sc in st["scenes"]:
-        sc_beats = [b for b in st["beats"] if b["parent_id"] == sc["id"]]
-        frag = _p5_fragment(sc, sc_beats, bible, st["constraints"])
-        frag["retrieved_cases"] = _retrieved(ctx, "dialogue_block", _scene_query(sc, sc_beats))
-        r5 = p5_dialogue.run(ctx, frag)
-        track()
-        st["lines"] += r5["lines"]
-    check_stage(ctx, cur(), "after_p5", "after_p5")
+    # p5 相位：对白 + after_p5 检查（如 BM-007 必提台词）；拦截时带累积诊断整体重试。
+    diag5 = ""
+    for attempt in range(3):
+        snapshot_lines = list(st["lines"])
+        _dbg(f"p5-phase attempt={attempt} scenes={len(st['scenes'])} diag={diag5[:120]!r}")
+        try:
+            for sc in st["scenes"]:
+                sc_beats = [b for b in st["beats"] if b["parent_id"] == sc["id"]]
+                frag = _p5_fragment(sc, sc_beats, bible, st["constraints"], brand=ctx.brand)
+                frag["retrieved_cases"] = _retrieved(
+                    ctx, "dialogue_block", _scene_query(sc, sc_beats)
+                )
+                if diag5:
+                    frag["_previous_failure"] = diag5
+                r5 = _retry_pass(p5_dialogue.run, ctx, frag)
+                track()
+                st["lines"] += r5["lines"]
+            check_stage(ctx, cur(), "after_p5", "after_p5")
+            _dbg("p5-phase check passed")
+            break
+        except PassFailure as e:
+            _dbg(f"p5-phase caught PassFailure: {str(e)[:160]!r}")
+            st["lines"] = snapshot_lines
+            diag5 = _accum(diag5, str(e))
+            if attempt == 2:
+                raise
 
     if ctx.profile.get("novel", {}).get("enabled"):
         st["voice"] = _voice(ctx, bible)
-        for ep in episodes:
-            r6 = p6_prose.run(ctx, _p6_fragment(cur(), bible, st["voice"], ep["id"]))
-            track()
-            st["chapters"].append(r6["chapter"])
-        check_stage(ctx, cur(), "after_p6", "after_p6")
+        # p6 相位：小说 + after_p6 检查（如 NOV-001 锚点覆盖）；同上带累积诊断重试。
+        diag6 = ""
+        for attempt in range(3):
+            snapshot_chapters = list(st["chapters"])
+            _dbg(f"p6-phase attempt={attempt} diag={diag6[:120]!r}")
+            try:
+                for ep in episodes:
+                    frag6 = _p6_fragment(cur(), bible, st["voice"], ep["id"])
+                    if diag6:
+                        frag6["_previous_failure"] = diag6
+                    r6 = _retry_pass(p6_prose.run, ctx, frag6)
+                    track()
+                    st["chapters"].append(r6["chapter"])
+                check_stage(ctx, cur(), "after_p6", "after_p6")
+                _dbg("p6-phase check passed")
+                break
+            except PassFailure as e:
+                _dbg(f"p6-phase caught PassFailure: {str(e)[:160]!r}")
+                st["chapters"] = snapshot_chapters
+                diag6 = _accum(diag6, str(e))
+                if attempt == 2:
+                    raise
 
     ir = cur()
     p7_render.run(ctx, ir.model_dump())
     track()
     ir = cur()
+    _dbg("final check start")
     check_stage(ctx, ir, "final", "final")
+    _dbg("final check passed")
     return ir
 
 
@@ -245,12 +335,14 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
     def track() -> None:
         run_ids.append(ctx.run_id)
 
-    r3 = p3_beatsheet.run(
+    r3 = _retry_pass(
+        p3_beatsheet.run,
         ctx,
         {
             "episode": ep,
             "bible": bible,
             "placement": _placement_of(raw, ep),
+            "required_brand_moment_beats": len(_placement_of(raw, ep)),
             "prev_episode_summary": _episode_digest(raw, ordered[idx - 1]["id"]) if idx > 0 else "",
             "next_episode_promise": ordered[idx + 1]["hook_promise"]
             if idx + 1 < len(ordered)
@@ -259,14 +351,14 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
         },
     )
     track()
-    r4 = p4_scene.run(ctx, {"episode": ep, "beats": r3["beats"], "bible": bible})
+    r4 = _retry_pass(p4_scene.run, ctx, {"episode": ep, "beats": r3["beats"], "bible": bible})
     track()
     lines: list[dict[str, Any]] = []
     for sc in r4["scenes"]:
         sc_beats = [b for b in r4["beats"] if b["parent_id"] == sc["id"]]
-        frag = _p5_fragment(sc, sc_beats, bible, raw.get("constraints", []))
+        frag = _p5_fragment(sc, sc_beats, bible, raw.get("constraints", []), brand=ctx.brand)
         frag["retrieved_cases"] = _retrieved(ctx, "dialogue_block", _scene_query(sc, sc_beats))
-        r5 = p5_dialogue.run(ctx, frag)
+        r5 = _retry_pass(p5_dialogue.run, ctx, frag)
         track()
         lines += r5["lines"]
 
@@ -277,7 +369,8 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
 
     if raw.get("voice"):
         beats_with_lines = _attach_lines(r4["beats"], lines)
-        r6 = p6_prose.run(
+        r6 = _retry_pass(
+            p6_prose.run,
             ctx,
             {
                 "episode": ep,
@@ -414,13 +507,18 @@ def _p5_fragment(
     beats: list[dict[str, Any]],
     bible: dict[str, Any],
     constraints: list[dict[str, Any]],
+    brand: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     present = set(scene.get("present_character_ids", []))
+    brand = brand or {}
     return {
         "scene": scene,
         "beats": beats,
         "characters": [c for c in bible.get("characters", []) if c.get("id") in present],
         "brand_constraints": constraints,
+        # 必提台词/必现视觉（BM-007/BM-007b）进缓存键：需求变则产物必须重生成
+        "must_include_lines": list(brand.get("must_include_lines", [])),
+        "must_include_visuals": list(brand.get("must_include_visuals", [])),
     }
 
 

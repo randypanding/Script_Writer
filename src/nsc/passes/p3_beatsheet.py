@@ -11,9 +11,25 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from spec.ir.nodes import Beat
+from spec.ir.overlays import BrandMoment
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id
+from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
+from .schema_bridge import allowed_values, schema_hint
+
+#: Beat 字段真相在 spec/ir；Pass 自动分配的字段不给模型看。
+_BEAT_HINT = schema_hint(
+    Beat, skip=("id", "kind", "parent_id", "order", "provenance_id", "locked", "brand_moment_id")
+)
+
+#: setup_payoffs_json 的格式契约（本模块输出契约，机械复述给模型，防把下标写成描述）。
+_SP_CONTRACT = (
+    'setup_payoffs_json 每个条目形如 {"slug":"小写短标识","setup":<beats_json 的下标 int>,'
+    '"payoff":<beats_json 的下标 int> 或 "PENDING:<对方条目 slug>","kind":"prop|line|promise|secret|skill",'
+    '"description":"一句话"}。setup/payoff 只能填整数下标（0 起）或 PENDING 字符串，'
+    "绝不能填情节描述文字。"
+)
 
 
 class Module(DSPyPass):
@@ -26,15 +42,25 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     ep = fragment["episode"]
     out = Module()(
         ctx,
-        {
-            "episode_json": json.dumps(ep, ensure_ascii=False),
-            "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
-            "placement_for_episode": json.dumps(fragment["placement"], ensure_ascii=False),
-            "prev_episode_summary": fragment.get("prev_episode_summary", ""),
-            "next_episode_promise": fragment.get("next_episode_promise", ""),
-            "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-            "retrieved_cases": fragment.get("retrieved_cases", ""),
-        },
+        with_diag(
+            {
+                "episode_json": json.dumps(ep, ensure_ascii=False),
+                "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
+                "placement_for_episode": json.dumps(fragment["placement"], ensure_ascii=False),
+                "prev_episode_summary": fragment.get("prev_episode_summary", ""),
+                "next_episode_promise": fragment.get("next_episode_promise", ""),
+                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
+                "retrieved_cases": fragment.get("retrieved_cases", ""),
+                "beat_schema_hint": _BEAT_HINT,
+                "setup_payoffs_contract": _SP_CONTRACT,
+                "required_brand_moment_beats": fragment.get("required_brand_moment_beats", 0),
+                # 品牌植入预算真相（brand.placement）：间隔/密度/禁用 Beat 类型，排布时必须遵守
+                "brand_placement_budget": json.dumps(
+                    ctx.brand.get("placement", {}), ensure_ascii=False
+                ),
+            },
+            fragment,
+        ),
     )
     raw_beats = inner_json(out["beats_json"], "p3_beatsheet", "beats_json")
     raw_sps = inner_json(out["setup_payoffs_json"], "p3_beatsheet", "setup_payoffs_json")
@@ -79,6 +105,25 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coerce_intensity(v: Any) -> int:
+    """IR 契约 intensity ∈ [1,5]（int）。模型若给语义词/越界值，机械归一到合法值域。"""
+    try:
+        return min(max(int(v), 1), 5)
+    except (TypeError, ValueError):
+        return {"very_low": 1, "low": 2, "medium": 3, "high": 4, "very_high": 5}.get(
+            str(v).strip().lower(), 2
+        )
+
+
+def _coerce_enum(v: Any, allowed: tuple[str, ...], default: str) -> str:
+    """IR Literal 值域机械归一：合法原样，别名映射，非法落默认。值域真相在 spec/ir。"""
+    s = str(v).strip().lower()
+    if s in allowed:
+        return s
+    aliases = {"audio": "verbal", "text": "verbal", "strong": "high", "weak": "low"}
+    return aliases.get(s, default)
+
+
 def _attach_brand_moments(
     beats: list[dict[str, Any]], placement: list[dict[str, Any]], ep: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -97,12 +142,26 @@ def _attach_brand_moments(
             {
                 "id": bm_id,
                 "anchor_beat_id": b["id"],
-                "type": plan.get("type", "scene"),
-                "intensity": int(plan.get("intensity", 2)),
-                "modality": plan.get("modality", "visual"),
-                "plot_connection": plan.get("plot_connection", "low"),
+                "type": _coerce_enum(
+                    plan.get("type", "scene"), allowed_values(BrandMoment, "type"), "scene"
+                ),
+                "intensity": _coerce_intensity(plan.get("intensity", 2)),
+                "modality": _coerce_enum(
+                    plan.get("modality", "visual"),
+                    allowed_values(BrandMoment, "modality"),
+                    "visual",
+                ),
+                "plot_connection": _coerce_enum(
+                    plan.get("plot_connection", "low"),
+                    allowed_values(BrandMoment, "plot_connection"),
+                    "low",
+                ),
                 "selling_point_id": plan.get("selling_point_id", ""),
-                "proof_mode": plan.get("proof_mode", "reaction"),
+                "proof_mode": _coerce_enum(
+                    plan.get("proof_mode", "reaction"),
+                    allowed_values(BrandMoment, "proof_mode"),
+                    "reaction",
+                ),
                 "integration_note": str(plan.get("intent", "")).strip() or "（缺植入说明）",
                 "prop_id": plan.get("prop_id") or None,
             }

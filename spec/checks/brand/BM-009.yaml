@@ -7,7 +7,7 @@ select: episodes[*].scenes[*].beats[*].lines[*]
 bind:
   canon: '@.__ctx.brand.__canonical_names'
   bad: '@.__ctx.brand.__forbidden_name_variants'
-assert: not contains_any(item.text, bad)
+assert: not contains_name_variant(item.text, bad, canon)
 message: 台词 {item.id}「{item.text}」中出现了非规范产品名写法。正确写法只能是 {canon}。品牌方对名称写法零容忍，错写会导致整集返工。
 tags:
 - naming

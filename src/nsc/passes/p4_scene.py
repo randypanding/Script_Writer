@@ -5,9 +5,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from spec.ir.nodes import Scene
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id
+from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
+from .schema_bridge import allowed_values, schema_hint
+
+#: Scene 字段真相在 spec/ir；Pass 自动分配的字段不给模型看。
+_SCENE_HINT = schema_hint(
+    Scene, skip=("id", "kind", "parent_id", "order", "provenance_id", "locked")
+)
+_TOD = allowed_values(Scene, "time_of_day")
 
 
 class Module(DSPyPass):
@@ -21,11 +29,15 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     beats = fragment["beats"]
     out = Module()(
         ctx,
-        {
-            "beats_json": json.dumps(_public_beats(beats), ensure_ascii=False),
-            "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
-            "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-        },
+        with_diag(
+            {
+                "beats_json": json.dumps(_public_beats(beats), ensure_ascii=False),
+                "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
+                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
+                "scene_schema_hint": _SCENE_HINT,
+            },
+            fragment,
+        ),
     )
     raw_scenes = inner_json(out["scenes_json"], "p4_scene", "scenes_json")
     mapping = inner_json(out["beat_to_scene"], "p4_scene", "beat_to_scene")
@@ -33,9 +45,34 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         raise PassFailure(ep["id"], "p4_scene 输出的 scenes 为空")
 
     scenes: list[dict[str, Any]] = []
+    bible_chars = fragment["bible"].get("characters", [])
+    bible_locs = fragment["bible"].get("locations", [])
+    loc_ids = {str(loc.get("id")) for loc in bible_locs}
+    loc_by_name = {str(loc.get("name", "")): str(loc.get("id")) for loc in bible_locs}
+    char_ids = {str(c.get("id")) for c in bible_chars}
+    char_by_name = {str(c.get("name", "")): str(c.get("id")) for c in bible_chars}
     for i, sc in enumerate(raw_scenes):
-        loc = sc.get("location_id", "")
-        present = sc.get("present_character_ids") or []
+        loc = str(sc.get("location_id", ""))
+        if loc not in loc_ids:  # 模型可能给了地点名而非 ULID：机械回退按名字解析
+            loc = loc_by_name.get(loc.strip(), loc)
+        if loc not in loc_ids:  # 伪造引用：拦截驱动重试（避免 ValidationError 崩管线）
+            raise PassFailure(
+                ep["id"],
+                f"场景引用了不存在的 location_id={loc}。只能使用 bible 里的地点 id"
+                f"（{sorted(loc_ids)}）或地点名。",
+            )
+        tod = str(sc.get("time_of_day", "unspecified")).strip().lower()
+        present: list[str] = []
+        for cid in sc.get("present_character_ids") or []:  # 角色名同理回退
+            cid = str(cid)
+            cid = cid if cid in char_ids else char_by_name.get(cid.strip(), cid)
+            if cid not in char_ids:
+                raise PassFailure(
+                    ep["id"],
+                    f"场景引用了不存在的角色 {cid}。只能使用 bible 里的角色 id"
+                    f"（{sorted(char_ids)}）或角色名。",
+                )
+            present.append(cid)
         scenes.append(
             {
                 "id": new_id(),
@@ -43,7 +80,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                 "parent_id": ep["id"],
                 "order": i,
                 "location_id": loc,
-                "time_of_day": sc.get("time_of_day", "unspecified"),
+                "time_of_day": tod if tod in _TOD else "unspecified",
                 "interior": bool(sc.get("interior", True)),
                 "present_character_ids": present,
                 "goal": str(sc.get("goal", "")).strip(),

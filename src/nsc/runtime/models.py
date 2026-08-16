@@ -26,6 +26,13 @@ class LLMResult:
     trace_id: str = ""
 
 
+def _has_json(text: str) -> bool:
+    """文本里是否含可解析的 JSON 对象/数组（推理兜底的准入判断，纯机械解析）。"""
+    from nsc.runtime.json_extract import extract_json
+
+    return extract_json(text) is not None
+
+
 class ModelRouter:
     """按 tier 路由到具体模型，带重试与成本统计。"""
 
@@ -35,6 +42,8 @@ class ModelRouter:
         self.budgets: dict[str, float] = cfg.get("budgets", {})
         retry = cfg.get("retry", {})
         self.attempts: int = int(retry.get("attempts", 3))
+        # litellm 不认识的新模型（如 LongCat-2.0）用配置价兜底成本统计。
+        self.cost_per_mtok: dict[str, float] = cfg.get("cost_usd_per_mtok", {}) or {}
 
     def resolve(self, tier: str) -> dict[str, Any]:
         if tier not in self.tiers:
@@ -58,26 +67,44 @@ class ModelRouter:
             "temperature": cfg.get("temperature", 0.7),
             "max_tokens": cfg.get("max_tokens", 4000),
         }
+        if cfg.get("api_base"):
+            kwargs["api_base"] = cfg["api_base"]
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         if seed is not None:
             kwargs["seed"] = seed
 
         t0 = time.monotonic()
-        resp = None
+        data: Any = None
+        text = ""
         delay = 1.0
         for attempt in range(self.attempts):
             try:
-                resp = litellm.completion(**kwargs)
-                break
+                data = litellm.completion(**kwargs)
             except Exception:
                 if attempt == self.attempts - 1:
                     raise
                 time.sleep(delay)
                 delay *= 2
+                continue
+            text = data.choices[0].message.content or ""
+            if text.strip():
+                break
+            # 推理模型可能把最终答案写进 reasoning_content 而 content 为空（端点行为）→
+            # 兜底取推理内容，合法性交给下游容错解析；json_mode 下要求其中确有 JSON，
+            # 否则视为纯思考噪声，继续重试。
+            rc = str(getattr(data.choices[0].message, "reasoning_content", "") or "")
+            if rc.strip() and (not json_mode or _has_json(rc)):
+                text = rc
+                break
+            # 输出预算耗在思考上、content 与有效 reasoning 皆空 → 换 seed 重试（传输层防御）。
+            if seed is not None:
+                kwargs["seed"] = seed + attempt + 1
+            if attempt < self.attempts - 1:
+                time.sleep(delay)
+                delay *= 2
         wall_ms = int((time.monotonic() - t0) * 1000)
-        assert resp is not None
-        data: Any = resp
+        assert data is not None
 
         usage = getattr(data, "usage", None)
         tokens_in = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -86,7 +113,12 @@ class ModelRouter:
             cost = float(litellm.completion_cost(completion_response=data) or 0.0)
         except Exception:
             cost = 0.0
-        text = data.choices[0].message.content or ""
+        if cost <= 0.0 and self.cost_per_mtok:
+            # litellm 无该模型价格（如 LongCat-2.0）→ 用 config 价兜底，保证预算护栏可用。
+            cost = (
+                tokens_in * float(self.cost_per_mtok.get("input", 0.0))
+                + tokens_out * float(self.cost_per_mtok.get("output", 0.0))
+            ) / 1_000_000
         return LLMResult(
             text=text,
             model_id=cfg["model"],

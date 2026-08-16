@@ -1,21 +1,24 @@
 # config/models.yaml
 # 模型是生成物（可换），路由策略是资产。改 tier 定义不需要改代码。
 schema_version: "1.0"
+
+# 2026-08-16 接入 LongCat-2.0（美团，OpenAI 兼容端点 api.longcat.chat）。
+# api_key 走环境变量 OPENAI_API_KEY，绝不落盘；api_base 是端点配置不是密钥。
 tiers:
-  tier_plan:    {model: "openai/gpt-5.1", temperature: 0.8, max_tokens: 8000}
-  tier_draft:   {model: "openai/gpt-5.1-mini", temperature: 0.9, max_tokens: 6000}
-  tier_bulk:    {model: "openai/gpt-5.1-mini", temperature: 0.2, max_tokens: 4000}
-  tier_judge:   {model: "anthropic/claude-sonnet-4.5", temperature: 0.0, max_tokens: 1500}
-  tier_reflect: {model: "anthropic/claude-opus-4.5", temperature: 1.0, max_tokens: 8000}
+  tier_plan:    {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.8, max_tokens: 32000}
+  tier_draft:   {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.9, max_tokens: 24000}
+  tier_bulk:    {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.2, max_tokens: 24000}
+  tier_judge:   {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.0, max_tokens: 16000}
+  tier_reflect: {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 1.0, max_tokens: 32000}
   tier_embed:   {model: "BAAI/bge-m3", local: true}
 
-# ⚠️ T-01 核对结论（2026-08-16）：
-#   - openai/gpt-5.1         有效（API model id `gpt-5.1`；2026-03 已从 ChatGPT 退役但 API 仍可用）
-#   - openai/gpt-5.1-mini    存疑：GPT-5.1 家族无独立的 `gpt-5.1-mini`，最接近的是 `gpt-5.1-codex-mini`（代码场景）。
-#                             通用生成建议改用 `gpt-5.4-mini` 或 `gpt-5.2`。最终须用 `litellm.model_list` 确认后替换。
-#   - anthropic/claude-sonnet-4.5 / claude-opus-4.5  有效（Claude Sonnet 4.5 / Opus 4.5）。
-# 本文件不参与语义门禁，只参与成本统计与可复现（进 provenance.model_id）。
-# 路由策略是资产：改 tier 定义不需要改代码，但改模型 ID 前必须用 litellm.model_list 核对。
+# ⚠️ 历史核对记录：
+#   - 2026-08-16（T-01）：曾配置 openai/gpt-5.1 家族与 claude-4.5 家族，其中 gpt-5.1-mini 存疑。
+#   - 2026-08-16：全部 tier 切换到 LongCat-2.0（单一可用模型）。litellm 不认识该模型的
+#     价格，成本统计用下方 cost_usd_per_mtok 兜底（限时折扣价 $0.30/$1.20 每 M token，
+#     输出含 reasoning token，见 longcat.chat/platform/docs/zh/api-pay-as-you-go）。
+#   - 本文件不参与语义门禁，只参与成本统计与可复现（进 provenance.model_id）。
+cost_usd_per_mtok: {input: 0.30, output: 1.20}
 
 budgets:
   per_episode_usd: 0.60

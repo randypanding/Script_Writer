@@ -6,7 +6,7 @@ from typing import Any
 
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, cached_pass, inner_json, new_id
+from . import DSPyPass, PassContext, cached_pass, inner_json, new_id, with_diag
 
 
 class Module(DSPyPass):
@@ -19,11 +19,14 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     brief, brand = fragment["raw_brief"], fragment["raw_brand"]
     out = Module()(
         ctx,
-        {
-            "raw_input": brief.get("raw_request", ""),
-            "brand_brief_json": _json(brand),
-            "profile_json": _json(_profile_digest(ctx)),
-        },
+        with_diag(
+            {
+                "raw_input": brief.get("raw_request", ""),
+                "brand_brief_json": _json(brand),
+                "profile_json": _json(_profile_digest(ctx)),
+            },
+            fragment,
+        ),
     )
     return {
         "normalized_brief": out["normalized_brief"],

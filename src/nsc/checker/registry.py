@@ -50,6 +50,33 @@ def contains_any(s: str | list[str] | None, words: list[str] | None) -> bool:
     return any(w and w in s for w in (words or []))
 
 
+def contains_name_variant(s: str | None, bad: list[str] | None, canon: list[str] | None) -> bool:
+    """产品名违规判定（BM-009）：bad 变体出现、且该出现不被任何规范名覆盖才算违规。
+
+    纯子串匹配会把规范名里的合法子串（如"轻乳茶"⊂"清野轻乳茶"）误判为误用；
+    这里先把规范名的出现区间标为已覆盖，bad 变体只有落在覆盖区外才计违规。
+    """
+    text = s or ""
+    covered = [False] * len(text)
+    for c in canon or []:
+        if not c:
+            continue
+        start = text.find(c)
+        while start >= 0:
+            for k in range(start, start + len(c)):
+                covered[k] = True
+            start = text.find(c, start + 1)
+    for b in bad or []:
+        if not b:
+            continue
+        pos = text.find(b)
+        while pos >= 0:
+            if not all(covered[pos : pos + len(b)]):
+                return True
+            pos = text.find(b, pos + 1)
+    return False
+
+
 def regex_any(s: str | list[str] | None, patterns: list[str] | None) -> bool:
     """s 为单个字符串或文本列表；任一文本命中任一 pattern 即 True（CMP-002）。"""
     if isinstance(s, (list, tuple)):
@@ -213,6 +240,7 @@ FUNCS: dict[str, Any] = {
     "positions": positions,
     "distinct": distinct,
     "contains_any": contains_any,
+    "contains_name_variant": contains_name_variant,
     "regex_any": regex_any,
     "lcs_len": lcs_len,
     "sim": sim,

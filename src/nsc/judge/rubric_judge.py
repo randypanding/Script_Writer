@@ -7,8 +7,6 @@ models.ModelRouter（AGENTS.md §2 唯一出口）。绝对分仅用于报告与
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -90,20 +88,10 @@ def load_anchors(
 
 
 def _extract_json(raw: str) -> Any:
-    """容错提取 JSON 对象：优先整体解析，其次截取首个花括号块。"""
-    t = raw.strip()
-    if t.startswith("```"):
-        t = t.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    try:
-        return json.loads(t)
-    except json.JSONDecodeError:
-        pass
-    for m in re.finditer(r"\{.*\}", t, re.DOTALL):
-        try:
-            return json.loads(m.group(0))
-        except json.JSONDecodeError:
-            continue
-    return None
+    """容错提取 JSON 对象：平衡括号扫描（兼容推理内容夹带），见 runtime/json_extract。"""
+    from nsc.runtime.json_extract import extract_json
+
+    return extract_json(raw)
 
 
 def parse_pairwise(raw: str) -> JudgeDecision:
