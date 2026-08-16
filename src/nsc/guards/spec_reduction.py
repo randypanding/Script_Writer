@@ -63,6 +63,13 @@ def scan(root: Path) -> list[Problem]:
     return problems
 
 
+def main() -> int:
+    problems = scan(Path("spec"))
+    for p in problems:
+        print(p)
+    return 1 if problems else 0
+
+
 def _scan_file(p: Path, out: list[Problem]) -> None:
     lines = p.read_text("utf-8").splitlines()
     para: list[tuple[int, str]] = []
@@ -91,3 +98,7 @@ def _scan_file(p: Path, out: list[Problem]) -> None:
             continue
         para.append((i, line))
     flush()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

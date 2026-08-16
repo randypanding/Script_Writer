@@ -13,9 +13,11 @@ spec-guard:         ## 资产层完整性门禁（无 LLM）
 	uv run python -m nsc.guards.ir_schema_diff     # IR breaking change 必须带 migration+ADR
 	uv run python -m nsc.guards.budgets            # 行数预算 D21
 	uv run python -m nsc.guards.rules_conflict     # canonical 规则冲突/重复
+	uv run python -m nsc.guards.db_export_fresh    # db ↔ jsonl 一致（ADR-0006）
 
 budgets:            ; uv run python -m nsc.guards.budgets
 prompts-verify:     ; uv run python -m nsc.guards.prompts_untouched
+db-export-fresh:    ; uv run python -m nsc.guards.db_export_fresh
 
 test-fast:          ## PR 阻塞集：无 LLM
 	uv run pytest -m "not llm" -n auto

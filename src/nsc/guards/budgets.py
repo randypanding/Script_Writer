@@ -60,3 +60,30 @@ def scan_business_logic() -> list[str]:
                 if (s.startswith("if ") or s.startswith("elif ")) and any(h in s for h in hints):
                     problems.append(f"{p}:{i}: {s.strip()[:60]}")
     return problems
+
+
+def main() -> int:
+    """D21 行数预算 + 业务逻辑泄漏启发式。超预算或检出泄漏 → 非零退出。"""
+    import yaml
+
+    problems = list(scan_business_logic())
+    counts = line_counts()
+    budget: dict = (
+        yaml.safe_load(_BUDGET_YAML.read_text("utf-8")).get("lines", {})
+        if _BUDGET_YAML.exists()
+        else {}
+    )
+    key = "src/nsc/runtime,src/nsc/checker"
+    actual = counts.get("runtime+checker", 0)
+    limit = int(budget.get(key, 0))
+    if limit and actual > limit:
+        problems.append(
+            f"runtime+checker 手写 {actual} 行 > 预算 {limit}（D21）。知识应抽回 spec/。"
+        )
+    for p in problems:
+        print(p)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

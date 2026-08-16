@@ -199,6 +199,7 @@ class RubricJudge:
         self.tier = tier
         self.rubric = load_rubric(rubric_path)
         self.anchor_dir = Path(anchor_dir)
+        self.cost_usd = 0.0  # 会话累计成本（供 L1/校准成本上限）
 
     def dimension(self, dim_id: str) -> dict[str, Any]:
         try:
@@ -258,10 +259,11 @@ class RubricJudge:
                     self._pairwise_messages(dim_id, context, a, b),
                     json_mode=True,
                     seed=attempt,
-                ).text
+                )
             except Exception:
                 return JudgeDecision(invalid=True, rationale="LLM 调用失败")
-            d = parse_pairwise(raw)
+            self.cost_usd += raw.cost_usd
+            d = parse_pairwise(raw.text)
             if not d.invalid and d.cited_spans:
                 return d
         return JudgeDecision(winner="tie", invalid=True, rationale="两次均未引用 span")
@@ -282,10 +284,11 @@ class RubricJudge:
                     self._absolute_messages(dim_id, context, text),
                     json_mode=True,
                     seed=attempt,
-                ).text
+                )
             except Exception:
                 return JudgeScore(invalid=True, rationale="LLM 调用失败")
-            s = parse_absolute(raw)
+            self.cost_usd += raw.cost_usd
+            s = parse_absolute(raw.text)
             if not s.invalid and s.cited_spans:
                 return s
         return JudgeScore(invalid=True, rationale="两次均未引用 span")

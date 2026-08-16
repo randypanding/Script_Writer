@@ -55,3 +55,11 @@ def test_canonical_rule_cap():
     n = len(list(Path("spec/rules/L3_canonical").glob("R3-*.yaml")))
     cap = yaml.safe_load(Path("spec/BUDGETS.yaml").read_text("utf-8"))["max_canonical_rules"]
     assert n <= cap, f"canonical 规则 {n} 条 > 上限 {cap}（PROMOTION.md 反膨胀）"
+
+
+def test_db_export_fresh():
+    """ADR-0006 / D28：db 存在时，7 张真相表必须与 jsonl 一致。"""
+    from nsc.guards.db_export_fresh import verify
+
+    problems = verify()
+    assert problems == [], "\n".join(problems)

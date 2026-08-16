@@ -63,3 +63,14 @@ def validate_rules(*, level: str = "L3") -> list[str]:
         ):
             problems.append(f"{p}: target 指向不存在的规则 {tgt}")
     return problems
+
+
+def main() -> int:
+    problems = validate_brand_mapping() + validate_rules(level="L3")
+    for p in problems:
+        print(p)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

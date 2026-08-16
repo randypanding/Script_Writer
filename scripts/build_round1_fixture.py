@@ -80,7 +80,7 @@ def build_round1() -> Path:
 
     out = Path("tests/fixtures/ingest/demo_tea_round1.docx")
     out.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(out)
+    doc.save(str(out))
     return out
 
 

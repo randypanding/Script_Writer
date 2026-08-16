@@ -63,9 +63,13 @@ def render_report(results: list[dict[str, Any]], out: Path) -> Path:
     if not results:
         lines.append("无样本。")
     else:
+        usable = [r for r in results if "skipped" not in r]
+        skipped = len(results) - len(usable)
+        if skipped:
+            lines.append(f"- 达到成本上限提前中止，跳过 {skipped} 个样本。")
         g = [
             r["findings_gain"]
-            for r in results
+            for r in usable
             if r["retrieval_status"] == "ok" and r["baseline_status"] == "ok"
         ]
         avg = round(sum(g) / len(g), 3) if g else None
@@ -73,7 +77,7 @@ def render_report(results: list[dict[str, Any]], out: Path) -> Path:
         lines.append("")
         lines.append("| brief | 检索臂 findings | 基线 findings | gain | Δ成本$ | 检索状态 |")
         lines.append("|---|---|---|---|---|---|")
-        for r in results:
+        for r in usable:
             lines.append(
                 f"| {Path(r['brief']).name} | {r['retrieval_findings']} | {r['baseline_findings']} | "
                 f"{r['findings_gain']} | {r['cost_delta_usd']} | {r['retrieval_status']} |"
@@ -167,18 +171,25 @@ def run_ab_retrieval(
     out_dir: Path = Path("out/eval"),
     briefs: list[Path] | None = None,
     runner: Runner | None = None,
+    max_cost_usd: float | None = None,
 ) -> Path:
     """对样本 brief 各跑两臂编译，比较 L0 findings / 成本，写报告并返回路径。
 
     runner 可注入（测试用桩），默认走真实 ModelRouter 编译。
+    max_cost_usd：两臂累计成本达到上限即提前中止（避免 eval 失控烧钱）。
     """
     briefs = briefs if briefs is not None else _default_briefs(sample)
     runner = runner or _compile_brief
     results: list[dict[str, Any]] = []
+    spent = 0.0
     for b in briefs:
+        if max_cost_usd is not None and spent >= max_cost_usd:
+            results.append({"brief": str(b), "skipped": "cost"})
+            break
         brief = yaml.safe_load(b.read_text("utf-8"))
         ret = runner(brief, True)
         base = runner(brief, False)
+        spent += ret["cost_usd"] + base["cost_usd"]
         results.append(
             {
                 "brief": str(b),
@@ -336,10 +347,12 @@ def run_l1_judge(
     compile_runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     judge: Any | None = None,
     seed: int = 1,
+    max_cost_usd: float | None = None,
 ) -> Path:
     """判官 L1：对样本编译产物逐单位判分 → 加权聚合 → 门禁判定 → 报告。
 
     compile_runner / judge 可注入（测试桩）；默认走真实编译 + RubricJudge。
+    max_cost_usd：判官累计成本达到上限即提前中止。
     """
     from nsc.eval.gate import gate_enabled, load_thresholds
     from nsc.judge.rubric_judge import RubricJudge
@@ -351,6 +364,8 @@ def run_l1_judge(
     compile_runner = compile_runner or _compile_for_judge
     rows: list[dict[str, Any]] = []
     for b in briefs:
+        if max_cost_usd is not None and getattr(judge, "cost_usd", 0.0) >= max_cost_usd:
+            break
         raw = compile_runner(yaml.safe_load(b.read_text("utf-8")))
         if "error" in raw:
             rows.append(

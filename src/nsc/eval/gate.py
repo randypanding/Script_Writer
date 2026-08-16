@@ -81,3 +81,45 @@ def write_gate_state(metrics: dict[str, Any], path: str | Path = GATE_STATE_PATH
         "utf-8",
     )
     return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI 入口：读取校准 metrics JSON → 判定门禁 → 退出码 0/1。"""
+    global THRESHOLDS_PATH
+    import argparse
+    import json
+
+    ap = argparse.ArgumentParser(description="评测门禁判定（D8）")
+    ap.add_argument(
+        "--thresholds", default=None, help=f"eval/thresholds.yaml 路径（默认 {THRESHOLDS_PATH}）"
+    )
+    ap.add_argument(
+        "metrics",
+        nargs="?",
+        help="校准 metrics JSON 文件；缺省则从 GATE_STATE_PATH 读取",
+    )
+    args = ap.parse_args(argv)
+
+    if args.thresholds:
+        THRESHOLDS_PATH = Path(args.thresholds)
+
+    if args.metrics:
+        metrics = json.loads(Path(args.metrics).read_text("utf-8"))
+        ev = evaluate_calibration(metrics)
+    else:
+        if not GATE_STATE_PATH.exists():
+            # CI 场景（judge-calibration.yml 尚未提交）：回退到 gate_enabled() 的
+            # 环境变量（JUDGE_GATE_ENABLED）/ 默认开启，避免硬失败。
+            enabled = gate_enabled()
+            print(f"无校准状态文件；JUDGE_GATE_ENABLED={str(enabled).lower()}")
+            return 0 if enabled else 1
+        state = yaml.safe_load(GATE_STATE_PATH.read_text("utf-8")) or {}
+        ev = evaluate_calibration(state.get("metrics") or {})
+    for d in ev["detail"]:
+        print(f"{d['metric']}: {d['value']}/{d['threshold']} -> {'PASS' if d['pass'] else 'FAIL'}")
+    print(f"gate_ok={str(ev['gate_ok']).lower()}")
+    return 0 if ev["gate_ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

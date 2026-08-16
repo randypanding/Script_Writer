@@ -59,10 +59,13 @@ ignore = ["ANN401","E501","RUF001","RUF002","RUF003"]
 # CLI 入口：print 是面向用户的正常输出，T201 属误报
 "src/nsc/guards/*.py" = ["T201"]
 "src/nsc/cli.py" = ["B008", "T201"]
+"src/nsc/eval/gate.py" = ["T201"]
+"src/nsc/metrics/northstar_alert.py" = ["T201"]
 "scripts/*.py" = ["T201"]
 
 [tool.pyright]
-include = ["src", "spec", "tests"]
+include = ["src", "spec", "tests", "scripts"]
+extraPaths = ["scripts"]
 # 仅对纯 Pydantic 模型定义文件开启 strict（静态类型能表达收益）。
 # invariants.py 与 runtime/checker 大量操纵 dict / 未类型化 profile，strict 只会产生
 # reportUnknown* 噪音而非真实错误，保持默认 basic 检查。

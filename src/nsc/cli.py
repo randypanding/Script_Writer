@@ -384,15 +384,19 @@ app.add_typer(eval_app, name="eval")
 
 
 @eval_app.command("l1")
-def eval_l1(sample: int = 12, ab: str | None = None) -> None:
+def eval_l1(
+    sample: int = 12,
+    ab: str | None = None,
+    max_cost_usd: float = typer.Option(3.0, help="本次评测成本上限（美元），超出即中止"),
+) -> None:
     """L1 评测。默认判官评分；--ab retrieval：两臂编译对比检索增益。"""
     from nsc.eval.l1 import run_ab_retrieval, run_l1_judge
 
     if ab == "retrieval":
-        report = run_ab_retrieval(sample=sample)
+        report = run_ab_retrieval(sample=sample, max_cost_usd=max_cost_usd)
         typer.secho(f"检索 A/B 报告：{report}", fg="green")
         return
-    report = run_l1_judge(sample=sample)
+    report = run_l1_judge(sample=sample, max_cost_usd=max_cost_usd)
     typer.secho(f"判官 L1 报告：{report}", fg="green")
 
 
@@ -426,6 +430,9 @@ def judge_calibrate(
     report: str = "out/judge_calibration.md",
     limit: int = 200,
     no_llm: bool = False,
+    github_output: str | None = typer.Option(
+        None, help="把 gate_ok 写入该文件（GitHub Actions 步骤输出）"
+    ),
 ) -> None:
     """跑校准集 → 一致率/κ/位置偏置报告 → 写门禁状态（judge-calibration.yml）。
 
@@ -451,6 +458,9 @@ def judge_calibrate(
     else:
         typer.secho("门禁关闭：判官只能出报告（已写入 judge-calibration.yml）", fg="yellow")
     typer.secho(f"报告：{result['report']}", fg="green")
+    if github_output:
+        Path(github_output).write_text(f"gate_ok={str(gate['gate_ok']).lower()}\n", "utf-8")
+        typer.secho(f"gate_ok 已写入：{github_output}", fg="cyan")
 
 
 # --- 冷启动 ---
@@ -476,9 +486,44 @@ app.add_typer(db_app, name="db")
 
 
 @db_app.command("rebuild")
-def db_rebuild() -> None: ...
+def db_rebuild(
+    db: str = "cases/cases.db",
+    export_dir: str = "cases/export",
+) -> None:
+    """从 cases/export/*.jsonl 重建 cases.db（幂等：jsonl 无变化则 db 内容一致）。"""
+    from db.migrate import rebuild
+
+    p = rebuild(db, export_dir=export_dir)
+    typer.secho(f"db 重建完成：{p}", fg="green")
+
+
 @db_app.command("export")
-def db_export() -> None: ...
+def db_export(
+    db: str = "cases/cases.db",
+    export_dir: str = "cases/export",
+) -> None:
+    """cases.db 真相表 → cases/export/*.jsonl（幂等）。"""
+    from db.migrate import export, open_db
+
+    conn = open_db(db)
+    try:
+        written = export(conn, export_dir=export_dir)
+    finally:
+        conn.close()
+    typer.secho(f"jsonl 导出完成：{len(written)} 个文件 → {export_dir}", fg="green")
+
+
+@db_app.command("next-case-id")
+def db_next_case_id(db: str = "cases/cases.db") -> None:
+    """分配下一个 case:NNNN（永不复用）。"""
+    from db.migrate import next_case_id, open_db
+
+    conn = open_db(db)
+    try:
+        cid = next_case_id(conn)
+    finally:
+        conn.close()
+    typer.echo(cid)
 
 
 metrics_app = typer.Typer()
@@ -488,6 +533,10 @@ app.add_typer(metrics_app, name="metrics")
 @metrics_app.command("weekly")
 def metrics_weekly(write: str = "docs/metrics/") -> None:
     """D22 北极星 + D23 六个数。"""
+    from nsc.metrics.collect import weekly_report
+
+    path = weekly_report(write_dir=write)
+    typer.secho(f"指标周报已写入：{path}", fg="green")
 
 
 dev_app = typer.Typer()

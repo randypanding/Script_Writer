@@ -22,3 +22,14 @@ def verify() -> list[str]:
         if p.is_file() and p.suffix in (".md", ".txt", ".yaml", ".yml"):
             problems.append(f"prompts/ 出现未被 nsc 编译产物刻印的文件：{p}")
     return problems
+
+
+def main() -> int:
+    problems = verify()
+    for p in problems:
+        print(p)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
