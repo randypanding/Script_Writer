@@ -48,9 +48,12 @@ class EditRecord:
     after: str
     human_comment: str = ""
     author: str = ""
+    ts: str = ""
     # 由 EditClassify 填充，人工在 Langfuse 确认
     dimension: str | None = None
+    verdict: str | None = None
     severity: int | None = None
+    rationale_nl: str = ""
     rule_hint: str = ""
 
 
@@ -173,8 +176,3 @@ def extract_revisions(path: Path) -> list[dict]:  # 已在 docx_revisions 实现
 
     _, ops = _extract(path)
     return [op.__dict__ for op in ops]
-
-
-def ingest(path: Path, *, case_id: str, auto_classify: bool = True) -> list[EditRecord]:
-    """端到端。T-11 实现；本阶段只做恢复锚点。"""
-    raise NotImplementedError("T-11")

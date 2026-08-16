@@ -7,15 +7,12 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from ulid import ULID
-
-_MIGRATION = Path("db/migrations/0001_init.sql")
 
 
 def spec_fingerprint(paths: list[Path]) -> str:
@@ -61,25 +58,12 @@ class RunsStore:
     """runs 表的最小读写。db 不存在时按 0001_init.sql 初始化。"""
 
     def __init__(self, db_path: str | Path) -> None:
+        from nsc.db import init_schema
+
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path))
-        vec_ok = False
-        try:
-            import sqlite_vec
-
-            self._conn.enable_load_extension(True)  # type: ignore[attr-defined]
-            sqlite_vec.load(self._conn)
-            vec_ok = True
-        except Exception:
-            vec_ok = False
-        if _MIGRATION.exists():
-            sql = _MIGRATION.read_text("utf-8")
-            if not vec_ok:
-                # 无扩展加载能力的 Python 构建：跳过 vec0 虚拟表（仅检索用，T-16）
-                sql = re.sub(r"CREATE VIRTUAL TABLE[^;]*vec0[^;]*;", "", sql, flags=re.IGNORECASE)
-            self._conn.executescript(sql)
-            self._conn.commit()
+        init_schema(self._conn)
 
     def record(self, rec: RunRecord) -> str:
         self._conn.execute(

@@ -93,3 +93,28 @@ def _write_anchors_csv(paragraphs: list[Paragraph], path: Path) -> None:
 def read_anchors_from_docx(path: str | Path) -> list[Paragraph]:
     """供 T-10 反向对齐读取交付 docx 的锚点段落序列。"""
     return read_docx_anchors(path)
+
+
+def load_delivered_paragraphs(path: str | Path) -> list[Paragraph]:
+    """交付物 → 带锚点的段落序列。支持 docx（L1 书签）/ anchors.csv / 纯文本。
+
+    供 T-10/T-11 反向对齐作为"交付时的段落序列"输入。
+    """
+    import csv
+    import re
+
+    p = Path(path)
+    if p.suffix == ".docx":
+        return read_docx_anchors(p)
+    if p.suffix == ".csv":
+        with p.open(newline="", encoding="utf-8") as f:
+            return [
+                Paragraph(node_id=row["node_id"] or None, text=row["text"])
+                for row in csv.DictReader(f)
+                if row.get("text", "").strip()
+            ]
+    return [
+        Paragraph(node_id=None, text=block.strip())
+        for block in re.split(r"\n\s*\n", p.read_text("utf-8"))
+        if block.strip()
+    ]
