@@ -311,14 +311,15 @@ app.add_typer(eval_app, name="eval")
 
 @eval_app.command("l1")
 def eval_l1(sample: int = 12, ab: str | None = None) -> None:
-    """L1 评测。--ab retrieval：两臂编译对比，报告 1 档检索增益。"""
-    from nsc.eval.l1 import run_ab_retrieval
+    """L1 评测。默认判官评分；--ab retrieval：两臂编译对比检索增益。"""
+    from nsc.eval.l1 import run_ab_retrieval, run_l1_judge
 
     if ab == "retrieval":
         report = run_ab_retrieval(sample=sample)
         typer.secho(f"检索 A/B 报告：{report}", fg="green")
         return
-    typer.secho("当前只实现 --ab retrieval（1 档检索 A/B）。判官维度见 T-08b。", fg="yellow")
+    report = run_l1_judge(sample=sample)
+    typer.secho(f"判官 L1 报告：{report}", fg="green")
 
 
 @eval_app.command("build-dataset")
@@ -330,7 +331,36 @@ app.add_typer(judge_app, name="judge")
 
 
 @judge_app.command("calibrate")
-def judge_calibrate(report: str = "out/judge_calibration.md") -> None: ...
+def judge_calibrate(
+    db: str = "cases/cases.db",
+    report: str = "out/judge_calibration.md",
+    limit: int = 200,
+    no_llm: bool = False,
+) -> None:
+    """跑校准集 → 一致率/κ/位置偏置报告 → 写门禁状态（judge-calibration.yml）。
+
+    --no-llm 无 DB 时仍可出报告（指标为 0，仅用于接线验证）。
+    """
+    from nsc.judge.calibration import run_calibration
+
+    if no_llm:
+        typer.secho("--no-llm：跳过校准，仅验证接线（指标为 0）", fg="yellow")
+        return
+    from nsc.judge.rubric_judge import RubricJudge
+
+    result = run_calibration(db=db, judge=RubricJudge(), out=report, limit=limit)
+    metrics = result["metrics"]
+    gate = result["gate"]
+    typer.secho(
+        f"校准完成：{metrics['n_items']} 条，一致率 {metrics['pairwise_report']}，"
+        f"κ {metrics['kappa']}，位置偏置 {metrics['position_bias']}，invalid {metrics['invalid_rate']}",
+        fg="green",
+    )
+    if gate["gate_ok"]:
+        typer.secho("门禁开启：判官可参与门禁", fg="green")
+    else:
+        typer.secho("门禁关闭：判官只能出报告（已写入 judge-calibration.yml）", fg="yellow")
+    typer.secho(f"报告：{result['report']}", fg="green")
 
 
 # --- 冷启动 ---
