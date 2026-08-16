@@ -29,6 +29,10 @@ ALL_INVARIANTS: tuple[str, ...] = tuple(f"INV-{i:02d}" for i in range(1, 17))
 #: 由 Pydantic 字段约束保证（正则在 ULID，bounds 在 Emotion），无需函数实现。
 _SCHEMA_GUARANTEED = {"INV-01", "INV-10"}
 
+#: 成对不变量：需要 old+new 两份 IR，单 IR 的 check_all 跳过（ADR-0007）。
+#: 执法点在 merge_preserving_ids 的调用方与 test_recompile / test_id_stability。
+_PAIRWISE = {"INV-16"}
+
 #: stage → 应执行的不变量（来自 dep_graph.yaml::invariant_stages）
 _INVARIANT_STAGES: dict[str, set[str]] = {
     "after_p1": {"INV-01", "INV-09", "INV-10"},
@@ -81,7 +85,7 @@ def check_all(ir: NarrativeIR, profile: dict, stage: str = "final") -> list[Viol
     """stage ∈ {after_p1..after_p6, final}。早期 stage 跳过尚不适用的不变量。"""
     enabled = _INVARIANT_STAGES.get(stage, set(ALL_INVARIANTS))
     v: list[Violation] = []
-    implementable = [i for i in enabled if i not in _SCHEMA_GUARANTEED]
+    implementable = [i for i in enabled if i not in _SCHEMA_GUARANTEED and i not in _PAIRWISE]
     for inv_id in implementable:
         fn_name = f"inv_{inv_id.split('-')[1]}"
         fn = globals().get(fn_name)

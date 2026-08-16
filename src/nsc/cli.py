@@ -2,15 +2,61 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any
+
 import typer
+import yaml
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+
+
+def _load_assets(profile_id: str, brand_id: str) -> tuple[dict, dict]:
+    profile = yaml.safe_load(Path(f"profiles/{profile_id}.yaml").read_text("utf-8"))
+    brand = yaml.safe_load(Path(f"brands/{brand_id}/brand.yaml").read_text("utf-8"))
+    return profile, brand
+
+
+def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
+    from nsc.passes import PassContext
+    from nsc.runtime.models import ModelRouter
+    from nsc.runtime.provenance import RunsStore, spec_fingerprint
+
+    profile, brand = _load_assets(brief.get("profile", ""), brief.get("brand", ""))
+    spec_files = list(Path("spec").rglob("*.py")) + list(Path("spec").rglob("*.yaml"))
+    prompts = list(Path("prompts").glob("*.json")) if Path("prompts").exists() else []
+    return PassContext(
+        profile=profile,
+        brand=brand,
+        brief=brief,
+        router=router or ModelRouter(),
+        store=RunsStore(out_dir / "runs.db"),
+        ruleset_ver=spec_fingerprint(list(Path("spec/checks").rglob("*.yaml")))[:12],
+        spec_sha=spec_fingerprint(spec_files)[:12],
+        promptset_ver=spec_fingerprint(prompts)[:12] if prompts else "seed",
+        out_dir=out_dir,
+    )
 
 
 # --- 编译 ---
 @app.command()
 def run(brief: str, profile: str = "", out: str = "out/", rerank: bool = False) -> None:
     """端到端编译：brief → IR → 小说 → 剧本。"""
+    from nsc.passes import PassFailure
+    from nsc.passes.pipeline import run_pipeline
+    from nsc.runtime.ir_io import save
+
+    brief_dict = yaml.safe_load(Path(brief).read_text("utf-8"))
+    ctx = _make_ctx(brief_dict, Path(out))
+    try:
+        ir = run_pipeline(ctx)
+    except PassFailure as e:
+        typer.secho(f"编译失败：{e}", fg="red", err=True)
+        raise typer.Exit(1) from e
+    ir_path = ctx.out_dir / ir.project.title / "ir.json"
+    save(ir, ir_path)
+    typer.secho(f"编译完成：{ir_path}", fg="green")
 
 
 @app.command()
@@ -22,11 +68,59 @@ def recompile(
     force: bool = False,
 ) -> None:
     """局部重编译（依赖闭包由 spec/passes/dep_graph.yaml 给出）。"""
+    from nsc.passes import PassFailure
+    from nsc.passes.pipeline import recompile_episode
+    from nsc.runtime.ir_io import load, save
+
+    old = load(ir)
+    if episode is None:
+        typer.secho("目前只支持 --episode 粒度的局部重编译", fg="red", err=True)
+        raise typer.Exit(2)
+    brief_dict = {"profile": old.project.profile_id, "brand": old.project.brand_id}
+    ctx = _make_ctx(brief_dict, Path(ir).parent.parent if Path(ir).parent.name else Path("out"))
+    try:
+        new = recompile_episode(ctx, old, episode)
+    except PassFailure as e:
+        typer.secho(f"重编译失败：{e}", fg="red", err=True)
+        raise typer.Exit(1) from e
+    save(new, ir)
+    typer.secho(f"已重编译第 {episode} 集并保留未变节点 ID：{ir}", fg="green")
 
 
 @app.command()
 def check(ir: str, stage: str = "final", fmt: str = "text") -> None:
     """L0 检查。exit code：0 全绿 / 1 有 block / 2 规则本身报错。"""
+    from nsc.checker.interpreter import RuleSet, evaluate
+    from nsc.runtime.ir_io import build_view
+    from spec.ir.container import NarrativeIR
+    from spec.ir.invariants import check_all
+
+    raw = json.loads(Path(ir).read_text("utf-8"))
+    proj = raw.get("project", {})
+    profile, brand = _load_assets(proj.get("profile_id", ""), proj.get("brand_id", ""))
+
+    violations = check_all(NarrativeIR.model_validate(raw), profile, stage=stage)
+    view = build_view(raw, profile, brand)
+    rs = RuleSet.load(
+        profile_id=proj.get("profile_id", ""),
+        industry=brand.get("industry", ""),
+        brand_id=brand.get("brand_id", ""),
+        stage=stage,
+        enabled_domains=list(profile.get("enabled_check_domains", [])),
+    )
+    rep = evaluate(rs, view, ctx={"profile": profile, "brand": brand})
+    for v in violations:
+        typer.secho(f"[{v.inv_id}] {v.message}", fg="red")
+    if rep.findings:
+        typer.echo(rep.as_feedback_text())
+    if rep.errors:
+        for e in rep.errors:
+            typer.secho(f"规则报错：{e}", fg="red", err=True)
+        raise typer.Exit(2)
+    typer.echo(f"rules_evaluated={rep.rules_evaluated} stage={stage}")
+    if violations or rep.blocked:
+        raise typer.Exit(1)
+    typer.secho("L0 全绿", fg="green")
 
 
 @app.command()
