@@ -1,6 +1,6 @@
 # ADR-0008：EditClassify 判定标准落盘为 spec 资产
 
-- 状态：proposed
+- 状态：accepted（2026-08-16 由负责人确认；判定标准作为 spec 资产落盘）
 - 日期：2026-08-16
 - 影响层：A2 规则/标准（新增 `spec/feedback/edit_classify_rubric.yaml`，无 schema 变化）
 
