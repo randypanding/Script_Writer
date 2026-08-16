@@ -50,14 +50,60 @@ def test_id_stability(golden_ir):
     """INV-16：局部重编译必须保留未变节点的 ID。
 
     这是**最高优先级测试**。违反它 = 所有历史反馈失效 = 资产系统性损毁。
+    做法：把黄金 IR 全部节点换成新 ULID（模拟"重新生成"），只改一句台词，
+    merge_preserving_ids 之后，除那句台词外所有节点必须恢复原 ID。
     """
+    import copy
 
-    # 只改第 3 集的一句台词，其余集内容不变但 ID 被打乱
-    pytest.skip("T-03 实现 merge_preserving_ids 后启用")
+    from ulid import ULID
+
+    from nsc.runtime.ir_io import merge_preserving_ids
+    from spec.ir.invariants import inv_16_id_stability
+
+    old = NarrativeIR.model_validate(golden_ir)
+    new_raw = copy.deepcopy(golden_ir)
+
+    # 改第 3 集的一句台词内容，其余内容逐字保留
+    changed = new_raw["lines"][40]
+    changed["text"] = changed["text"] + "（改）"
+    changed_id_old = changed["id"]
+
+    # 打乱全部节点 ID（包括 parent 链接一起换），模拟一次全新生成
+    id_map: dict[str, str] = {}
+
+    def remap(node_id: str | None) -> str | None:
+        if node_id is None:
+            return None
+        if node_id not in id_map:
+            id_map[node_id] = str(ULID())
+        return id_map[node_id]
+
+    for table in ("project",):
+        new_raw[table]["id"] = remap(new_raw[table]["id"])
+    for table in ("seasons", "episodes", "scenes", "beats", "lines"):
+        for n in new_raw[table]:
+            n["id"] = remap(n["id"])
+            n["parent_id"] = remap(n["parent_id"])
+    new = NarrativeIR.model_validate(new_raw)
+    assert inv_16_id_stability(old, new)  # 未合并前必然违规
+
+    merged = merge_preserving_ids(old, new)
+    violations = inv_16_id_stability(old, merged)
+    assert violations == [], f"INV-16 被违反：{[v.message for v in violations][:3]}"
+    # 被改的那句台词允许拿到新 ID，但其 parent 等未变节点 ID 必须已恢复
+    merged_line = next(ln for ln in merged.lines if ln.text.endswith("（改）"))
+    assert merged_line.id != changed_id_old or merged_line.id == id_map[changed_id_old]
 
 
 @settings(max_examples=50, deadline=None)
 @given(st.integers(min_value=1, max_value=12))
 def test_order_is_contiguous_property(n):
     """property-based：任意合法构造出的 IR，同 parent 下 order 必须 0..n-1 连续。"""
-    pytest.skip("T-02：需要 IR 构造 strategy（tests/strategies.py）")
+    from tests.strategies import build_minimal_ir
+
+    ir = NarrativeIR.model_validate(build_minimal_ir(n_episodes=n))
+    violations = check_all(
+        ir, {"layers": {"season": False}, "duration_tolerance": 0.5}, stage="final"
+    )
+    inv03 = [v for v in violations if v.inv_id == "INV-03"]
+    assert inv03 == [], f"order 不连续：{[v.message for v in inv03][:3]}"

@@ -5,19 +5,31 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import os
+import time
 from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar
+from typing import Any
 
 import diskcache
 
-P = ParamSpec("P")
-R = TypeVar("R")
-
-_cache = diskcache.Cache(".diskcache/passes", size_limit=8 * 1024**3)
+_cache = diskcache.Cache(
+    os.environ.get("NSC_CACHE_DIR", ".diskcache/passes"), size_limit=8 * 1024**3
+)
 
 
 def canonical_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def _rebind_prov(obj: Any, run_id: str) -> Any:
+    """递归重写产物里的 provenance_id（缓存命中路径专用）。"""
+    if isinstance(obj, dict):
+        return {
+            k: (run_id if k == "provenance_id" else _rebind_prov(v, run_id)) for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_rebind_prov(x, run_id) for x in obj]
+    return obj
 
 
 def cache_key(
@@ -51,19 +63,38 @@ def cache_key(
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def cached_pass(pass_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """装饰编译 Pass。被装饰函数必须接受 kwargs `ctx`（含所有版本号）与 `fragment`。
+def cached_pass(pass_name: str) -> Callable[..., Callable[..., Any]]:
+    """装饰编译 Pass。被装饰函数签名必须是 fn(ctx, fragment) -> dict。
 
-    TODO(agent, T-04): 实现；必须
-      1. 命中时写 provenance 标记 cache_hit=true，且不产生成本记录
-      2. 未命中时记录 tokens/cost 到 runs 表
-      3. 支持 NSC_NO_CACHE=1 环境变量强制绕过
+    ctx 协议（见 src/nsc/passes/__init__.py::PassContext）：
+      - ctx.cache_versions(pass_name) -> dict：promptset/profile/brand/ruleset/model 等版本号
+      - ctx.record_run(pass_name, input_hash, cache_hit, usage, wall_ms)：写 runs 表
+    命中时只写 cache_hit=1 的零成本记录；NSC_NO_CACHE=1 强制绕过（仍会写 runs）。
     """
 
-    def deco(fn: Callable[P, R]) -> Callable[P, R]:
+    def deco(fn: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(fn)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            raise NotImplementedError("T-04")
+        def wrapper(ctx: Any, fragment: Any) -> Any:
+            from ulid import ULID
+
+            ctx.run_id = str(ULID())
+            key = cache_key(
+                pass_name=pass_name,
+                input_fragment=fragment,
+                **ctx.cache_versions(pass_name),
+            )
+            disabled = os.environ.get("NSC_NO_CACHE") == "1"
+            if not disabled and key in _cache:
+                ctx.record_run(pass_name, key, cache_hit=1, usage={}, wall_ms=0)
+                # 命中时把产物内的 provenance_id 重绑定到本次运行记录（INV-14）
+                return _rebind_prov(_cache[key], ctx.run_id)
+            t0 = time.monotonic()
+            result = fn(ctx, fragment)
+            wall_ms = int((time.monotonic() - t0) * 1000)
+            _cache[key] = result
+            usage = result.get("_usage", {}) if isinstance(result, dict) else {}
+            ctx.record_run(pass_name, key, cache_hit=0, usage=usage, wall_ms=wall_ms)
+            return result
 
         return wrapper
 
