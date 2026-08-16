@@ -205,8 +205,30 @@ app.add_typer(mine_app, name="mine")
 
 
 @mine_app.command("run")
-def mine_run(open_pr: bool = False) -> None:
-    """L0→L1 聚类归纳 → L1→L2 验证 → 输出候选规则 PR。"""
+def mine_run(
+    db: str = "cases/cases.db",
+    rules_root: str = "spec/rules",
+    open_pr: bool = False,
+) -> None:
+    """L0→L1 聚类归纳：已确认观察 → HDBSCAN 聚类 → RuleInduce → L1_candidates。"""
+    from nsc.mining.induce import run_mine
+    from nsc.runtime.models import ModelRouter
+
+    candidates = run_mine(db, router=ModelRouter(), rules_root=Path(rules_root))
+    if not candidates:
+        typer.secho(
+            "无满足晋升门槛的簇（同簇需 ≥3 条观察且 ≥2 个 case，且 feedback.confirmed_by 非空）",
+            fg="yellow",
+        )
+        return
+    for c in candidates:
+        typer.secho(
+            f"候选规则 {c.rule_id}（{c.dimension}，簇 {c.cluster_id}）→ {c.path}", fg="green"
+        )
+    typer.secho(
+        f"共 {len(candidates)} 条 L1 候选。它们不参与门禁；L1→L2 需 `nsc mine validate`（T-15）。",
+        fg="cyan",
+    )
 
 
 @mine_app.command("retire")

@@ -19,10 +19,18 @@ GEPA 契约（已核实 dspy 3.x）：
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
 import dspy
+
+from nsc.optimize.structure_match import structure_match
+
+#: 对预测产物跑 L0 checker，返回 (findings, pass_rate)。可注入（测试用合成 findings）。
+CheckRunner = Callable[[dict[str, Any]], tuple[list[Any], float]]
+#: 判官打分：返回 {dimension: 0..1}。None = 判官未就绪。
+JudgeScorer = Callable[[dict[str, Any], dict[str, Any]], dict[str, float]]
 
 # ---------------------------------------------------------------- 路由表
 
@@ -101,12 +109,17 @@ def make_metric(
     ruleset_root: str = "spec/checks",
     judge_enabled: bool = True,
     expose_human_edits: bool | None = None,
+    check_runner: CheckRunner | None = None,
+    judge_scorer: JudgeScorer | None = None,
 ) -> Any:
     """构造 GEPA metric。
 
     `expose_human_edits` 缺省 = (split == "train")。原则 3。
+    `check_runner` 缺省用 L0 checker（RuleSet/evaluate）；测试可注入合成 findings。
+    `judge_scorer` 缺省为 None → rubric 分量取中性 0.5（T-08b 判官就绪后注入真实判官）。
     """
     reveal = (split == "train") if expose_human_edits is None else expose_human_edits
+    runner = check_runner or default_check_runner(ruleset_root)
 
     def metric(
         gold: dspy.Example,
@@ -115,7 +128,15 @@ def make_metric(
         pred_name: str | None = None,
         pred_trace: Any = None,
     ) -> dspy.Prediction:
-        parts = _compute_parts(gold, pred, judge_enabled=judge_enabled)
+        pass_name = pred_name or str(getattr(gold, "pass_name", "") or "")
+        parts = _compute_parts(
+            gold,
+            pred,
+            judge_enabled=judge_enabled,
+            check_runner=runner,
+            judge_scorer=judge_scorer,
+            pass_name=pass_name,
+        )
         score = _aggregate(parts, has_edits=reveal and bool(parts.human_edits))
         feedback = build_feedback(
             parts, pred_name=pred_name, reveal_human_edits=reveal, budget=FEEDBACK_BUDGET_CHARS
@@ -187,17 +208,93 @@ def build_feedback(
     - 禁止只写规则 ID 不写内容。
     - 禁止把 8 个维度全塞进来（反思 LM 会被淹没，GEPA 论文的教训是反馈要聚焦）。
 
-    TODO(agent, T-12): 实现。必须有单元测试验证：
-      - pred_name 路由生效（p3 的反馈里不出现 DLG-002）
-      - reveal_human_edits=False 时输出不含 revised_text
-      - 输出长度 <= budget
-      - block finding 一定出现在第一节
+    单元测试验证：pred_name 路由生效、valset 不含 revised_text、长度 ≤ budget、
+    block 在第一节、含五节结构。
     """
-    raise NotImplementedError("T-12")
+    route = FEEDBACK_ROUTING.get(pred_name or "", {})
+    check_domains = set(route.get("check_domains", []))
+    check_tags = set(route.get("check_tags", []))
+    edit_dims = set(route.get("edit_dims", []))
+    rubric_dims = set(route.get("rubric_dims", []))
+
+    def _want(f: Any) -> bool:
+        if not route:  # 未配置路由 → 不滤（保守，给全量）
+            return True
+        dom_ok = not check_domains or getattr(f, "domain", "") in check_domains
+        tag_ok = not check_tags or bool(check_tags & set(getattr(f, "tags", ())))
+        return dom_ok or tag_ok
+
+    blocks = [f for f in parts.findings if getattr(f, "severity", "") == "block" and _want(f)]
+    warns = [f for f in parts.findings if getattr(f, "severity", "") == "warn" and _want(f)]
+
+    sections: list[tuple[int, str]] = []  # (优先级, 文本)；按优先级拼接，预算内截断
+
+    # 1. block 级 checker findings（最确定、最可操作，永远第一节）
+    if blocks:
+        lines = [
+            f"- [{f.rule_id}] {f.message}" + (f"（{f.fix_hint}）" if f.fix_hint else "")
+            for f in blocks
+        ]
+        sections.append((0, "【必须修正】\n" + "\n".join(lines)))
+
+    # 2. 人类修订对（最高价值，仅 trainset）：原文 → 改后 → 理由
+    if reveal_human_edits and parts.human_edits:
+        edits = [e for e in parts.human_edits if not edit_dims or e.get("dimension") in edit_dims]
+        lines = []
+        for e in edits[:3]:
+            lines.append(
+                f"- 原文：{e.get('before', '')}\n  改后：{e.get('after', '')}\n"
+                f"  理由：{e.get('rationale', '')}"
+            )
+        if lines:
+            sections.append((1, "【人类是怎么改的】\n" + "\n".join(lines)))
+
+    # 3. 最低分的 rubric 维度（含判官引用的 span）
+    if parts.rubric_detail:
+        scored = {
+            k: v for k, v in parts.rubric_detail.items() if not rubric_dims or k in rubric_dims
+        }
+        if scored:
+            worst = min(scored, key=lambda k: scored[k])
+            sections.append((2, f"【判官打分最低的维度】\n- {worst} {scored[worst]:.2f}（满分 1）"))
+
+    # 4. warn 级 findings（同域最多 2 条）
+    if warns:
+        by_dom: dict[str, list[Any]] = {}
+        for f in warns:
+            by_dom.setdefault(getattr(f, "domain", ""), []).append(f)
+        lines = []
+        for dom in sorted(by_dom):
+            for f in by_dom[dom][:2]:
+                lines.append(f"- [{f.rule_id}] {f.message}")
+        sections.append((3, "【建议】\n" + "\n".join(lines)))
+
+    # 5. 一条正面确认（防止优化器把做对的也改掉）
+    positive = next(iter(parts.notes), None)
+    if positive:
+        sections.append((4, f"【做对了的地方（保持）】\n- {positive}"))
+
+    out: list[str] = []
+    used = 0
+    for _, text in sorted(sections, key=lambda t: t[0]):
+        if used + len(text) + 2 > budget and out:
+            break
+        out.append(text)
+        used += len(text) + 2
+    feedback = "\n\n".join(out)
+    if len(feedback) > budget:  # 单节就超预算时硬截断
+        feedback = feedback[: budget - 8] + "\n…(截断)"
+    return feedback
 
 
 def _compute_parts(
-    gold: dspy.Example, pred: dspy.Prediction, *, judge_enabled: bool
+    gold: dspy.Example,
+    pred: dspy.Prediction,
+    *,
+    judge_enabled: bool,
+    check_runner: CheckRunner,
+    judge_scorer: JudgeScorer | None,
+    pass_name: str,
 ) -> MetricParts:
     """计算四个分量。
 
@@ -211,7 +308,122 @@ def _compute_parts(
     对 p6：
       - anchor 覆盖率 × 0.5；段落数比例 × 0.2；对白相似度均值 × 0.3
     定义写在 src/nsc/optimize/structure_match.py，**必须是确定性的、无 LLM 的**。
-
-    TODO(agent, T-12)
     """
-    raise NotImplementedError("T-12")
+    gold_d = _to_dict(gold)
+    pred_d = _to_dict(pred)
+
+    struct = structure_match(pass_name, gold_d, pred_d)
+
+    findings, checker_rate = check_runner(pred_d)
+
+    rubric_detail: dict[str, float] = {}
+    if judge_enabled and judge_scorer is not None:
+        rubric_detail = judge_scorer(gold_d, pred_d)
+    rubric = (
+        sum(rubric_detail.values()) / len(rubric_detail) if rubric_detail else 0.5
+    )  # 判官未就绪 → 中性 0.5，不惩罚也不奖励
+
+    human_edits = list(gold_d.get("human_edits", []) or [])
+    edit_distance: float | None = None
+    if human_edits:
+        # 与人类改后文本的接近度（仅 trainset 有 revised_text）
+        from difflib import SequenceMatcher
+
+        sims = []
+        for e in human_edits:
+            revised = str(e.get("after", ""))
+            produced = str(pred_d.get(e.get("field", ""), ""))
+            if revised:
+                sims.append(SequenceMatcher(None, produced, revised).ratio())
+        edit_distance = sum(sims) / len(sims) if sims else None
+
+    notes = _positive_notes(struct, checker_rate, rubric_detail)
+    return MetricParts(
+        structure_match=struct,
+        checker=checker_rate,
+        rubric=rubric,
+        edit_distance=edit_distance,
+        findings=findings,
+        rubric_detail=rubric_detail,
+        human_edits=human_edits,
+        notes=notes,
+    )
+
+
+def _positive_notes(
+    struct: float, checker_rate: float, rubric_detail: dict[str, float]
+) -> list[str]:
+    """一条正面确认。取表现最好的方面，防止 GEPA 把做对的也改掉。"""
+    notes: list[str] = []
+    if checker_rate >= 0.99:
+        notes.append("L0 结构约束全部通过。")
+    if rubric_detail:
+        best = max(rubric_detail, key=lambda k: rubric_detail[k])
+        if rubric_detail[best] >= 0.7:
+            notes.append(f"判官认为 {best} 较强（{rubric_detail[best]:.2f}）。")
+    if not notes and struct >= 0.7:
+        notes.append(f"结构与黄金 IR 的一致度较高（{struct:.2f}）。")
+    return notes
+
+
+def _to_dict(x: Any) -> dict[str, Any]:
+    """dspy.Example / dspy.Prediction / dict → 普通 dict（取非私有属性）。"""
+    if isinstance(x, dict):
+        return x
+    if hasattr(x, "items"):
+        try:
+            return {k: v for k, v in x.items() if not str(k).startswith("_")}
+        except Exception:
+            pass
+    out: dict[str, Any] = {}
+    for k in dir(x):
+        if k.startswith("_"):
+            continue
+        try:
+            v = getattr(x, k)
+        except Exception:
+            continue
+        if callable(v):
+            continue
+        out[k] = v
+    return out
+
+
+def default_check_runner(ruleset_root: str) -> CheckRunner:
+    """默认 L0 checker：对 pred 携带的 IR（view 或 ir_json）跑 RuleSet/evaluate。
+
+    pred 需提供以下之一：
+      - pred["ir_view"]：已 build_view 的 dict（含 __ctx 派生字段）
+      - pred["ir_json"] + gold["profile"]/["brand"]：先 build_view 再评估
+    两者都没有 → 无 findings、pass_rate=1.0（结构分由 structure_match 兜底）。
+    """
+    from pathlib import Path
+
+    def run(pred_d: dict[str, Any]) -> tuple[list[Any], float]:
+        view = pred_d.get("ir_view")
+        profile = pred_d.get("profile") or {}
+        brand = pred_d.get("brand") or {}
+        if view is None and pred_d.get("ir_json") is not None:
+            from nsc.runtime.ir_io import build_view
+
+            view = build_view(pred_d["ir_json"], profile, brand)
+        if view is None:
+            return [], 1.0
+        from nsc.checker.interpreter import RuleSet, evaluate
+
+        proj = view.get("project", {}) if isinstance(view, dict) else {}
+        rs = RuleSet.load(
+            Path(ruleset_root),
+            profile_id=proj.get("profile_id", profile.get("profile_id", "")),
+            industry=brand.get("industry", ""),
+            brand_id=brand.get("brand_id", ""),
+            stage="final",
+            enabled_domains=list(profile.get("enabled_check_domains", [])),
+        )
+        rep = evaluate(rs, view, ctx={"profile": profile, "brand": brand})
+        total = rep.rules_evaluated or 1
+        failed_rules = {f.rule_id for f in rep.findings}
+        pass_rate = max(0.0, (total - len(failed_rules)) / total)
+        return rep.findings, pass_rate
+
+    return run
