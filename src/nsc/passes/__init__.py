@@ -48,6 +48,8 @@ class PassContext:
     seed: int | None = 1
     out_dir: Path = Path("out")
     run_id: str = ""
+    #: T-16 检索服务（None = 禁用检索；set 后 pipeline 会往 p1/p2/p3/p5 注入 retrieved_cases）
+    retrieval: Any = None
 
     def tier_of(self, pass_name: str) -> str:
         return self.profile.get("model_tiers", {}).get(pass_name, "tier_bulk")

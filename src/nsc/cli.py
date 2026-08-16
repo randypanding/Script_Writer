@@ -41,14 +41,24 @@ def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
 
 # --- 编译 ---
 @app.command()
-def run(brief: str, profile: str = "", out: str = "out/", rerank: bool = False) -> None:
-    """端到端编译：brief → IR → 小说 → 剧本。"""
+def run(
+    brief: str,
+    profile: str = "",
+    out: str = "out/",
+    rerank: bool = False,
+    no_retrieval: bool = False,
+) -> None:
+    """端到端编译：brief → IR → 小说 → 剧本。--no-retrieval 关闭案例检索（A/B 对照组）。"""
     from nsc.passes import PassFailure
     from nsc.passes.pipeline import run_pipeline
     from nsc.runtime.ir_io import save
 
     brief_dict = yaml.safe_load(Path(brief).read_text("utf-8"))
     ctx = _make_ctx(brief_dict, Path(out))
+    if not no_retrieval:
+        from nsc.retrieval import RetrievalService
+
+        ctx.retrieval = RetrievalService(db_path="cases/cases.db")
     try:
         ir = run_pipeline(ctx)
     except PassFailure as e:
@@ -56,6 +66,8 @@ def run(brief: str, profile: str = "", out: str = "out/", rerank: bool = False) 
         raise typer.Exit(1) from e
     ir_path = ctx.out_dir / ir.project.title / "ir.json"
     save(ir, ir_path)
+    if no_retrieval:
+        typer.secho("（检索已关闭：--no-retrieval）", fg="yellow")
     typer.secho(f"编译完成：{ir_path}", fg="green")
 
 
@@ -124,8 +136,61 @@ def check(ir: str, stage: str = "final", fmt: str = "text") -> None:
 
 
 @app.command()
-def render(ir: str, target: list[str] = typer.Option(None)) -> None:
-    """渲染交付物（含锚点）。"""
+def render(ir: str, out: str = "out/") -> None:
+    """渲染交付物（含 D29 锚点）：novel.txt/docx、screenplay.fountain、storyboard.csv、anchors.csv + manifest.json。"""
+    from nsc.render import render_all
+    from nsc.runtime.ir_io import load
+
+    raw = load(ir).model_dump()
+    proj = raw["project"]
+    profile, brand = _load_assets(proj.get("profile_id", ""), proj.get("brand_id", ""))
+    out_dir = Path(out) / str(proj.get("title") or proj["id"])
+    manifest = render_all(
+        raw,
+        out_dir,
+        profile_ver=str(profile.get("version", "")),
+        brand_ver=str(brand.get("version", "")),
+    )
+    anchors = manifest["anchors"]
+    typer.secho(f"渲染完成：{out_dir}（manifest.json）", fg="green")
+    typer.echo(
+        f"锚点覆盖：{anchors['anchored']}/{anchors['paragraphs_total']} "
+        f"（{anchors['coverage']:.0%}）"
+    )
+
+
+# --- 案例检索（T-16） ---
+retrieval_app = typer.Typer()
+app.add_typer(retrieval_app, name="retrieval")
+
+
+@retrieval_app.command("index")
+def retrieval_index(
+    db: str = "cases/cases.db",
+    case_limit: int | None = None,
+    no_vectors: bool = False,
+) -> None:
+    """从已入库的 IR 快照 + 已人工确认修订重建检索池。
+
+    快照 kind 决定 quality；`annotated` 产物 usable_as_example=0（COMPLIANCE §1，
+    绝不被注入）。向量缺失/失败自动回退标量，不阻塞建池。
+    """
+    from nsc.retrieval import builder, pool
+
+    items = builder.build_pool_from_snapshots(db, case_limit=case_limit)
+    items += builder.build_pool_from_revisions(db)
+    embedder = None
+    if not no_vectors:
+        from nsc.retrieval import BgeM3Embedder
+
+        embedder = BgeM3Embedder()
+    conn = pool.connect(db)
+    try:
+        pool.upsert_items(conn, items, embedder=embedder)
+    finally:
+        conn.close()
+    usable = sum(1 for it in items if it.usable_as_example)
+    typer.secho(f"检索池就绪：{len(items)} 条（其中可用示例 {usable} 条）→ {db}", fg="green")
 
 
 # --- 反馈与飞轮 ---
@@ -245,7 +310,17 @@ app.add_typer(eval_app, name="eval")
 
 
 @eval_app.command("l1")
-def eval_l1(sample: int = 12) -> None: ...
+def eval_l1(sample: int = 12, ab: str | None = None) -> None:
+    """L1 评测。--ab retrieval：两臂编译对比，报告 1 档检索增益。"""
+    from nsc.eval.l1 import run_ab_retrieval
+
+    if ab == "retrieval":
+        report = run_ab_retrieval(sample=sample)
+        typer.secho(f"检索 A/B 报告：{report}", fg="green")
+        return
+    typer.secho("当前只实现 --ab retrieval（1 档检索 A/B）。判官维度见 T-08b。", fg="yellow")
+
+
 @eval_app.command("build-dataset")
 def eval_build(pass_: str = typer.Option(..., "--pass")) -> None: ...
 

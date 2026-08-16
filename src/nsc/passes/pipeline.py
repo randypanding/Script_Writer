@@ -91,6 +91,19 @@ def check_stage(
         raise PassFailure(None, rep.as_feedback_text())
 
 
+def _retrieved(ctx: PassContext, unit_kind: str, query: str) -> str:
+    """T-16 检索注入：命中案例格式化成 Pass 的 retrieved_cases；未启用/无命中则空串。"""
+    if ctx.retrieval is None or not query:
+        return ""
+    return ctx.retrieval.fetch(
+        query,
+        unit_kind=unit_kind,
+        profile_id=str(ctx.profile.get("id", "")),
+        industry=str(ctx.brand.get("industry", "")),
+        brand_id=str(ctx.brand.get("brand_id", "")),
+    )
+
+
 def run_pipeline(ctx: PassContext) -> NarrativeIR:
     """正向全量编译：brief → IR → 交付物。返回最终 IR（产物已落盘 out/）。"""
     run_ids: list[str] = []
@@ -130,12 +143,25 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     }
     st["constraints"] = r0["constraints"]
 
-    r1 = p1_bible.run(ctx, {"normalized_brief": r0["normalized_brief"]})
+    r1 = p1_bible.run(
+        ctx,
+        {
+            "normalized_brief": r0["normalized_brief"],
+            "retrieved_cases": _retrieved(ctx, "chapter", r0["normalized_brief"]),
+        },
+    )
     track()
     bible = {k: r1[k] for k in ("characters", "locations", "props", "motifs", "tone")}
     st.update(bible)
 
-    r2 = p2_arc.run(ctx, {"bible": bible, "project_id": st["project"]["id"]})
+    r2 = p2_arc.run(
+        ctx,
+        {
+            "bible": bible,
+            "project_id": st["project"]["id"],
+            "retrieved_cases": _retrieved(ctx, "scene_card", r0["normalized_brief"]),
+        },
+    )
     track()
     st["seasons"] = [r2["season"]]
     st["episodes"] = r2["episodes"]
@@ -157,6 +183,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 "next_episode_promise": episodes[i + 1]["hook_promise"]
                 if i + 1 < len(episodes)
                 else "",
+                "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
             },
         )
         track()
@@ -176,7 +203,9 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
 
     for sc in st["scenes"]:
         sc_beats = [b for b in st["beats"] if b["parent_id"] == sc["id"]]
-        r5 = p5_dialogue.run(ctx, _p5_fragment(sc, sc_beats, bible, st["constraints"]))
+        frag = _p5_fragment(sc, sc_beats, bible, st["constraints"])
+        frag["retrieved_cases"] = _retrieved(ctx, "dialogue_block", _scene_query(sc, sc_beats))
+        r5 = p5_dialogue.run(ctx, frag)
         track()
         st["lines"] += r5["lines"]
     check_stage(ctx, cur(), "after_p5", "after_p5")
@@ -226,6 +255,7 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
             "next_episode_promise": ordered[idx + 1]["hook_promise"]
             if idx + 1 < len(ordered)
             else "",
+            "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
         },
     )
     track()
@@ -234,7 +264,9 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
     lines: list[dict[str, Any]] = []
     for sc in r4["scenes"]:
         sc_beats = [b for b in r4["beats"] if b["parent_id"] == sc["id"]]
-        r5 = p5_dialogue.run(ctx, _p5_fragment(sc, sc_beats, bible, raw.get("constraints", [])))
+        frag = _p5_fragment(sc, sc_beats, bible, raw.get("constraints", []))
+        frag["retrieved_cases"] = _retrieved(ctx, "dialogue_block", _scene_query(sc, sc_beats))
+        r5 = p5_dialogue.run(ctx, frag)
         track()
         lines += r5["lines"]
 
@@ -355,6 +387,26 @@ def _placement_of(raw: dict[str, Any], ep: dict[str, Any]) -> list[dict[str, Any
         for bm in raw.get("brand_moments", [])
         if bm["anchor_beat_id"] in beat_ids
     ]
+
+
+def _ep_query(ep: dict[str, Any]) -> str:
+    """p3_beatsheet 的检索查询：本集标题 + logline + hook_promise。"""
+    return " ".join(
+        x
+        for x in (
+            str(ep.get("title", "")),
+            str(ep.get("logline", "")),
+            str(ep.get("hook_promise", "")),
+        )
+        if x
+    )
+
+
+def _scene_query(scene: dict[str, Any], beats: list[dict[str, Any]]) -> str:
+    """p5_dialogue 的检索查询：场景摘要 + 各 Beat 摘要。"""
+    parts = [str(scene.get("summary", ""))]
+    parts += [str(b.get("summary", "")) for b in beats]
+    return "；".join(p for p in parts if p)
 
 
 def _p5_fragment(
