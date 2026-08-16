@@ -1,0 +1,5024 @@
+I'll first verify the key papers, libraries, and API details so the references I hand to your dev agents are accurate and current.Now let me verify the narrative-generation papers and the supporting libraries.Let me verify the remaining libraries and the knowledge-accumulation papers.下面是**完整工程方案 + 开发就绪的仓库文件全集**。
+
+我先说明三处对决策文档的**必要增补**（因为你补充了"先生成小说、再生成剧本"这个关键业务事实），然后给出所有文件。文件可直接落盘，`docs/WORK_ORDERS.md` 里的工单可直接派给 Agent。
+
+---
+
+# Part A · 方案总览与增补决策
+
+## A.1 对 D-系列的增补（D24–D30）
+
+| 编号 | 决策 | 理由 |
+|---|---|---|
+| **D24** | **小说与剧本同源双视图**。`Line[]`（对白/动作/画外音）是共同的戏剧真相；**小说 = 在 Line 之上编织叙述层（LLM Pass6）**，**剧本 = 对 Line 的确定性格式化（Pass7，无 LLM）** | 若小说与剧本各生成一遍，必然讲成两个故事，且反馈无法互相复用。同源保证一次反馈同时改进两个交付物 |
+| **D25** | **交付顺序：大纲 → 小说 → 剧本**。小说是**商家确认物**（易读、可转发、可给老板看），剧本是**制作执行物**。商家确认小说后才编译剧本 | 把最贵的返工挡在剧本之前；小说阶段的修订天然锚定在 Beat/Line 上 |
+| **D26** | **中文长度预算以「字符」为单位**，`chars_per_second` 作为 Profile 参数（默认 4.5 字/秒对白），由逆向标注校准 | 中文没有 word count 语感；token 数不可解释；字符数可被商家和制作团队直接校验 |
+| **D27** | **叙述视角/人称/文体 = 渲染参数（NarrativeVoice），不进 IR 主干** | 同一 IR 可渲染"第三人称限知/爽文体"与"第一人称/日记体"。视角进主干会污染同构性 |
+| **D28** | **案例库的持久形态是 `cases/export/*.jsonl`（进 git），SQLite 只是可重建的工作副本** | A4 必须可 diff、可 review、可被 AI 读。二进制 db 进 git 会膨胀且不可审 |
+| **D29** | **交付锚点三重方案**：① docx bookmark `NID_<ulid>` ② 文末可删除的「锚点索引」表 ③ 全部丢失时的模糊回退对齐（归一化 + 单调 DP） | 商家一定会复制粘贴到微信、一定会另存为新文件。任何单一锚点方案都会失效 |
+| **D30** | **案例库法务边界**：逆向标注只入库 **IR + 统计量 + ≤50 字引用片段**，不存整片文本/视频；产出物不得复用原片台词 | 这是可长期运营的前提，见 `COMPLIANCE.md` |
+
+## A.2 编译流水线（8 趟，含小说）
+
+```
+Pass0 Intake     RawBrief + RawBrandBrief + Profile → NormalizedBrief + BrandBrief + Constraint[]
+Pass1 Bible      → Character[] / Location[] / Prop[] / Motif[] / ToneSpec
+Pass2 Arc        → Season/Episode 骨架 + BrandMoment 预算分配（含 modality/plot_connection 规划）
+Pass3 BeatSheet  → 每集 Beat[]（含 brand_moment 占位、emotion 目标、SetupPayoff 声明）
+Pass4 Scene      → Scene[] 场景卡（goal/conflict/turn/entry/exit）+ Beat→Scene 归属
+Pass5 Dialogue   → Line[]（对白/动作/画外音/字幕）  ← 戏剧真相层
+Pass6 Prose      → NovelChapter[]（叙述编织，携带 anchor_map）      ← LLM
+Pass7 Render     → Fountain / docx（小说）/ docx（剧本）/ 分镜表      ← 确定性，无 LLM
+```
+
+依赖失效规则见 `spec/passes/dep_graph.yaml`：改 Pass3 的一集 → 只失效该集的 Pass4/5/6/7。
+
+## A.3 四阶段路线图（含退出条件，已按小说需求调整）
+
+| 阶段 | 周期 | 内容 | 退出条件（可机检） |
+|---|---|---|---|
+| **P0 地基** | ~2 周 | IR + BrandBrief + checker 解释器 + 34 条 L0 规则 + Pass0–7 骨架 + 三种渲染 + pytest 门禁 + Langfuse | `nsc run --brief examples/demo_tea.yaml` 端到端产出 6 集小说 + 剧本，L0 全绿；`nsc recompile --episode 5` 只重跑 5 集 |
+| **P1 冷启动+反馈闭环** | ~3 周 | 逆向标注 200–500 条 → 五类黄金集雏形；**反向对齐器**；1 档案例检索；判官 v1 + 50 条校准集 | 一份带修订的 docx → `nsc ingest` 在 60s 内产出结构化 `revision_pairs`；对齐准确率 ≥90%（`test_align.py`）；检索开关 A/B 有正增益 |
+| **P2 飞轮启动** | ~3 周 | 规则晋升流水线 L0→L3 + 每周节律；GEPA 首轮；`short_video_v1` 接入 | 第 3 次 GEPA 迭代仍正增益且无回归；新 Profile 接入 PR < 2 天且未改内核 |
+| **P3 商业加固** | 持续 | Client Pack、分镜与可拍性、成本优化（低层 Pass 换小模型） | 单集成本下降 ≥40% 且首过率不降 |
+
+---
+
+# Part B · 仓库文件全集
+
+> 约定：以下每个代码块的第一行注释即文件路径。可直接落盘。
+
+## B.1 顶层
+
+```markdown
+<!-- README.md -->
+# NSC · Narrative Spec Compiler
+
+把「写小说 / 写剧本」变成**编译**：`spec/` 是源码，小说、剧本、prompt、代码都是编译产物。
+
+- 业务：为商家生成可直接发在自有短视频账号的**营销短剧**。先出**小说**（商家确认物），再出**剧本**（制作团队执行物）。
+- 视频拍摄/剪辑由外部制作团队负责，本系统**不做视频生成**。
+
+## 快速开始
+```bash
+uv sync
+make db-rebuild                 # 从 cases/export/*.jsonl 重建 SQLite
+make test-fast                  # 不调用 LLM 的全部门禁
+nsc run --brief examples/demo_tea/brief.yaml --profile short_drama_v1
+nsc check out/demo_tea/ir.json  # L0 检查
+nsc render out/demo_tea/ir.json --target novel_docx script_fountain
+```
+
+## 三条铁律
+1. **`spec/` 是唯一真相。** 任何知识若不能落进 `spec/ir | spec/checks | spec/rubrics | spec/rules | profiles | brands`，视为不存在。
+2. **`prompts/`、`src/`、`out/` 是生成物。** 手改 `prompts/` = CI 失败。重写 `src/` 必须能通过同一套 `tests/`。
+3. **反馈必须锚定到节点 ID。** 无 `node_id` 的反馈不入库。
+
+详见 [AGENTS.md](AGENTS.md)、[docs/ENGINEERING_PLAN.md](docs/ENGINEERING_PLAN.md)、[docs/BORROW_MAP.md](docs/BORROW_MAP.md)。
+```
+
+```markdown
+<!-- AGENTS.md -->
+# AGENTS.md · 开发 Agent 的唯一入口
+
+## 0. 你在改什么？（每次动手前必答）
+
+| 你要改的路径 | 层 | 规矩 |
+|---|---|---|
+| `spec/**` `profiles/**` `brands/**` `cases/export/**` | **资产 A**（永不丢弃） | 必须开 ADR；必须有 evidence；必须过 `make spec-guard` |
+| `src/**` `tests/**` | **代码 B2**（可丢弃） | 自由重写，但必须让 `tests/` 全绿；受行数预算约束 |
+| `prompts/**` | **生成物 B1** | **禁止手改。** 只能由 `nsc optimize` / `nsc compile-prompts` 写入 |
+| `out/**` | **生成物 B3** | gitignored |
+
+## 1. 工作循环（TDD，强制）
+1. 读工单：`docs/WORK_ORDERS.md` 中的 `T-xx`。工单里写明了**验收命令**。
+2. 先写/取测试：`tests/` 下对应文件。**测试必须先红。**
+3. 实现最小代码让测试绿。
+4. `make ci-local` 全绿。
+5. 提 PR，填 `.github/pull_request_template.md`。若改了资产层，附 ADR 链接。
+
+## 2. 硬约束（CI 会拦）
+- `src/nsc/runtime/` + `src/nsc/checker/` 手写行数 **≤ 1500**（`spec/BUDGETS.yaml`）。超了说明知识被埋进代码，**把它抽回 `spec/`**。
+- 禁止在 Python 里写业务规则 `if`。规则一律写进 `spec/checks/**.yaml`。
+  - 反例：`if len(brand_moments) > 2: raise`
+  - 正例：新增 `spec/checks/brand/BM-001.yaml`
+- 禁止在 prompt/代码里硬编码自然语言知识（"台词要口语化"）。这类知识去 `spec/rubrics/` 或 `spec/rules/L3_canonical/`。
+- 禁止新增编排框架（LangGraph/CrewAI/Prefect/Airflow）。编排 = 纯 Python 函数 + `@cached_pass` 装饰器。
+- 禁止新增数据库（Postgres/Neo4j/Milvus）。只有 SQLite + sqlite-vec。
+- 禁止多智能体互评/辩论。
+- 每个 LLM 调用必须经 `src/nsc/runtime/models.py` 的路由，不得直接 `openai.` / `litellm.completion`。
+- 每个产物必须写 `provenance`（`src/nsc/runtime/provenance.py`）。
+
+## 3. 命名与 ID
+- 节点 ID：ULID（`python-ulid`），**内容无关、永不复用**。生成后不可变。
+- 规则 ID：`<域>-<序号>`，如 `BM-001` `STR-007`。永不复用，退役只改 `status`。
+- 案例 ID：`case:NNNN`，四位零填充。
+
+## 4. 你不需要问我就可以做的决定
+选库（在已定栈内）、拆文件、改函数签名、重写 `src/`、补测试、改注释。
+
+## 5. 你必须停下来问我的决定
+改 `spec/ir/**`（IR 模式）、改 `spec/checks/**` 的 `severity: block`、改 `eval/thresholds.yaml`、引入新第三方服务、改 `profiles/_schema.py`。
+这些一律先写 ADR（`adr/`），标 `status: proposed`，在 PR 里等确认。
+
+## 6. 上下文导航（按需读，不要全读）
+| 我要做的事 | 先读 |
+|---|---|
+| 改/加编译 Pass | `spec/passes/CONTRACTS.md` → `spec/passes/signatures.py` → `spec/passes/dep_graph.yaml` |
+| 改/加检查规则 | `spec/checks/DSL.md` → `spec/checks/_schema.yaml` |
+| 改判官 | `spec/rubrics/rubric_v1.yaml` → `spec/rubrics/pairwise_protocol.md` → `docs/SOP_JUDGE_CALIBRATION.md` |
+| 做反向对齐 | `docs/SOP_FEEDBACK_INGEST.md` → `src/nsc/feedback/` |
+| 跑 GEPA | `docs/SOP_GEPA.md` → `src/nsc/optimize/gepa_metric.py` |
+| 逆向标注 | `docs/SOP_REVERSE_ANNOTATION.md` |
+| 找现成方案别自己造 | **`docs/BORROW_MAP.md`（先读这个！）** |
+
+## 7. 反模式清单（见到就重构）
+- 把 checker 报错信息写成 `"invalid"` → 必须写成可直接喂给 GEPA 的诊断句（见 `spec/checks/DSL.md` §5）。
+- 在 Pass 里 `try/except: pass` 吞掉结构错误 → Pass 必须抛 `PassFailure` 并带 `node_id`。
+- 生成新 ULID 覆盖已有节点 → 局部重编译必须**保留未变节点的 ID**（`src/nsc/runtime/ir_io.py::merge_preserving_ids`）。
+- 判官分直接当门禁而未校准 → 见 D8，未过校准门槛的判官只能出报告。
+```
+
+```toml
+# pyproject.toml
+[project]
+name = "nsc"
+version = "0.1.0"
+description = "Narrative Spec Compiler - marketing short-drama novel & screenplay generator"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+  "dspy>=3.0",                 # dspy.GEPA 需要 3.x
+  "litellm>=1.55",
+  "python-ulid>=3.0",
+  "jmespath>=1.0",             # checker DSL select
+  "simpleeval>=1.0",           # checker DSL assert（安全求值，勿换 eval）
+  "pyyaml>=6.0",
+  "jinja2>=3.1",
+  "typer>=0.12",
+  "rich>=13.9",
+  "diskcache>=5.6",            # 内容寻址缓存
+  "python-docx>=1.1",          # docx 生成 + 修订 XML 解析
+  "lxml>=5.3",
+  "rapidfuzz>=3.10",           # 模糊回退对齐
+  "sqlite-vec>=0.1.6",
+  "sentence-transformers>=3.2",# BGE-M3
+  "hdbscan>=0.8.40",
+  "numpy>=2.1",
+  "scipy>=1.14",
+  "langfuse>=2.53",
+  "krippendorff>=0.8",
+  "statsmodels>=0.14",         # cohen_kappa
+]
+
+[project.optional-dependencies]
+annotate = ["faster-whisper>=1.1", "scenedetect>=0.6"]
+dev = [
+  "pytest>=8.3", "pytest-cov>=6.0", "pytest-xdist>=3.6",
+  "hypothesis>=6.115",         # IR 不变量 property-based
+  "syrupy>=4.8",               # 渲染快照
+  "ruff>=0.8", "pyright>=1.1.390", "pre-commit>=4.0",
+]
+
+[project.scripts]
+nsc = "nsc.cli:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+[tool.ruff.lint]
+select = ["E","F","I","N","UP","B","SIM","RUF","ANN","T20"]
+ignore = ["ANN101","ANN102","E501"]
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN","T20"]
+
+[tool.pyright]
+include = ["src", "spec", "tests"]
+strict = ["src/nsc/runtime", "src/nsc/checker", "spec/ir"]
+pythonVersion = "3.12"
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+markers = [
+  "llm: 需要调用 LLM（CI 默认跳过，仅 nightly / label 触发）",
+  "golden: 黄金回归测试",
+  "slow: >10s",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/nsc/checker", "src/nsc/runtime", "src/nsc/feedback"]
+```
+
+```makefile
+# Makefile
+.PHONY: install lint fmt typecheck spec-guard test test-fast golden ci-local \
+        db-rebuild db-export eval-l1 judge-cal mine optimize prompts-verify budgets dash
+
+install:            ; uv sync --all-extras
+fmt:                ; uv run ruff format . && uv run ruff check --fix .
+lint:               ; uv run ruff format --check . && uv run ruff check .
+typecheck:          ; uv run pyright
+
+spec-guard:         ## 资产层完整性门禁（无 LLM）
+	uv run python -m nsc.guards.spec_reduction     # D2：每条 spec 语句必须可归约
+	uv run python -m nsc.guards.checks_schema      # 规则 schema + ID 唯一 + evidence 必填
+	uv run python -m nsc.guards.prompts_untouched  # prompts/ 未被手改
+	uv run python -m nsc.guards.ir_schema_diff     # IR breaking change 必须带 migration+ADR
+	uv run python -m nsc.guards.budgets            # 行数预算 D21
+	uv run python -m nsc.guards.rules_conflict     # canonical 规则冲突/重复
+
+budgets:            ; uv run python -m nsc.guards.budgets
+prompts-verify:     ; uv run python -m nsc.guards.prompts_untouched
+
+test-fast:          ## PR 阻塞集：无 LLM
+	uv run pytest -m "not llm" -n auto
+golden:             ; uv run pytest -m golden -n auto
+test:               ; uv run pytest -n auto
+
+ci-local: lint typecheck spec-guard test-fast
+
+db-rebuild:         ; uv run nsc db rebuild        # cases/export/*.jsonl -> cases/cases.db
+db-export:          ; uv run nsc db export         # cases.db -> cases/export/*.jsonl (git 真相)
+
+eval-l1:            ; uv run nsc eval l1 --sample $${SAMPLE:-12}
+judge-cal:          ; uv run nsc judge calibrate --report out/judge_calibration.md
+mine:               ; uv run nsc mine run --open-pr
+optimize:           ; uv run nsc optimize --pass $${PASS:-p5_dialogue} --auto light
+dash:               ; uv run nsc metrics weekly --write docs/metrics/
+```
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks: [{id: ruff, args: [--fix]}, {id: ruff-format}]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ["--maxkb=512"]        # 大文件走 git-lfs
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+  - repo: local
+    hooks:
+      - id: prompts-are-generated
+        name: "prompts/ 是生成物，禁止手改"
+        entry: uv run python -m nsc.guards.prompts_untouched
+        language: system
+        files: ^prompts/
+        pass_filenames: false
+      - id: checks-schema
+        name: "checker 规则 schema 校验"
+        entry: uv run python -m nsc.guards.checks_schema
+        language: system
+        files: ^spec/checks/
+        pass_filenames: false
+      - id: budgets
+        name: "手写行数预算"
+        entry: uv run python -m nsc.guards.budgets
+        language: system
+        files: ^src/
+        pass_filenames: false
+```
+
+```gitignore
+# .gitignore
+out/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+cases/cases.db          # 工作副本，真相在 cases/export/*.jsonl (D28)
+cases/cases.db-*
+.diskcache/
+.env
+.langfuse/
+```
+
+```gitattributes
+# .gitattributes
+cases/attachments/** filter=lfs diff=lfs merge=lfs -text
+prompts/**           linguist-generated=true
+out/**               linguist-generated=true
+*.jsonl              text eol=lf
+```
+
+```markdown
+<!-- COMPLIANCE.md -->
+# 合规与法务边界（D30）
+
+## 1. 逆向标注（`nsc annotate`）
+**允许入库**：Narrative IR（结构、Beat 类型、植入位置、情绪值）、统计量、`source_url` + `source_title`、**每节点 ≤50 字**的引用片段（用于人工核验标注是否正确）。
+**禁止入库**：完整字幕/转写文本、视频/音频文件、完整台词。
+**禁止用途**：`counterexamples` 与 `retrieval_pool` 中的片段**不得**出现在任何交付物中。`nsc check` 内置 `FCT-002` 规则：交付文本与 `cases` 中 source 片段的最长公共子串 > 12 字 → block。
+
+## 2. 广告合规
+`spec/checks/compliance/` 中的绝对化用语、功效承诺清单来自公开法规整理，**必须由人工（你）逐条核对后才可标 `severity: block`**。新增此类规则的 PR 必须在描述中给出法条/官方指引出处，CI 会检查 `legal_ref` 字段非空。
+
+## 3. 客户资产
+`brands/<client>/` 含商业机密。若仓库将来开源或外协，`brands/` 必须走 submodule 或私有 overlay（见 `adr/0007-brands-isolation.md`）。
+
+## 4. 交付物权属
+交付给商家的小说/剧本，其著作权归属在 `brands/<client>/brand.yaml::legal.ip_assignment` 声明；`nsc render` 会把该声明写入 docx 页脚。
+```
+
+## B.2 `spec/` —— 资产层（永不丢弃）
+
+```markdown
+<!-- spec/SPEC_RULES.md -->
+# Spec 写作规范（D2 的执行细则）
+
+## 1. 每条规范语句必须带形态标记
+在 `spec/**/*.md` 中，任何规范性语句必须以标记结尾，否则 `make spec-guard` 失败：
+
+- `[[form:schema]]` → 已落为 Pydantic/JSON Schema。必须紧跟 `→ spec/ir/xxx.py::ClassName.field`
+- `[[form:check]]`  → 已落为检查规则。必须紧跟 `→ spec/checks/xxx/RULE-ID.yaml`
+- `[[form:rubric]]` → 已落为评分卡维度 + 锚定样例。必须紧跟 `→ spec/rubrics/rubric_v1.yaml#dim`
+- `[[form:non-normative]]` → 仅供人读，**不参与门禁**
+
+**示例**
+> 每集必须恰好包含 1 个 Hook Beat，且位于该集前 20% 的 Beat 内。 `[[form:check]]` → `spec/checks/structure/STR-001.yaml`
+> 商业短剧的钩子应该让人"来不及划走"。 `[[form:non-normative]]`
+
+## 2. 禁止事项
+- 禁止写"应该/尽量/最好"而不给形态标记。这类句子是愿望，不是 Spec。
+- 禁止在 `spec/` 里写实现细节（用什么库、怎么循环）。那属于 `src/` 或 ADR。
+- 禁止无 `evidence` 的 canonical 规则（`spec/rules/L3_canonical/` 强制 `evidence_ids` 非空）。
+
+## 3. 变更流程
+改 `spec/ir/**` 或任何 `severity: block` → 必须 ADR（`adr/`）+ PR 标签 `asset-change` + 人工 approve。
+```
+
+```python
+# spec/ir/nodes.py
+"""Narrative IR · 主干节点（D3）。
+
+主干是层级、有序的：Project → Season → Episode → Scene → Beat → Line。
+所有节点携带内容无关的稳定 ULID，`provenance_id` 指向一次编译记录。
+剧本/小说文本只是本 IR 的渲染视图（D24）。
+"""
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+ULID = Annotated[str, StringConstraints(pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$")]
+Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{2,48}$")]
+NonEmpty = Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
+
+
+class NodeKind(StrEnum):
+    project = "project"
+    season = "season"
+    episode = "episode"
+    scene = "scene"
+    beat = "beat"
+    line = "line"
+
+
+#: 合法父子关系（INV-02 使用）
+HIERARCHY: dict[NodeKind, NodeKind | None] = {
+    NodeKind.project: None,
+    NodeKind.season: NodeKind.project,
+    NodeKind.episode: NodeKind.season,
+    NodeKind.scene: NodeKind.episode,
+    NodeKind.beat: NodeKind.scene,
+    NodeKind.line: NodeKind.beat,
+}
+
+
+class BeatKind(StrEnum):
+    """Beat 功能受控词表。营销短剧专用词表，扩展需 ADR。"""
+    hook = "hook"                 # 开场钩子
+    setup = "setup"               # 铺垫/伏笔埋设
+    inciting = "inciting"         # 引爆事件
+    escalation = "escalation"     # 升级
+    complication = "complication" # 意外阻碍
+    reversal = "reversal"         # 反转
+    crisis = "crisis"             # 至暗
+    climax = "climax"             # 高潮
+    brand_moment = "brand_moment" # 品牌植入（必须关联 BrandMoment）
+    payoff = "payoff"             # 伏笔回收
+    resolution = "resolution"     # 收束
+    cliffhanger = "cliffhanger"   # 集末悬念
+    cta = "cta"                   # 行动号召（短视频常用）
+
+
+class LineType(StrEnum):
+    dialogue = "dialogue"
+    action = "action"
+    voiceover = "voiceover"
+    caption = "caption"      # 屏幕字幕/花字
+    sfx = "sfx"
+
+
+class Emotion(BaseModel):
+    """单 Beat 的情绪坐标。曲线是计算视图，不单独存储（见 container.emotion_curve）。"""
+    model_config = ConfigDict(extra="forbid")
+    valence: float = Field(ge=-1.0, le=1.0, description="情绪效价：-1 极负，+1 极正")
+    arousal: float = Field(ge=0.0, le=1.0, description="唤醒度：0 平静，1 强烈")
+
+
+class _Node(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=False)
+    id: ULID
+    kind: NodeKind
+    parent_id: ULID | None = None
+    order: int = Field(ge=0, description="同 parent 下从 0 连续（INV-03）")
+    provenance_id: str = Field(description="→ container.provenance[*].run_id（INV-14）")
+    locked: bool = Field(default=False, description="人类锁定：局部重编译不得覆盖")
+
+
+class Project(_Node):
+    kind: Literal[NodeKind.project] = NodeKind.project
+    parent_id: None = None
+    order: Literal[0] = 0
+    title: NonEmpty
+    logline: NonEmpty = Field(description="一句话核心戏剧冲突（Dramatron 的 log line）")
+    profile_id: Slug
+    brand_id: Slug
+    client_note: str = ""
+
+
+class Season(_Node):
+    kind: Literal[NodeKind.season] = NodeKind.season
+    title: str = ""
+    arc_summary: NonEmpty
+    theme: str = ""
+
+
+class Episode(_Node):
+    kind: Literal[NodeKind.episode] = NodeKind.episode
+    no: int = Field(ge=1, description="人类可见集号，从 1 连续（INV-12）")
+    title: NonEmpty
+    logline: NonEmpty
+    duration_target_s: int = Field(gt=0)
+    hook_promise: NonEmpty = Field(description="本集开场承诺给观众的问题（用于 STR-011）")
+    cliffhanger: str = Field(default="", description="集末悬念；末集可为空")
+
+
+class Scene(_Node):
+    kind: Literal[NodeKind.scene] = NodeKind.scene
+    location_id: ULID
+    time_of_day: Literal["day", "night", "dawn", "dusk", "unspecified"] = "unspecified"
+    interior: bool = True
+    present_character_ids: list[ULID] = Field(min_length=1)
+    goal: NonEmpty = Field(description="本场谁要什么")
+    conflict: NonEmpty = Field(description="什么挡着")
+    turn: NonEmpty = Field(description="场内发生的不可逆变化")
+    entry: NonEmpty = Field(description="切入点：最晚进入的时刻")
+    exit: NonEmpty = Field(description="切出点：最早离开的时刻")
+    summary: str = ""
+
+
+class Beat(_Node):
+    kind: Literal[NodeKind.beat] = NodeKind.beat
+    beat_kind: BeatKind
+    summary: NonEmpty
+    function: str = Field(default="", description="这个 Beat 对整体弧线的作用")
+    emotion: Emotion
+    est_duration_s: float = Field(gt=0)
+    brand_moment_id: ULID | None = Field(
+        default=None, description="beat_kind==brand_moment 时必填（INV-06）"
+    )
+
+
+class Line(_Node):
+    """戏剧真相层（D24）。小说与剧本都从这里派生。"""
+    kind: Literal[NodeKind.line] = NodeKind.line
+    line_type: LineType
+    character_id: ULID | None = Field(default=None, description="dialogue/voiceover 必填")
+    text: NonEmpty
+    subtext: str = Field(default="", description="潜台词；不进交付物，供演员/判官")
+    delivery: str = Field(default="", description="表演提示，如 '压低声音'")
+    is_brand_line: bool = Field(default=False, description="必提台词命中标记（BM-007）")
+```
+
+```python
+# spec/ir/overlays.py
+"""Narrative IR · 覆盖层（旁挂，引用主干 ID）。"""
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .nodes import ULID, NonEmpty, Slug
+
+
+class CharacterRole(StrEnum):
+    protagonist = "protagonist"
+    antagonist = "antagonist"
+    ally = "ally"
+    foil = "foil"
+    customer_proxy = "customer_proxy"   # 目标人群代理，营销短剧核心角色
+    expert = "expert"                   # 权威/背书者
+    bystander = "bystander"
+
+
+class Character(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    name: NonEmpty
+    role: CharacterRole
+    age_range: str = ""
+    want: NonEmpty = Field(description="外部目标")
+    need: NonEmpty = Field(description="内在缺失")
+    flaw: str = ""
+    arc: str = Field(default="", description="从 X 到 Y")
+    voice_notes: NonEmpty = Field(description="说话方式：语速/句长/句式偏好")
+    voice_tics: list[str] = Field(default_factory=list, description="口头禅/标记词（DLG-004）")
+    forbidden_words: list[str] = Field(default_factory=list, description="此角色不会说的词")
+    persona_ref: str = Field(default="", description="→ brand.audience.personas[*].id")
+
+
+class Location(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    name: NonEmpty
+    interior: bool = True
+    description: str = ""
+    cost_tier: Literal["free", "cheap", "medium", "expensive", "unavailable"] = "cheap"
+    shoot_notes: str = ""
+
+
+class Prop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    name: NonEmpty
+    is_brand_product: bool = False
+    sku_ref: str = Field(default="", description="→ brand.products[*].id")
+    cost_tier: Literal["free", "cheap", "medium", "expensive", "unavailable"] = "cheap"
+
+
+class BrandMomentType(StrEnum):
+    scene = "scene"            # 场景背景出现
+    usage = "usage"            # 角色使用产品
+    dialogue = "dialogue"      # 台词提及
+    prop = "prop"              # 作为道具推动情节
+    testimonial = "testimonial"  # 角色口碑/见证
+    before_after = "before_after"  # 前后对比
+
+
+class BrandMoment(BaseModel):
+    """植入时刻。modality / plot_connection 字段借鉴 Russell(2002) 的
+    modality × plot-connection congruence 框架（见 docs/BORROW_MAP.md #15）。"""
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    anchor_beat_id: ULID
+    type: BrandMomentType
+    intensity: int = Field(ge=1, le=5, description="1 极隐性 … 5 硬广（Gupta&Lord prominence）")
+    modality: Literal["visual", "verbal", "both"] = "visual"
+    plot_connection: Literal["none", "low", "high"] = "low"
+    selling_point_id: str = Field(description="→ brand.selling_points[*].id")
+    proof_mode: Literal["demo", "reaction", "authority", "contrast", "none"] = "reaction"
+    integration_note: NonEmpty = Field(description="这处植入怎么长在剧情里的一句话解释")
+    prop_id: ULID | None = None
+
+
+class SetupPayoff(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    setup_beat_id: ULID
+    payoff_beat_id: ULID
+    kind: Literal["prop", "line", "promise", "secret", "skill"] = "promise"
+    description: NonEmpty
+
+
+class Motif(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    name: NonEmpty
+    description: str = ""
+    occurrence_beat_ids: list[ULID] = Field(default_factory=list)
+
+
+class Constraint(BaseModel):
+    """从 BrandBrief / Profile / Client Pack 编译出的硬约束（D4）。
+    `check_rule_id` 指向 spec/checks 中的规则；`params` 注入该规则的上下文。"""
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    source: Literal["brand_brief", "profile", "client_pack", "compliance"]
+    check_rule_id: str = Field(description="→ spec/checks/**/<id>.yaml::id")
+    params: dict[str, object] = Field(default_factory=dict)
+    description: NonEmpty
+    severity: Literal["block", "warn", "info"] = "block"
+
+
+class ToneSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tone_words: list[str] = Field(min_length=1)
+    banned_words: list[str] = Field(default_factory=list)
+    register: Literal["colloquial", "neutral", "literary"] = "colloquial"
+    humor: Literal["none", "light", "heavy"] = "light"
+    reference_works: list[str] = Field(default_factory=list)
+
+
+class NarrativeVoice(BaseModel):
+    """小说渲染参数（D27）。不是 IR 主干的一部分。"""
+    model_config = ConfigDict(extra="forbid")
+    person: Literal["first", "third_limited", "third_omniscient"] = "third_limited"
+    tense: Literal["past", "present"] = "past"
+    pov_character_id: ULID | None = None
+    style: Slug = Field(default="web_novel", description="→ profiles.*.novel.styles")
+    paragraph_max_chars: int = Field(default=180, gt=0)
+    interiority: Literal["low", "medium", "high"] = "medium"
+```
+
+```python
+# spec/ir/container.py
+"""Narrative IR 容器：扁平表 + 邻接（parent_id），计算式嵌套视图供 checker/renderer 使用。"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .nodes import ULID, Beat, Episode, Line, Project, Scene, Season
+from .overlays import (
+    BrandMoment,
+    Character,
+    Constraint,
+    Location,
+    Motif,
+    NarrativeVoice,
+    Prop,
+    SetupPayoff,
+    ToneSpec,
+)
+
+
+class Provenance(BaseModel):
+    """D20 全链路溯源清单。每个产物必须可二分定位到某次运行。"""
+    model_config = ConfigDict(extra="forbid")
+    run_id: str
+    pass_name: str
+    spec_sha: str
+    profile_ver: str
+    brand_ver: str
+    ruleset_ver: str
+    promptset_ver: str
+    model_id: str
+    temperature: float
+    seed: int | None
+    input_hash: str
+    case_refs: list[str] = Field(default_factory=list)
+    created_at: datetime
+    cost_usd: float = 0.0
+    tokens_in: int = 0
+    tokens_out: int = 0
+
+
+class NovelChapter(BaseModel):
+    """Pass6 产物：小说章节。anchor_map 把每个段落映射回 Beat/Line（反馈锚定的命脉）。"""
+    model_config = ConfigDict(extra="forbid")
+    id: ULID
+    episode_id: ULID
+    order: int
+    title: str = ""
+    paragraphs: list[str] = Field(min_length=1)
+    anchor_map: list[dict[str, Any]] = Field(
+        description="[{paragraph_index, beat_id, line_ids:[...]}]；覆盖率必须 100%（NOV-001）"
+    )
+    provenance_id: str
+    word_chars: int = 0
+
+
+class NarrativeIR(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["1.0"] = "1.0"
+    project: Project
+    seasons: list[Season] = Field(default_factory=list)
+    episodes: list[Episode] = Field(default_factory=list)
+    scenes: list[Scene] = Field(default_factory=list)
+    beats: list[Beat] = Field(default_factory=list)
+    lines: list[Line] = Field(default_factory=list)
+
+    characters: list[Character] = Field(default_factory=list)
+    locations: list[Location] = Field(default_factory=list)
+    props: list[Prop] = Field(default_factory=list)
+    brand_moments: list[BrandMoment] = Field(default_factory=list)
+    setup_payoffs: list[SetupPayoff] = Field(default_factory=list)
+    motifs: list[Motif] = Field(default_factory=list)
+    constraints: list[Constraint] = Field(default_factory=list)
+    tone: ToneSpec | None = None
+    voice: NarrativeVoice | None = None
+
+    chapters: list[NovelChapter] = Field(default_factory=list)
+    provenance: list[Provenance] = Field(default_factory=list)
+
+    # --- 计算视图（不序列化进 JSON 真相，由 runtime 生成） ---
+    def view(self) -> dict[str, Any]:
+        """产出嵌套文档，供 JMESPath 规则查询。实现见 src/nsc/runtime/ir_io.py::build_view。
+
+        形如：
+        {"project": {...},
+         "episodes": [{..., "scenes":[{..., "beats":[{..., "lines":[...],
+                       "brand_moment": {...}|null, "linear_index": int}]}]}],
+         "characters": [...], "brand_moments":[...], "setup_payoffs":[...],
+         "profile": {...}, "brand": {...}}
+        """
+        raise NotImplementedError("→ src/nsc/runtime/ir_io.py::build_view (T-03)")
+
+    def emotion_curve(self, episode_id: ULID) -> list[tuple[int, float, float]]:
+        """[(linear_index, valence, arousal)]。曲线是计算量，绝不存储。"""
+        raise NotImplementedError("→ src/nsc/runtime/ir_io.py (T-03)")
+```
+
+```markdown
+<!-- spec/ir/invariants.md -->
+# IR 结构不变量（15 条，全部 `[[form:schema]]` 或 `[[form:check]]`）
+
+所有不变量由 `spec/ir/invariants.py` 实现，`tests/test_invariants.py` 用 Hypothesis 做 property-based 验证。
+违反 = `severity: block`，无例外。
+
+| ID | 不变量 | 形态 |
+|---|---|---|
+| INV-01 | 全 IR 内所有 `id` 唯一，且符合 ULID 正则 | `[[form:schema]]` → `spec/ir/nodes.py::ULID` |
+| INV-02 | `parent_id` 指向存在的节点，且父子 kind 满足 `HIERARCHY` | `[[form:check]]` → `spec/ir/invariants.py::inv_02` |
+| INV-03 | 同 parent 下 `order` 为 `0..n-1` 连续无重复 | `[[form:check]]` → `inv_03` |
+| INV-04 | parent 链无环且可达 Project | `[[form:check]]` → `inv_04` |
+| INV-05 | 每个 Episode 恰好 1 个 `beat_kind==hook` 的 Beat | `[[form:check]]` → `inv_05`（位置约束在 STR-001） |
+| INV-06 | `beat_kind==brand_moment` ⇔ `brand_moment_id` 非空；且 `BrandMoment.anchor_beat_id` 反向一致；一个 Beat 至多 1 个 BrandMoment | `[[form:check]]` → `inv_06` |
+| INV-07 | `line_type in {dialogue, voiceover}` 时 `character_id` 非空，且该角色在所属 Scene 的 `present_character_ids` 内 | `[[form:check]]` → `inv_07` |
+| INV-08 | `SetupPayoff` 的 `linear_index(setup) < linear_index(payoff)`，两端 Beat 均存在 | `[[form:check]]` → `inv_08` |
+| INV-09 | 所有跨引用完整：`location_id / present_character_ids / prop_id / selling_point_id / persona_ref / pov_character_id` | `[[form:check]]` → `inv_09` |
+| INV-10 | `Emotion.valence ∈ [-1,1]`，`arousal ∈ [0,1]` | `[[form:schema]]` → `Emotion` |
+| INV-11 | 每个 Episode ≥1 Scene；每个 Scene ≥1 Beat；每个非 `action`-only Beat ≥1 Line（Pass5 之后） | `[[form:check]]` → `inv_11` |
+| INV-12 | `Episode.no` 在同 Season 内从 1 连续递增，且与 `order` 同序 | `[[form:check]]` → `inv_12` |
+| INV-13 | Profile 层级启用一致：`profile.layers.season == false` ⇒ `len(seasons) == 1` 且 `Season.title == ""` | `[[form:check]]` → `inv_13` |
+| INV-14 | 每个主干节点与 NovelChapter 的 `provenance_id` 存在于 `provenance[*].run_id` | `[[form:check]]` → `inv_14` |
+| INV-15 | `sum(beat.est_duration_s)` 落在 `episode.duration_target_s × (1 ± profile.duration_tolerance)` 内 | `[[form:check]]` → `inv_15` |
+
+## 局部重编译的 ID 稳定性契约 `[[form:check]]` → `inv_16_id_stability`
+重编译一个子树时，**未被 LLM 改动的节点必须保留原 ID**。
+判定：`merge_preserving_ids(old, new)` 后，`old` 中 `text/summary` 未变的节点，其 ID 必须与 `old` 一致。
+违反此条 = 所有历史反馈失效 = 系统性资产损毁。这是最高优先级的测试（`tests/test_invariants.py::test_id_stability`）。
+```
+
+```python
+# spec/ir/invariants.py
+"""IR 不变量的可执行形态。纯函数，无 IO，无 LLM。
+
+约定：每个 inv_* 返回 list[Violation]（空 = 通过）。
+这些是 L0 的一部分，但与 spec/checks/*.yaml 的区别是：
+  - invariants.py = **结构完整性**（IR 本身是否是合法的图），与 Profile 无关或仅弱相关
+  - spec/checks/*.yaml = **叙事/品牌/合规约束**（图合法但内容不合规）
+新增业务约束一律去 spec/checks/，不要往这里加。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .container import NarrativeIR
+
+
+@dataclass(frozen=True, slots=True)
+class Violation:
+    inv_id: str
+    node_id: str | None
+    message: str          # 必须是可直接喂给 GEPA 的诊断句，见 spec/checks/DSL.md §5
+    severity: str = "block"
+
+
+ALL_INVARIANTS: tuple[str, ...] = tuple(f"INV-{i:02d}" for i in range(1, 17))
+
+
+def check_all(ir: NarrativeIR, profile: dict, stage: str = "final") -> list[Violation]:
+    """stage ∈ {after_p3, after_p4, after_p5, after_p6, final}。
+    早期 stage 跳过尚不适用的不变量（如 INV-07 需要 Line 存在）。
+    映射表见 spec/passes/dep_graph.yaml::invariant_stages。
+    """
+    raise NotImplementedError("→ T-02")
+
+
+# 逐条实现签名（agent 按此实现，勿改签名）
+def inv_02(ir: NarrativeIR) -> list[Violation]: ...
+def inv_03(ir: NarrativeIR) -> list[Violation]: ...
+def inv_04(ir: NarrativeIR) -> list[Violation]: ...
+def inv_05(ir: NarrativeIR) -> list[Violation]: ...
+def inv_06(ir: NarrativeIR) -> list[Violation]: ...
+def inv_07(ir: NarrativeIR) -> list[Violation]: ...
+def inv_08(ir: NarrativeIR) -> list[Violation]: ...
+def inv_09(ir: NarrativeIR, brand: dict) -> list[Violation]: ...
+def inv_11(ir: NarrativeIR) -> list[Violation]: ...
+def inv_12(ir: NarrativeIR) -> list[Violation]: ...
+def inv_13(ir: NarrativeIR, profile: dict) -> list[Violation]: ...
+def inv_14(ir: NarrativeIR) -> list[Violation]: ...
+def inv_15(ir: NarrativeIR, profile: dict) -> list[Violation]: ...
+def inv_16_id_stability(old: NarrativeIR, new: NarrativeIR) -> list[Violation]: ...
+```
+
+```python
+# spec/brand/brand_brief.py
+"""BrandBrief（D4）：跨项目复用的品牌资产。每个字段都要能编译成 checker 规则（见 mapping.md）。"""
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ..ir.nodes import NonEmpty, Slug
+
+
+class Product(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: Slug
+    name: NonEmpty
+    canonical_name: NonEmpty = Field(description="唯一正确写法；其他写法一律 block（BM-009）")
+    aliases: list[str] = Field(default_factory=list, description="允许出现的别名")
+    category: str = ""
+    price_cny: float | None = None
+    facts: dict[str, str] = Field(
+        default_factory=dict,
+        description="可引用的产品事实。剧本中出现的任何参数必须来自这里（FCT-001）",
+    )
+
+
+class SellingPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: Slug
+    claim: NonEmpty
+    priority: int = Field(ge=1, le=5, description="1 最高")
+    must_cover: bool = Field(default=False, description="true ⇒ 必须被至少一个 BrandMoment 覆盖（BM-006）")
+    proof: str = Field(default="", description="可展示的证据；无证据的卖点禁止用 demo 形式")
+    forbidden_phrasings: list[str] = Field(default_factory=list)
+
+
+class Persona(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: Slug
+    label: NonEmpty
+    age_range: str = ""
+    pains: list[str] = Field(default_factory=list)
+    triggers: list[str] = Field(default_factory=list)
+    language_notes: str = ""
+
+
+class UsageScene(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: Slug
+    description: NonEmpty
+    shootable: bool = True
+
+
+class Legal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    banned_words: list[str] = Field(default_factory=list)
+    competitor_names: list[str] = Field(default_factory=list, description="禁止出现（BM-011）")
+    claim_whitelist: list[str] = Field(default_factory=list, description="仅这些功效表述可用")
+    ip_assignment: str = "交付后著作权归甲方所有"
+    legal_refs: list[str] = Field(default_factory=list)
+
+
+class PlacementBudget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_moments_per_episode: int = Field(default=2, ge=0)
+    min_gap_beats: int = Field(default=2, ge=0)
+    max_high_intensity_per_episode: int = Field(default=1, ge=0)
+    require_high_plot_connection: int = Field(
+        default=1, ge=0, description="全季至少几处 plot_connection==high（BM-004）"
+    )
+    forbid_in_beat_kinds: list[str] = Field(default_factory=lambda: ["hook"])
+
+
+class BrandBrief(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["1.0"] = "1.0"
+    brand_id: Slug
+    brand_name: NonEmpty
+    version: str = Field(description="语义化版本，进 provenance.brand_ver")
+    industry: Slug = Field(description="→ domain pack id，如 beverage / beauty / auto")
+
+    products: list[Product] = Field(min_length=1)
+    selling_points: list[SellingPoint] = Field(min_length=1)
+    audience: list[Persona] = Field(min_length=1)
+    usage_scenes: list[UsageScene] = Field(default_factory=list)
+
+    tone_words: list[str] = Field(min_length=1)
+    banned_words: list[str] = Field(default_factory=list)
+    must_include_lines: list[str] = Field(
+        default_factory=list, description="必须原文出现的台词（BM-007）"
+    )
+    must_include_visuals: list[str] = Field(default_factory=list)
+
+    placement: PlacementBudget = Field(default_factory=PlacementBudget)
+    legal: Legal = Field(default_factory=Legal)
+
+    account_context: str = Field(default="", description="商家账号现状：粉丝画像、已有内容风格")
+    business_goal: Literal["awareness", "consideration", "conversion", "retention"] = "consideration"
+```
+
+```markdown
+<!-- spec/brand/mapping.md -->
+# BrandBrief 字段 → checker 规则 编译映射表
+
+`nsc compile-constraints` 读 `brands/<id>/brand.yaml`，按下表产出 `Constraint[]` 注入 IR。
+**每一行都必须有对应的 `spec/checks/**.yaml`；缺失则 `make spec-guard` 失败。** `[[form:check]]`
+
+| BrandBrief 字段 | 生成的 Constraint | 规则 ID | severity |
+|---|---|---|---|
+| `products[*].canonical_name` + `aliases` | 产品名写法白名单 | `BM-009` | block |
+| `products[*].facts` | 交付文本中的数字/参数必须来自 facts | `FCT-001` | block |
+| `selling_points[?must_cover]` | 每个必覆盖卖点 ≥1 BrandMoment | `BM-006` | block |
+| `selling_points[*].forbidden_phrasings` | 禁用表述 | `DLG-001` | block |
+| `selling_points[?proof==''] ` | 无证据卖点禁止 `proof_mode==demo` | `BM-012` | block |
+| `audience[*]` | 至少 1 个 `customer_proxy` 角色 `persona_ref` 命中 | `STR-013` | block |
+| `usage_scenes[?!shootable]` | 不得作为 Scene 的 location | `PRD-003` | warn |
+| `tone_words` | rubric 调性维度上下文（非 block） | `rubric_v1#tone` | info |
+| `banned_words` + `legal.banned_words` | 零出现 | `DLG-001` | block |
+| `must_include_lines` | 原文出现且标记 `is_brand_line` | `BM-007` | block |
+| `must_include_visuals` | 至少一个 Line/Scene 描述命中 | `BM-007b` | block |
+| `placement.max_moments_per_episode` | 单集植入上限 | `BM-001` | block |
+| `placement.min_gap_beats` | 植入最小间隔 | `BM-002` | block |
+| `placement.forbid_in_beat_kinds` | 禁止落位 | `BM-003` | block |
+| `placement.max_high_intensity_per_episode` | 高强度植入上限 | `BM-005` | block |
+| `placement.require_high_plot_connection` | 全季高情节关联植入下限 | `BM-004` | block |
+| `legal.competitor_names` | 竞品名零出现 | `BM-011` | block |
+| `legal.claim_whitelist` | 功效表述白名单外零出现 | `CMP-002` | block |
+| `business_goal` | 影响 Profile 的 CTA/beat 模板选择 | `profiles.*` | — |
+```
+
+### checker DSL
+
+```markdown
+<!-- spec/checks/DSL.md -->
+# Checker 规则 DSL 规范（D7）
+
+## 0. 设计原则
+**不自己写解析器。** `select` 用 [JMESPath](https://jmespath.org/)，`assert` 用 `simpleeval` + 白名单函数表。
+解释器（`src/nsc/checker/interpreter.py`）目标 ≤300 行。见 `docs/BORROW_MAP.md #22`。
+
+## 1. 文件布局
+`spec/checks/<域>/<RULE-ID>.yaml`，一文件一规则。域：`structure` `brand` `dialogue` `novel` `compliance` `producibility` `fact`。
+
+## 2. 字段
+```yaml
+id: BM-001                       # 必填，全局唯一，永不复用
+title: 单集品牌植入数不超过预算    # 必填，中文一句话
+domain: brand                    # 必填
+severity: block                  # block | warn | info
+stage: after_p3                  # 最早可检查阶段：after_p2|after_p3|after_p4|after_p5|after_p6|final
+scope:                           # 生效范围；缺省 = 全部
+  profiles: [short_drama_v1, short_video_v1]
+  industries: []                 # 空 = 全行业
+select: "episodes[*]"            # JMESPath，作用于 ir.view()
+group_by: null                   # 可选 JMESPath，对 select 结果再分组
+bind:                            # 把 JMESPath 求值结果绑成变量给 assert 用
+  moments: "beats[?beat_kind=='brand_moment']"
+  limit: "@.__ctx.brand.placement.max_moments_per_episode"
+assert: "count(moments) <= limit"     # simpleeval 表达式，返回 bool
+message: "第 {item.no} 集有 {count(moments)} 处品牌植入，超过预算 {limit} 处。请合并或删除强度最低的一处。"
+fix_hint: "优先删除 intensity<=2 且 plot_connection=='none' 的植入。"
+evidence: [case:0142, case:0177]  # canonical 规则必填（spec-guard 检查）
+rule_ref: R3-0031                 # 可选，指向 spec/rules/L3_canonical/
+legal_ref: ""                     # compliance 域必填
+tags: [density, budget]
+```
+
+## 3. `assert` 可用函数表（白名单，实现在 `src/nsc/checker/registry.py`）
+| 函数 | 说明 |
+|---|---|
+| `count(xs)` | 长度 |
+| `min_gap(xs, key='linear_index')` | 相邻元素在 key 上的最小差值；<2 元素返回 `inf` |
+| `spread(xs, key)` | 最大值-最小值 |
+| `positions(xs, total)` | 归一化位置列表 `[0,1]` |
+| `distinct(xs, key)` | 去重后数量 |
+| `any_of(xs, pred)` / `all_of(xs, pred)` | pred 为字符串表达式，变量名 `x` |
+| `chars(s)` | 中文字符数（去空白与标点，实现见 registry） |
+| `regex_any(s, patterns)` | 任一命中 |
+| `contains_any(s, words)` | 任一子串命中 |
+| `lcs_len(a, b)` | 最长公共子串长度（FCT-002 用） |
+| `sim(a, b)` | rapidfuzz 归一化相似度 0–1 |
+| `emotion_range(beats)` | max(valence)-min(valence) |
+| `monotone_runs(beats)` | 情绪单调连续段的最大长度 |
+| `exists(path)` | JMESPath 在当前 item 下非空 |
+| `order_of(node_id)` | 全局 linear_index |
+| `sum_of(xs, key)` | 求和 |
+| `pct(a, b)` | a/b，b==0 返回 0 |
+
+**禁止**：`__`、`import`、属性链超过 3 级、任何 IO。`simpleeval` 已限制，但 `registry` 需二次白名单。
+
+## 4. 求值上下文
+`select` 的每个结果为 `item`。表达式内可用：
+- `item`：当前对象（dict）
+- `ctx.profile` / `ctx.brand` / `ctx.ir`：全局上下文
+- `bind` 中声明的变量
+- `count(...)` 等白名单函数
+
+## 5. `message` 写作规范（**这条决定 GEPA 的效果，见 D13/胜负手**）
+message 会**原样**进入 GEPA 的 feedback 通道。必须满足：
+1. **说清违反了什么**（含具体数值/节点）
+2. **说清为什么这是问题**（一句业务理由）
+3. **给出可操作方向**（`fix_hint` 或 message 内含）
+
+- ❌ `"brand moment density violation"`
+- ❌ `"植入太多了"`
+- ✅ `"第 3 集有 4 处品牌植入，超过预算 2 处；植入密度过高会打断叙事沉浸、显著降低观众看完率。请合并第 2、3 处（都在讲同一个卖点 '0 蔗糖'），并删除 intensity=1 的背景出现。"`
+
+## 6. 测试要求
+每条规则必须在 `tests/fixtures/checks/<RULE-ID>/` 下提供：
+- `pass.json`：一个应通过的最小 IR 片段
+- `fail.json`：一个应触发的最小 IR 片段
+- `expected.txt`：期望 message（允许 `{{...}}` 通配）
+`tests/test_checker_dsl.py` 会自动发现并跑全部规则。**无 fixture 的规则 CI 失败。**
+（此结构借鉴 CheckList 的 MFT 组织方式，见 `docs/BORROW_MAP.md #13`）
+```
+
+```yaml
+# spec/checks/_schema.yaml
+# checker 规则的 JSON Schema（供 nsc.guards.checks_schema 校验）
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: NSC Check Rule
+type: object
+additionalProperties: false
+required: [id, title, domain, severity, stage, select, assert, message]
+properties:
+  id: {type: string, pattern: "^[A-Z]{3,4}-[0-9]{3}[a-z]?$"}
+  title: {type: string, minLength: 4}
+  domain: {enum: [structure, brand, dialogue, novel, compliance, producibility, fact]}
+  severity: {enum: [block, warn, info]}
+  status: {enum: [active, deprecated], default: active}
+  stage: {enum: [after_p2, after_p3, after_p4, after_p5, after_p6, final]}
+  scope:
+    type: object
+    additionalProperties: false
+    properties:
+      profiles: {type: array, items: {type: string}}
+      industries: {type: array, items: {type: string}}
+      brands: {type: array, items: {type: string}}
+  select: {type: string, minLength: 1}
+  group_by: {type: [string, "null"]}
+  bind: {type: object, additionalProperties: {type: string}}
+  assert: {type: string, minLength: 1}
+  message: {type: string, minLength: 20}      # 强制 message 有信息量（DSL §5）
+  fix_hint: {type: string}
+  evidence: {type: array, items: {type: string, pattern: "^case:[0-9]{4}$"}}
+  rule_ref: {type: string}
+  legal_ref: {type: string}
+  tags: {type: array, items: {type: string}}
+allOf:
+  - if: {properties: {domain: {const: compliance}}}
+    then: {required: [legal_ref], properties: {legal_ref: {minLength: 4}}}
+```
+
+现在是首批 34 条 L0 规则。为节省篇幅，我用**多文档 YAML 合并展示**，但落盘时**一文件一规则**（`spec/checks/<域>/<ID>.yaml`）——工单 T-05 会做拆分脚本。
+
+```yaml
+# spec/checks/_BATCH_1.yaml  ← 落盘时由 `nsc dev split-checks` 拆成一文件一规则
+---
+id: STR-001
+title: 每集恰好 1 个 Hook Beat 且位于前 20%
+domain: structure
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  hooks: "beats[?beat_kind=='hook']"
+  total: "length(beats)"
+assert: "count(hooks) == 1 and hooks[0].order <= max(1, int(total * 0.2))"
+message: "第 {item.no} 集的 Hook Beat 数量={count(hooks)}、位置={hooks[0].order if hooks else 'N/A'}（共 {total} 个 Beat）。短视频账号的短剧前 3 秒决定去留，Hook 必须是全集第一个或第二个 Beat 且只能有一个焦点。请把开场收敛为单一悬念。"
+fix_hint: "把非首位的 hook 降级为 escalation，或把真正的钩子提到 order=0。"
+tags: [hook, retention]
+---
+id: STR-002
+title: 每集必须有终态 Beat（cliffhanger 或 resolution）
+domain: structure
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  last: "beats[-1]"
+assert: "last.beat_kind in ['cliffhanger','resolution','cta']"
+message: "第 {item.no} 集最后一个 Beat 是 {last.beat_kind}，不是终态 Beat。观众在集末需要一个明确的'钩住'或'满足'，否则不会点下一集。请把末 Beat 改为 cliffhanger（非末集）或 resolution/cta（末集）。"
+tags: [structure]
+---
+id: STR-003
+title: Beat 数落在 Profile 区间内
+domain: structure
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  lo: "@.__ctx.profile.beats_per_episode[0]"
+  hi: "@.__ctx.profile.beats_per_episode[1]"
+assert: "lo <= length(item.beats) <= hi"
+message: "第 {item.no} 集有 {count(item.beats)} 个 Beat，Profile 要求 {lo}–{hi} 个。Beat 过少会导致节奏拖沓、单个 Beat 撑不满时长；过多会导致每个 Beat 只有几秒、观众跟不上。"
+tags: [pacing]
+---
+id: STR-004
+title: 场景数不超过 Profile 上限
+domain: structure
+severity: block
+stage: after_p4
+select: "episodes[*]"
+bind: {cap: "@.__ctx.profile.max_scenes_per_episode"}
+assert: "count(item.scenes) <= cap"
+message: "第 {item.no} 集有 {count(item.scenes)} 个场景，超过上限 {cap}。每增加一个场景就增加一次转场与布景成本，制作团队的实际预算撑不住。请合并发生在同一地点的相邻场景。"
+tags: [producibility]
+---
+id: STR-005
+title: 场景卡三要素完整
+domain: structure
+severity: block
+stage: after_p4
+select: "episodes[*].scenes[*]"
+assert: "chars(item.goal) >= 4 and chars(item.conflict) >= 4 and chars(item.turn) >= 4"
+message: "场景 {item.id} 的 goal/conflict/turn 至少一项为空或过短（goal={chars(item.goal)}字, conflict={chars(item.conflict)}字, turn={chars(item.turn)}字）。没有'谁要什么/什么挡着/发生了什么不可逆变化'的场景一定是水戏，会被商家一眼看出来。"
+tags: [scene]
+---
+id: STR-006
+title: 情绪曲线不得平坦
+domain: structure
+severity: warn
+stage: after_p3
+select: "episodes[*]"
+assert: "emotion_range(item.beats) >= @.__ctx.profile.min_emotion_range"
+message: "第 {item.no} 集的情绪效价极差只有 {emotion_range(item.beats)}，低于阈值 {@.__ctx.profile.min_emotion_range}。全程情绪平坦意味着没有落差，观众不会产生'想看下去'的张力。请压低某个 Beat 的 valence 制造至暗时刻。"
+tags: [emotion]
+---
+id: STR-007
+title: 每集至少一组伏笔闭环（按 Profile 要求）
+domain: structure
+severity: block
+stage: after_p3
+scope: {profiles: [short_drama_v1]}
+select: "episodes[*]"
+bind: {sp: "@.__ctx.ir.setup_payoffs"}
+assert: "count([x for x in sp if x.episode_no == item.no]) >= 1"
+message: "第 {item.no} 集没有任何 setup→payoff 闭环。营销短剧的复看与转发主要来自'原来这里是埋的'，无伏笔的单集观感等同于流水账。请在前段埋一个道具/一句话，在后段回收。"
+tags: [setup_payoff]
+---
+id: STR-008
+title: 伏笔必须闭环且顺序正确
+domain: structure
+severity: block
+stage: after_p3
+select: "setup_payoffs[*]"
+assert: "order_of(item.setup_beat_id) < order_of(item.payoff_beat_id)"
+message: "伏笔 {item.id}（{item.description}）的回收点在埋设点之前（setup@{order_of(item.setup_beat_id)} vs payoff@{order_of(item.payoff_beat_id)}）。这会让观众先看到答案再看到问题。请交换或重新定位。"
+tags: [setup_payoff]
+---
+id: STR-009
+title: 跨集伏笔跨度不过长
+domain: structure
+severity: warn
+stage: after_p3
+select: "setup_payoffs[*]"
+bind: {span: "@.__ctx.profile.max_payoff_span_episodes"}
+assert: "item.span_episodes <= span"
+message: "伏笔 {item.id} 跨越了 {item.span_episodes} 集，超过建议跨度 {span} 集。短视频观众的记忆窗口很短，跨度太大等于没埋。"
+tags: [setup_payoff]
+---
+id: STR-010
+title: 主角每集出场
+domain: structure
+severity: block
+stage: after_p4
+select: "episodes[*]"
+bind:
+  pro: "@.__ctx.ir.characters[?role=='protagonist'].id"
+assert: "all_of(pro, 'x in item.__present_character_ids')"
+message: "第 {item.no} 集缺少主角出场。观众追的是人不是事，主角缺席会直接掉粉。"
+tags: [character]
+---
+id: STR-011
+title: 开场承诺非空且是疑问/悬念型
+domain: structure
+severity: block
+stage: after_p2
+select: "episodes[*]"
+assert: "chars(item.hook_promise) >= 6"
+message: "第 {item.no} 集的 hook_promise 为空或过短。hook_promise 是'这一集向观众承诺解答的问题'，它是写 Hook Beat 的依据，缺失会导致开场无目的。"
+tags: [hook]
+---
+id: STR-012
+title: 无声明未出场的角色
+domain: structure
+severity: warn
+stage: after_p4
+select: "characters[*]"
+assert: "item.__appearance_count >= 1"
+message: "角色「{item.name}」在人物表中声明但从未在任何场景出场。多余角色会增加选角与片酬成本，且暗示 Bible 与 BeatSheet 脱节。请删除或安排出场。"
+tags: [character, producibility]
+---
+id: STR-013
+title: 必须有目标人群代理角色
+domain: structure
+severity: block
+stage: after_p1
+select: "project"
+bind: {proxies: "@.__ctx.ir.characters[?role=='customer_proxy']"}
+assert: "count(proxies) >= 1 and all_of(proxies, 'chars(x.persona_ref) > 0')"
+message: "全剧没有 role=customer_proxy 且绑定了 brand.audience persona 的角色。营销短剧的代入感来自'那个人就是我'，缺少人群代理角色时观众不会把产品和自己联系起来。"
+tags: [brand, character]
+---
+id: BM-001
+title: 单集品牌植入不超过预算
+domain: brand
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  moments: "beats[?beat_kind=='brand_moment']"
+  limit: "@.__ctx.brand.placement.max_moments_per_episode"
+assert: "count(moments) <= limit"
+message: "第 {item.no} 集有 {count(moments)} 处品牌植入，超过预算 {limit} 处。植入密度过高会打断叙事沉浸并显著降低完播率。请合并讲同一卖点的植入，优先删除 intensity<=2 且 plot_connection=='none' 的那处。"
+evidence: []
+tags: [density]
+---
+id: BM-002
+title: 植入间隔不低于下限
+domain: brand
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  moments: "beats[?beat_kind=='brand_moment']"
+  gap: "@.__ctx.brand.placement.min_gap_beats"
+assert: "min_gap(moments) >= gap"
+message: "第 {item.no} 集有两处植入相隔仅 {min_gap(moments)} 个 Beat（要求 ≥{gap}）。连续植入会让观众立刻识别为广告并划走。请把其中一处移到本集后半段或下一集。"
+tags: [density]
+---
+id: BM-003
+title: 植入不得落在禁止的 Beat 类型内
+domain: brand
+severity: block
+stage: after_p3
+select: "brand_moments[*]"
+bind: {forbid: "@.__ctx.brand.placement.forbid_in_beat_kinds"}
+assert: "item.__anchor_beat_kind not in forbid"
+message: "植入 {item.id} 落在了 {item.__anchor_beat_kind} Beat 上，该类型被禁止（{forbid}）。开场 Hook 一旦出现品牌，观众会在 3 秒内判定为广告，前功尽弃。请把这处植入下移到 escalation 之后。"
+tags: [placement_position]
+---
+id: BM-004
+title: 全季至少 N 处高情节关联植入
+domain: brand
+severity: block
+stage: after_p3
+select: "project"
+bind:
+  high: "@.__ctx.ir.brand_moments[?plot_connection=='high']"
+  need: "@.__ctx.brand.placement.require_high_plot_connection"
+assert: "count(high) >= need"
+message: "全剧只有 {count(high)} 处 plot_connection=='high' 的植入，要求至少 {need} 处。只有当产品是推动剧情的必要条件时，品牌记忆与态度提升才成立；纯背景出现几乎无效。请把某处植入改造成'没有这个产品情节就走不下去'。"
+tags: [plot_connection]
+---
+id: BM-005
+title: 高强度植入数量受限
+domain: brand
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  hi: "beats[?beat_kind=='brand_moment'].__intensity"
+  cap: "@.__ctx.brand.placement.max_high_intensity_per_episode"
+assert: "count([x for x in hi if x >= 4]) <= cap"
+message: "第 {item.no} 集有 {count([x for x in hi if x >= 4])} 处 intensity>=4 的显性植入，超过上限 {cap}。硬广每集只能有一次，且应放在情绪高点之后。"
+tags: [intensity]
+---
+id: BM-006
+title: 必覆盖卖点全部被覆盖
+domain: brand
+severity: block
+stage: after_p3
+select: "project"
+bind:
+  need: "@.__ctx.brand.selling_points[?must_cover].id"
+  got: "@.__ctx.ir.brand_moments[*].selling_point_id"
+assert: "all_of(need, 'x in got')"
+message: "以下必覆盖卖点没有任何 BrandMoment 承载：{[x for x in need if x not in got]}。这是商家付费的直接目标，缺失等于交付未完成。请为每个缺失卖点新增或改造一处植入，优先用 usage 或 before_after 形式。"
+tags: [coverage]
+---
+id: BM-007
+title: 必提台词原文出现
+domain: brand
+severity: block
+stage: after_p5
+select: "project"
+bind:
+  need: "@.__ctx.brand.must_include_lines"
+  all_text: "@.__ctx.ir.__all_line_text"
+assert: "all_of(need, 'contains_any(all_text, [x])')"
+message: "以下必提台词未在剧本中原文出现：{[x for x in need if not contains_any(all_text, [x])]}。这些是商家指定的口播/Slogan，必须逐字出现。请安排给最合适的角色，避免生硬念广告。"
+tags: [must_include]
+---
+id: BM-007b
+title: 必现视觉符号出现
+domain: brand
+severity: block
+stage: after_p5
+select: "project"
+bind:
+  need: "@.__ctx.brand.must_include_visuals"
+  desc: "@.__ctx.ir.__all_action_and_scene_text"
+assert: "all_of(need, 'contains_any(desc, [x])')"
+message: "以下必现视觉符号未在任何动作描述或场景描述中出现：{[x for x in need if not contains_any(desc, [x])]}。制作团队按剧本布景，剧本没写就拍不到。"
+tags: [must_include]
+---
+id: BM-008
+title: 植入不得全部集中在尾部
+domain: brand
+severity: warn
+stage: after_p3
+select: "episodes[*]"
+bind: {pos: "positions(beats[?beat_kind=='brand_moment'], length(beats))"}
+assert: "count(pos) == 0 or min(pos) <= 0.8"
+message: "第 {item.no} 集所有植入都在后 20%（位置={pos}）。观众流失主要发生在前半段，全部植入压在结尾意味着大部分人根本没看到。"
+tags: [placement_position]
+---
+id: BM-009
+title: 产品名写法唯一
+domain: brand
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[*]"
+bind:
+  canon: "@.__ctx.brand.__canonical_names"
+  bad: "@.__ctx.brand.__forbidden_name_variants"
+assert: "not contains_any(item.text, bad)"
+message: "台词 {item.id}「{item.text}」中出现了非规范产品名写法。正确写法只能是 {canon}。品牌方对名称写法零容忍，错写会导致整集返工。"
+tags: [naming]
+---
+id: BM-010
+title: 植入渠道不得单一
+domain: brand
+severity: warn
+stage: after_p3
+select: "episodes[*]"
+bind: {mods: "beats[?beat_kind=='brand_moment'].__modality"}
+assert: "count(mods) <= 1 or distinct(mods) >= 2"
+message: "第 {item.no} 集的植入 modality 全部为 {distinct(mods) and mods[0]}。视觉+口语双通道的品牌记忆显著优于单通道；请把其中一处改为另一种通道。"
+tags: [modality]
+---
+id: BM-011
+title: 竞品名零出现
+domain: brand
+severity: block
+stage: after_p5
+select: "project"
+bind:
+  comp: "@.__ctx.brand.legal.competitor_names"
+  all_text: "@.__ctx.ir.__all_text"
+assert: "not contains_any(all_text, comp)"
+message: "交付文本中出现了竞品名：{[x for x in comp if contains_any(all_text, [x])]}。这是合同红线，会直接导致拒收。"
+tags: [legal]
+---
+id: BM-012
+title: 无证据卖点禁止用演示形式
+domain: brand
+severity: block
+stage: after_p3
+select: "brand_moments[*]"
+bind: {unproven: "@.__ctx.brand.selling_points[?proof==''].id"}
+assert: "not (item.proof_mode == 'demo' and item.selling_point_id in unproven)"
+message: "植入 {item.id} 用 demo（当场演示效果）承载卖点 {item.selling_point_id}，但该卖点在 BrandBrief 中没有 proof 字段。演示无法证实的效果构成虚假宣传风险。请改为 reaction 或 contrast 形式。"
+legal_ref: "内部风控：无证据卖点不得演示"
+tags: [legal, proof]
+---
+id: DLG-001
+title: 禁用词零出现
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[*]"
+bind: {banned: "@.__ctx.brand.__all_banned_words"}
+assert: "not contains_any(item.text, banned)"
+message: "台词 {item.id}「{item.text}」命中禁用词。禁用词表来自品牌方与合规清单，无例外。请改写为同义的合规表述。"
+tags: [banned]
+---
+id: DLG-002
+title: 单条台词长度受限
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']"
+bind: {cap: "@.__ctx.profile.max_line_chars"}
+assert: "chars(item.text) <= cap"
+message: "台词 {item.id} 有 {chars(item.text)} 字，超过上限 {cap} 字。短剧的镜头节奏容不下长句，演员也念不自然。请拆成两句或交给对手角色一半。"
+tags: [length]
+---
+id: DLG-003
+title: 说话人必须在场
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']"
+assert: "item.character_id in item.__scene_present_character_ids"
+message: "台词 {item.id} 的说话人不在所属场景的在场角色列表中。这类错误会让制作团队在拍摄现场卡住。"
+tags: [consistency]
+---
+id: DLG-004
+title: 主要角色语音特征可辨识
+domain: dialogue
+severity: warn
+stage: after_p5
+select: "characters[?role=='protagonist' || role=='customer_proxy']"
+bind: {ratio: "@.__ctx.profile.min_voice_tic_ratio"}
+assert: "count(item.voice_tics) == 0 or item.__tic_hit_ratio >= ratio"
+message: "角色「{item.name}」的台词只有 {pct(item.__tic_hit_count, item.__line_count)} 命中其 voice_tics（要求 ≥{ratio}）。所有人说话一个腔是 AI 剧本最容易被识破的地方。"
+tags: [voice]
+---
+id: DLG-005
+title: 台词重复率受限
+domain: dialogue
+severity: warn
+stage: after_p5
+select: "episodes[*]"
+assert: "pct(item.__duplicate_line_count, item.__line_count) <= 0.05"
+message: "第 {item.no} 集有 {item.__duplicate_line_count} 条重复台词（占 {pct(item.__duplicate_line_count, item.__line_count)}）。重复通常意味着模型在填时长而不是推进剧情。"
+tags: [quality]
+---
+id: DLG-006
+title: 台词总字数匹配时长预算
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*]"
+bind:
+  cps: "@.__ctx.profile.chars_per_second"
+  tol: "@.__ctx.profile.duration_tolerance"
+assert: "abs(pct(item.__dialogue_chars, cps * item.duration_target_s) - 1) <= tol"
+message: "第 {item.no} 集对白共 {item.__dialogue_chars} 字，按 {cps} 字/秒需 {item.__dialogue_chars / cps} 秒，目标时长 {item.duration_target_s} 秒（容差 ±{tol}）。字数与时长不匹配会导致成片被迫删戏或注水。"
+tags: [duration]
+---
+id: NOV-001
+title: 小说章节必须 100% 覆盖对应 Beat
+domain: novel
+severity: block
+stage: after_p6
+select: "chapters[*]"
+assert: "item.__beat_coverage == 1.0"
+message: "章节 {item.id} 只覆盖了对应集 {pct(item.__covered_beats, item.__total_beats)} 的 Beat（未覆盖：{item.__missing_beat_ids}）。小说是商家的确认物，漏掉的 Beat 意味着商家确认了一个和剧本不同的故事。"
+tags: [novel, anchor]
+---
+id: NOV-002
+title: 小说与剧本对白一致
+domain: novel
+severity: warn
+stage: after_p6
+select: "chapters[*].__dialogue_pairs[*]"
+assert: "sim(item.novel_text, item.line_text) >= 0.7"
+message: "章节 {item.chapter_id} 中对应 Line {item.line_id} 的对白与剧本差异过大（相似度 {sim(item.novel_text, item.line_text)}）。小说和剧本必须是同一个故事的两个视图；若确需改写请同时更新 Line。"
+tags: [novel, consistency]
+---
+id: NOV-003
+title: 小说段落长度受限
+domain: novel
+severity: warn
+stage: after_p6
+select: "chapters[*].paragraphs[*]"
+bind: {cap: "@.__ctx.ir.voice.paragraph_max_chars"}
+assert: "chars(item) <= cap"
+message: "存在 {chars(item)} 字的段落，超过 {cap} 字。手机端阅读长段落会被直接跳过，商家在手机上看不完就等于没确认。"
+tags: [novel, readability]
+---
+id: CMP-001
+title: 广告绝对化用语零出现
+domain: compliance
+severity: block
+stage: after_p6
+select: "project"
+bind:
+  words: "@.__ctx.compliance.absolute_terms"
+  all_text: "@.__ctx.ir.__all_text"
+assert: "not contains_any(all_text, words)"
+message: "交付文本中出现绝对化用语：{[x for x in words if contains_any(all_text, [x])]}。此类表述在商业宣传中存在明确合规风险，必须替换为可证实的相对表述。"
+legal_ref: "spec/checks/compliance/_legal_sources.md#absolute-terms"
+tags: [legal]
+---
+id: CMP-002
+title: 功效表述白名单外零出现
+domain: compliance
+severity: block
+stage: after_p6
+select: "project"
+bind:
+  claims: "@.__ctx.compliance.regulated_claim_patterns"
+  wl: "@.__ctx.brand.legal.claim_whitelist"
+  all_text: "@.__ctx.ir.__all_text"
+assert: "not regex_any(all_text, [c for c in claims if c not in wl])"
+message: "交付文本出现了受管制的功效/疗效类表述，且不在该品牌的 claim_whitelist 中。请改为体验描述（'喝完觉得很舒服'）而非功效断言。"
+legal_ref: "spec/checks/compliance/_legal_sources.md#health-claims"
+tags: [legal]
+---
+id: PRD-001
+title: 场地成本不超预算档
+domain: producibility
+severity: warn
+stage: after_p4
+select: "episodes[*]"
+bind: {cap: "@.__ctx.profile.location_cost_budget"}
+assert: "sum_of(item.__locations, 'cost_weight') <= cap"
+message: "第 {item.no} 集的场地成本权重合计 {sum_of(item.__locations, 'cost_weight')}，超过预算档 {cap}。制作团队通常只能拿到 1–2 个可控场地。"
+tags: [producibility]
+---
+id: PRD-002
+title: 角色数不超预算
+domain: producibility
+severity: block
+stage: after_p1
+select: "project"
+bind: {cap: "@.__ctx.profile.max_characters"}
+assert: "count(@.__ctx.ir.characters) <= cap"
+message: "全剧有 {count(@.__ctx.ir.characters)} 个角色，超过上限 {cap}。商家自拍短剧的常态是 2–4 个可用演员，超出就拍不了。"
+tags: [producibility]
+---
+id: PRD-003
+title: 不得使用不可拍摄的场景/道具
+domain: producibility
+severity: warn
+stage: after_p4
+select: "episodes[*].scenes[*]"
+assert: "item.__location_cost_tier != 'unavailable'"
+message: "场景 {item.id} 使用了标记为 unavailable 的场地。请替换为 BrandBrief 中 shootable==true 的使用场景。"
+tags: [producibility]
+---
+id: FCT-001
+title: 产品参数必须来自 BrandBrief
+domain: fact
+severity: block
+stage: after_p6
+select: "project"
+bind: {claims: "@.__ctx.ir.__numeric_claims"}
+assert: "all_of(claims, 'x.value in @.__ctx.brand.__all_fact_values')"
+message: "交付文本中出现了 BrandBrief 未提供的产品参数/数字：{[x for x in claims if x.value not in @.__ctx.brand.__all_fact_values]}。模型自造参数是最危险的失败模式，会造成商家的法律风险。"
+tags: [hallucination, legal]
+---
+id: FCT-002
+title: 不得复用案例库原文
+domain: fact
+severity: block
+stage: after_p6
+select: "project"
+bind: {snips: "@.__ctx.ir.__retrieved_case_snippets"}
+assert: "all_of(snips, 'lcs_len(x, @.__ctx.ir.__all_text) <= 12')"
+message: "交付文本与检索到的参考案例存在超过 12 字的连续重合。案例库仅用于学习结构与手法，不得复用文字（见 COMPLIANCE.md §1）。"
+tags: [legal, plagiarism]
+```
+
+```markdown
+<!-- spec/checks/compliance/_legal_sources.md -->
+# 合规词表出处（人工核对台账）
+
+> ⚠️ 本文件中的每一项在标为 `severity: block` 前，必须由你（人类）核对官方出处并在此登记日期。
+> CI（`nsc.guards.checks_schema`）要求 `domain: compliance` 的规则 `legal_ref` 非空且指向本文件的锚点。
+
+## absolute-terms
+绝对化用语（"国家级/最高级/第一/唯一/最佳/绝无"等）。
+- 出处：待登记（人工核对广告相关法规与平台规则后填写条款号与链接）
+- 核对人 / 日期：（待填）
+- 词表文件：`spec/checks/compliance/absolute_terms.yaml`
+
+## health-claims
+功效/疗效类表述（"治疗/根治/降血糖/防癌"等）。
+- 出处：待登记
+- 核对人 / 日期：（待填）
+- 词表文件：`spec/checks/compliance/regulated_claims.yaml`
+
+## 平台规则
+各短视频平台对商业内容的标注要求（如是否需标记"广告"）。
+- 出处：待登记
+- 影响规则：`CMP-003`（尚未启用）
+```
+
+```yaml
+# spec/checks/compliance/absolute_terms.yaml
+# 由 nsc compile-constraints 注入 ctx.compliance.absolute_terms
+# ⚠️ 未完成人工核对前，本表在 eval/thresholds.yaml 中被降级为 warn
+version: "0.1-draft"
+reviewed: false
+terms:
+  - 国家级
+  - 最高级
+  - 最佳
+  - 第一品牌
+  - 唯一
+  - 绝无
+  - 100%有效
+  - 永久
+  - 彻底解决
+```
+
+### rubric（判官）
+
+```yaml
+# spec/rubrics/rubric_v1.yaml
+# A3 品味资产。修改本文件必须同时更新 judge_calibration 并重跑 make judge-cal。
+schema_version: "1.0"
+version: "1.0.0"
+scale: {min: 1, max: 5, allow_half: false}
+
+# 判官的默认工作模式是【成对比较】（D6/D8）。绝对分仅用于报告与趋势。
+default_mode: pairwise
+
+dimensions:
+  - id: naturalness
+    name: 台词自然度
+    weight: 0.25
+    applies_to: [line, scene, chapter]
+    question: "这些台词像真人在这个情境下会说的话吗？还是像在念台词/念广告？"
+    positive_signals: [口语省略, 打断与重叠, 信息不对称, 潜台词, 角色间语气差异]
+    negative_signals: [解释性台词, 自报动机, 书面语, 所有人一个腔, 复述已知信息]
+    anchors_file: anchors/naturalness.yaml
+
+  - id: hook_strength
+    name: 钩子与记忆点强度
+    weight: 0.20
+    applies_to: [episode, beat]
+    question: "前 3 秒/开场第一个 Beat 能让人停下来吗？有没有一个可被转述的记忆点？"
+    positive_signals: [立刻的具体冲突, 反常识状态, 未解答的问题, 可复述的一句话]
+    negative_signals: [环境铺垫开场, 自我介绍开场, 抽象情绪开场, 无信息的悬念]
+    anchors_file: anchors/hook_strength.yaml
+
+  - id: transportation
+    name: 代入与情感迁移
+    weight: 0.20
+    applies_to: [episode, chapter]
+    question: "读者/观众会被带进故事、并把这种情绪迁移到品牌上吗？"
+    construct_ref: "叙事传输（narrative transportation）；见 docs/BORROW_MAP.md #16"
+    positive_signals: [目标人群的具体痛点, 可感知的代价, 主角选择而非被动, 情绪先到品牌后到]
+    negative_signals: [先讲产品后补情绪, 痛点泛泛, 主角无能动性, 情绪与品牌无因果]
+    anchors_file: anchors/transportation.yaml
+
+  - id: placement_integration
+    name: 植入自然度与信息达成
+    weight: 0.25
+    applies_to: [beat, scene, episode]
+    question: "产品是长在剧情里的，还是贴上去的？商家要的卖点信息真的传达到了吗？"
+    construct_ref: "modality × plot-connection congruence；见 docs/BORROW_MAP.md #15"
+    positive_signals: [产品是解决冲突的必要条件, 卖点由后果体现而非台词宣称, 反对者被说服的过程]
+    negative_signals: [角色突然开始夸产品, 卖点用形容词堆叠, 植入可删除而剧情不变, 旁白报参数]
+    anchors_file: anchors/placement_integration.yaml
+
+  - id: producibility
+    name: 可拍性
+    weight: 0.10
+    applies_to: [scene, episode]
+    question: "以商家自有团队 1–2 天、2–4 个演员、1–2 个场地的条件，这个能拍出来吗？"
+    positive_signals: [场景可复用, 无群演, 无特效, 道具易得, 动作简单]
+    negative_signals: [户外大场面, 需要儿童或动物, 需要车辆改装, 需要多机位调度, 时间跨度需要换装]
+    anchors_file: anchors/producibility.yaml
+
+aggregate:
+  formula: "weighted_mean"
+  # D6：仅聚合分低于阈值时阻塞；阈值在 eval/thresholds.yaml
+  block_on: aggregate_only
+
+judge:
+  # 判官本身是可优化产物（D8）。以下 instruction 是种子，优化后写入 prompts/judge_*.json
+  seed_instruction_file: seeds/judge_pairwise.md
+  position_debias: swap_and_average   # MT-Bench 的位置偏置消除，见 BORROW_MAP #8
+  require_rationale: true
+  require_span_citation: true         # 必须引用具体台词/段落，否则判定无效
+  max_output_tokens: 900
+```
+
+```yaml
+# spec/rubrics/anchors/naturalness.yaml
+# 锚定样例：用成对样本定义"品味"（D2 形态3）。每个维度至少 score2 与 score5 各一对。
+dimension: naturalness
+anchors:
+  - score: 2
+    label: 解释性台词
+    context: "女儿劝母亲别熬夜做代购"
+    sample: |
+      女儿：妈，你已经连续三个晚上熬到两点了，你这样下去身体会垮掉的，
+            而且你做代购本来就是为了给我攒学费，我不想让你这么辛苦。
+    why: "一句话交代了时长、后果、动机、关系四层信息。真人不会这样说话——这是给观众听的，不是给妈妈听的。"
+  - score: 5
+    label: 潜台词与信息不对称
+    context: 同上
+    sample: |
+      女儿：（把台灯按掉）
+      母亲：还有两单。
+      女儿：我不上大学了。
+      母亲：……你说什么？
+    why: "没有一句解释。动作代替形容词，威胁代替说服，母亲的反问把冲突推上去。观众自己拼出了全部背景。"
+  - score: 3
+    label: 半自然但仍在说明
+    context: 同上
+    sample: |
+      女儿：妈，两点了。
+      母亲：最后一单，做完就睡。
+      女儿：你昨天也是这么说的，前天也是。
+    why: "对白节奏对了，但第三句仍在替观众总结。改成'你昨天也这么说'即可到 4 分。"
+```
+
+```yaml
+# spec/rubrics/anchors/placement_integration.yaml
+dimension: placement_integration
+anchors:
+  - score: 1
+    label: 贴上去的硬广
+    sample: |
+      林姐：（举起奶茶）这款0蔗糖轻乳茶用的是进口茶基，
+            热量只有普通奶茶的三分之一，我每天都喝。
+    why: "角色变成了播音员。植入可以整段删除而剧情毫无变化——这是判定 1 分的硬标准。"
+  - score: 5
+    label: 产品是冲突的解法
+    sample: |
+      客户：（推开杯子）我血糖高，不喝奶茶。
+      林姐：（换了一杯推过去）这杯不加蔗糖。
+      客户：都这么说。
+      林姐：那你喝一口，不好喝我今天这单不要了。
+      （客户喝了一口，停住，又喝了一口）
+      客户：……你这单，我签。
+    why: "卖点（0蔗糖）由'反对者被说服'的后果体现，没有一个形容词。删掉产品这场戏就不存在了 → plot_connection=high。"
+  - score: 3
+    label: 自然但信息未达成
+    sample: |
+      林姐：（递过奶茶）尝尝，我们新出的。
+      客户：（喝）嗯，好喝。
+    why: "植入不生硬，但商家付费想传达的'0蔗糖'完全没有落地。自然度与信息达成必须同时满足。"
+```
+
+```markdown
+<!-- spec/rubrics/pairwise_protocol.md -->
+# 判官成对比较协议
+
+## 1. 为什么以成对为主 `[[form:non-normative]]`
+绝对分会随模型版本漂移；成对偏好在同一次调用内比较，漂移大幅减小，且直接对应人类的"我更喜欢改后那版"这一最常见反馈形态（D9 的 `revision_pairs` 天然是成对数据）。
+
+## 2. 输入
+```
+{unit_kind: line|beat|scene|episode|chapter,
+ context: {上游 IR 摘要, 相关 BrandBrief 片段, 相关 canonical 规则},
+ A: <文本或 IR 片段>, B: <同上>,
+ dimensions: [要判的维度 id 列表]}
+```
+
+## 3. 流程 `[[form:check]]` → `spec/checks/../JDG-001.yaml`（判官输出格式校验）
+1. 调用 1：顺序 (A, B)。
+2. 调用 2：顺序 (B, A)。
+3. 若两次结论相反 → 判为 `tie`，并把该样本自动加入 `judge_calibration` 待人工裁决队列。
+4. 每维度输出 `{winner: A|B|tie, margin: 1|2|3, rationale, cited_spans: [...]}`。
+5. `cited_spans` 为空 → 该次判定作废并重试一次；再次为空 → 记为 `invalid`，计入判官健康度指标。
+
+## 4. 校准门槛（`eval/thresholds.yaml` 中可调，改动需 ADR）
+| 用途 | 指标 | 门槛 |
+|---|---|---|
+| 允许出报告 | 与人类成对一致率 | ≥ 0.65 |
+| 允许参与门禁 | 与人类成对一致率 | ≥ 0.78 |
+| 允许参与门禁 | Cohen κ（5 分制，与人类） | ≥ 0.60 |
+| 健康度 | `invalid` 比例 | ≤ 0.05 |
+| 健康度 | 位置偏置（A 位胜率偏离 0.5） | ≤ 0.08 |
+
+未达门槛 → `judge-calibration.yml` 自动把仓库变量 `JUDGE_GATE_ENABLED` 置为 `false` 并开 Issue。
+
+## 5. 校准集构建（≥50 条起步）
+- 40% 来自 `revision_pairs`（原文 vs 人类改后 → 人类偏好已知，是免费的校准数据）
+- 30% 来自 `preference_pairs`（同一 Beat 的两次生成，你人工选）
+- 30% 来自 `counterexamples`（已知坏样本 vs 已知好样本，锚定极端）
+```
+
+### 规则晋升（A5）
+
+```markdown
+<!-- spec/rules/PROMOTION.md -->
+# 规则晋升流水线（D12）
+
+```
+L0 observation  ──聚类≥3──▶ L1 candidate ──留出集验证──▶ L2 validated ──人工 approve──▶ L3 canonical
+                                                                              │
+                                                                    hit_count=0 90天 / 冲突
+                                                                              ▼
+                                                                        deprecated
+```
+
+## 目录
+- `L0_observations/` 自动写入，一条一文件，`obs_<ulid>.yaml`。**不参与任何门禁。**
+- `L1_candidates/` 由 `nsc mine run` 生成，`cand_<slug>.yaml`。CI 只校验 schema。
+- `L2_validated/` 通过留出集验证，附验证报告。**仍不参与门禁**（避免过早锁死）。
+- `L3_canonical/` 人工 approve。**此时才允许**：① 生成 `spec/checks/**.yaml` ② 进 rubric ③ 进 prompt 拼装 ④ 进 Profile 默认值。
+
+## 晋升门槛
+| 跃迁 | 条件 | 执行者 |
+|---|---|---|
+| L0→L1 | 同簇观察 ≥3 条，且来自 ≥2 个不同 case | `nsc mine cluster`（HDBSCAN，见 BORROW_MAP #20） |
+| L1→L2 | **checker 型**：在留出集上 precision ≥0.80、在人类已接受交付物上误报率 ≤0.05、recall ≥0.30<br>**rubric/prompt 型**：目标维度 Δ ≥ +0.15（成对胜率），其余维度非劣（下降 ≤0.05） | `nsc mine validate`（CI 可复现） |
+| L2→L3 | 人工 approve（PR 标签 `rule-promote` + 你 approve） | 你 |
+| →deprecated | `hit_count == 0` 且 `last_fired_at` 超 90 天；或与新规则判定冲突且新规则胜出 | `nsc mine retire`（每周 cron） |
+
+## 反膨胀
+`L3_canonical/` 上限 **120 条**（`spec/BUDGETS.yaml::max_canonical_rules`）。达到上限后新增必须先合并或退役同域旧规则。CI 强制。
+理由：规则库的价值在精不在多；ExpeL/Voyager 的经验是无门禁的经验池会自我矛盾（BORROW_MAP #12）。
+
+## scope 与"口味性"隔离
+`scope: client:<brand_id>` 的规则**只**加载到该 Client Pack，永不进全局。
+`D11` 分类为 `口味性` 的反馈**只能**产出 `scope: client:*` 的规则。CI 检查此约束（`nsc.guards.rules_conflict`）。
+```
+
+```yaml
+# spec/rules/_schema.yaml
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: NSC Knowledge Rule (A5)
+type: object
+additionalProperties: false
+required: [id, level, statement, scope, form, evidence_ids, created_at]
+properties:
+  id: {type: string, pattern: "^R[0-3]-[0-9]{4}$"}
+  level: {enum: [L0, L1, L2, L3, deprecated]}
+  statement: {type: string, minLength: 10, description: "一句可判定的规则陈述"}
+  rationale: {type: string}
+  scope:
+    type: object
+    required: [kind]
+    properties:
+      kind: {enum: [global, format, industry, client]}
+      value: {type: string}
+  form: {enum: [schema, check, rubric, prompt, profile_default, non-normative]}
+  target: {type: string, description: "落地文件路径，如 spec/checks/brand/BM-013.yaml"}
+  evidence_ids: {type: array, items: {type: string, pattern: "^(case|obs):[0-9A-Za-z]+$"}, minItems: 1}
+  dimension: {enum: [structural, character, placement, dialogue, factual, compliance, producibility, taste]}
+  hit_count: {type: integer, default: 0}
+  fired_case_ids: {type: array, items: {type: string}}
+  effect_size: {type: ["number","null"]}
+  validation_report: {type: string}
+  created_at: {type: string, format: date-time}
+  last_fired_at: {type: ["string","null"], format: date-time}
+  superseded_by: {type: ["string","null"]}
+allOf:
+  - if: {properties: {level: {const: L3}}}
+    then: {required: [target, validation_report, dimension], properties: {evidence_ids: {minItems: 3}}}
+  - if: {properties: {dimension: {const: taste}}}
+    then: {properties: {scope: {properties: {kind: {const: client}}}}}
+```
+
+```yaml
+# spec/rules/L3_canonical/R3-0001.yaml
+id: R3-0001
+level: L3
+statement: >
+  品牌植入不得出现在每集的 Hook Beat 内；最早只能出现在第一个 escalation 之后。
+rationale: >
+  逆向标注的 214 条公开营销短剧样本中，前 3 秒出现品牌的样本，其人工判定"像广告"的比例为
+  71%，而首次植入在 30% 时长之后的样本仅 18%。三个客户的修订记录中共有 5 处
+  把开场植入手动后移。
+scope: {kind: global}
+form: check
+target: spec/checks/brand/BM-003.yaml
+evidence_ids: [case:0142, case:0177, case:0203, obs:01JB4Z..., obs:01JB50...]
+dimension: placement
+hit_count: 0
+effect_size: null
+validation_report: docs/metrics/validations/R3-0001.md
+created_at: "2025-01-01T00:00:00Z"
+last_fired_at: null
+```
+
+```yaml
+# spec/rules/L0_observations/_EXAMPLE_obs.yaml
+# 由 nsc ingest 自动写入。人不手写。
+id: R0-0001
+level: L0
+statement: "客户把'这款茶用的是进口茶基，热量只有三分之一'整句删掉，改成一个动作（把杯子推过去）。"
+scope: {kind: client, value: demo_tea}
+form: non-normative
+dimension: placement
+evidence_ids: [case:0142]
+created_at: "2025-01-03T10:22:00Z"
+extra:
+  target_node_id: 01JB4ZQ8XK2N7T5V9WB3H0C6RD
+  verdict: reject
+  severity: 3
+  rationale_nl: "念参数太假了，我们客户不会这么说话"
+  revised_text: "（把杯子推过去）不加糖的。"
+  original_text: "这款茶用的是进口茶基，热量只有普通奶茶的三分之一。"
+```
+
+### Pass 契约
+
+```markdown
+<!-- spec/passes/CONTRACTS.md -->
+# 编译 Pass 契约（D5 + D24）
+
+## 0. 共同语义
+- 每个 Pass 是**纯函数**：`(IR片段, ctx) → IR片段`。禁止读写全局状态、禁止网络（除 LLM 路由）。
+- 每个 Pass 是**一个 DSPy Module**，其 Signature 定义在 `spec/passes/signatures.py`（资产），实现在 `src/nsc/passes/`（可丢弃）。
+- **Signature 的 docstring 是"种子指令"**，GEPA 优化后的指令写入 `prompts/<pass>.json`，运行时优先加载。
+- 失败语义：结构性失败抛 `PassFailure(node_id, reason)`；不得静默降级。
+- 缓存键（D5）：
+  `sha256(canonical_json(input_fragment) || pass_name || promptset_ver || profile_ver || brand_ver || ruleset_ver || model_id || temperature || seed || spec_sha_of(relevant_files))`
+
+## 1. Pass 清单
+
+| Pass | 输入 | 输出 | LLM | 检查阶段 |
+|---|---|---|---|---|
+| `p0_intake` | RawBrief(yaml) + RawBrandBrief + Profile | NormalizedBrief, BrandBrief, Constraint[] | 轻（补全/归一） | — |
+| `p1_bible` | NormalizedBrief, BrandBrief, Profile | Character[], Location[], Prop[], Motif[], ToneSpec | 是 | `after_p1` |
+| `p2_arc` | Bible, BrandBrief, Profile | Season, Episode[], BrandMoment 预算分配草案 | 是 | `after_p2` |
+| `p3_beatsheet` | Episode(单集), Bible, 预算, 邻集摘要 | Beat[](含 brand_moment 占位 + emotion + SetupPayoff 声明) | 是 | `after_p3` |
+| `p4_scene` | Beat[](单集), Bible | Scene[] + Beat→Scene 归属 | 是 | `after_p4` |
+| `p5_dialogue` | Scene(单场), Bible, 该场 Beat[], 品牌约束 | Line[] | 是 | `after_p5` |
+| `p6_prose` | Episode 的 Scene[]+Line[], Bible, NarrativeVoice | NovelChapter(段落 + anchor_map) | 是 | `after_p6` |
+| `p7_render` | 完整 IR | Fountain / novel.docx / script.docx / storyboard.csv | **否** | `final` |
+
+## 2. 逐 Pass 关键约束
+
+### p2_arc
+- 必须为每个 `must_cover` 卖点分配 ≥1 个 BrandMoment 槽位，并写明 `modality` 与 `plot_connection` 计划。
+- 必须输出 `hook_promise` 与 `cliffhanger`（末集除外）。
+- 借鉴：Dramatron 的 log line → plot 层级（BORROW_MAP #1）；DOC 的"创作负担前移"（#3）。
+
+### p3_beatsheet
+- **最重要的一趟**。BeatSheet 必须细到"每个 Beat 可被独立判定通过/不通过"（DOC 的 detailed outliner 原则）。
+- 单集生成，输入含 `prev_episode_summary` 与 `next_episode_promise`，不含全季全文（可缓存、可局部重编译）。
+- 必须声明 `SetupPayoff`（可跨集，跨集则 payoff_beat_id 留 `PENDING:<slug>`，由 p3 的全季后处理解引用）。
+
+### p5_dialogue
+- 单场生成。输入必须包含该场的 `goal/conflict/turn` 与在场角色的 `voice_notes/voice_tics`。
+- **内置自检子步（可选，默认开）**：生成后按 `spec/rules/L3_canonical/` 中 `form: prompt` 的规则做一次自我修订。
+  借鉴 Constitutional AI 的原则驱动自修订（BORROW_MAP #28），但原则来自 A2/A3 而非手写。
+- **候选重排（可选）**：`n=3` 候选，用 L0 checker 过滤 + rubric 判官选优。借鉴 Re3 的 rerank（#2）。默认关闭（成本），`--rerank` 开启。
+
+### p6_prose
+- **只允许编织叙述层**：环境、动作细节、内心、转场。
+- **不允许发明新事件、新角色、新对白语义**。对白允许口语化微调，但 `NOV-002` 会检查相似度 ≥0.7。
+- 必须输出完整 `anchor_map`，覆盖率 100%（`NOV-001`）。这是反馈能回流的唯一保障。
+
+### p7_render
+- **零 LLM**。纯 Jinja2 + python-docx。
+- 必须写入锚点（D29 三重方案）：docx bookmark `NID_<ulid>` + 文末锚点索引表 + 段落顺序稳定。
+- 输出 `out/<project>/manifest.json`（Provenance，D20）。
+
+## 3. 局部重编译
+依赖与失效闭包定义在 `dep_graph.yaml`。契约：
+- 改 `Episode.logline` → 失效该集 p3/p4/p5/p6/p7
+- 改单个 `Scene.goal` → 失效该场 p5、该集 p6、p7
+- 改 `BrandBrief.placement` → 失效全部 p2 之后（因为预算分配变了）
+- 改 `NarrativeVoice` → **只**失效 p6/p7（这是 D27 的收益）
+- 人类 `locked: true` 的节点：重编译必须保留原内容与原 ID。
+```
+
+```python
+# spec/passes/signatures.py
+"""DSPy Signature 契约（资产）。docstring = 种子指令，GEPA 会演化它并写入 prompts/。
+
+写 docstring 的规矩：
+  - 只写**任务定义与硬约束**，不写风格技巧（风格技巧属于 spec/rules 或 rubric，由 GEPA 注入）。
+  - 不写 few-shot（few-shot 由 1 档案例检索在运行时注入）。
+  - 保持简短：种子越干净，GEPA 的搜索空间越有意义。
+"""
+from __future__ import annotations
+
+import dspy
+
+
+class Bible(dspy.Signature):
+    """根据商家 brief 与品牌资料，设计这部短剧的人物、地点、道具与母题。
+
+    硬约束：
+    - 必须包含至少一个 role=customer_proxy 的角色，其 persona_ref 指向 brand.audience 中的一个 persona。
+    - 角色总数不得超过 max_characters。
+    - 每个角色必须有可区分的说话方式（voice_notes）与 1-3 个标记词（voice_tics）。
+    - 地点必须从 brand.usage_scenes 中 shootable=true 的场景派生，或标注 cost_tier。
+    """
+    normalized_brief: str = dspy.InputField(desc="归一化后的商家需求")
+    brand_brief_json: str = dspy.InputField(desc="BrandBrief 的 JSON")
+    profile_json: str = dspy.InputField(desc="Format Profile 的约束摘要")
+    retrieved_cases: str = dspy.InputField(desc="检索到的同行业已验证案例（可为空）")
+
+    characters_json: str = dspy.OutputField(desc="Character[] 的 JSON，不含 id")
+    locations_json: str = dspy.OutputField(desc="Location[] 的 JSON，不含 id")
+    props_json: str = dspy.OutputField(desc="Prop[] 的 JSON，不含 id")
+    motifs_json: str = dspy.OutputField(desc="Motif[] 的 JSON，不含 id")
+    tone_json: str = dspy.OutputField(desc="ToneSpec 的 JSON")
+
+
+class Arc(dspy.Signature):
+    """规划季/集级弧线，并把品牌植入预算分配到各集。
+
+    硬约束：
+    - 集数与单集时长由 profile 给定，不得更改。
+    - 每个 must_cover=true 的卖点必须被分配到至少一集，并给出该处植入的 modality 与 plot_connection 计划。
+    - 全季至少 require_high_plot_connection 处 plot_connection=high。
+    - 每集必须给出 hook_promise（本集向观众承诺解答的问题）；除末集外必须给出 cliffhanger。
+    """
+    bible_json: str = dspy.InputField()
+    brand_brief_json: str = dspy.InputField()
+    profile_json: str = dspy.InputField()
+    retrieved_cases: str = dspy.InputField()
+
+    episodes_json: str = dspy.OutputField(desc="Episode[] 的 JSON（no/title/logline/hook_promise/cliffhanger）")
+    placement_plan_json: str = dspy.OutputField(
+        desc="[{episode_no, selling_point_id, type, intensity, modality, plot_connection, intent}]"
+    )
+    season_arc: str = dspy.OutputField(desc="一段话说明整季弧线")
+
+
+class BeatSheet(dspy.Signature):
+    """为单集写出 Beat 序列。这是整个系统里最关键的一趟：Beat 写得可判定，后面才写得出好台词。
+
+    硬约束：
+    - Beat 数在 profile 的 beats_per_episode 区间内。
+    - 恰好一个 beat_kind=hook，且是第一个或第二个 Beat。
+    - 最后一个 Beat 必须是 cliffhanger / resolution / cta。
+    - 本集分配到的每个植入必须落成一个 beat_kind=brand_moment 的 Beat，且不得与 hook 相邻或落在 hook 上。
+    - 每个 Beat 必须给出 emotion(valence, arousal) 与 est_duration_s，总时长贴近 duration_target_s。
+    - 必须声明至少一组 setup→payoff；跨集回收时 payoff 写 "PENDING:<slug>"。
+    - summary 必须是"谁做了什么导致什么"，不得是抽象概括（如"两人产生矛盾"）。
+    """
+    episode_json: str = dspy.InputField(desc="本集的 Episode 骨架")
+    bible_json: str = dspy.InputField()
+    placement_for_episode: str = dspy.InputField(desc="本集需要承载的植入计划")
+    prev_episode_summary: str = dspy.InputField(desc="上一集 Beat 摘要；首集为空")
+    next_episode_promise: str = dspy.InputField(desc="下一集的 hook_promise；末集为空")
+    profile_json: str = dspy.InputField()
+    retrieved_cases: str = dspy.InputField()
+
+    beats_json: str = dspy.OutputField(desc="Beat[] 的 JSON，不含 id")
+    setup_payoffs_json: str = dspy.OutputField(desc="SetupPayoff[] 的 JSON，不含 id")
+
+
+class SceneCards(dspy.Signature):
+    """把单集的 Beat 序列组织成可拍摄的场景，并给每个场景写出场景卡。
+
+    硬约束：
+    - 场景数不超过 max_scenes_per_episode；相邻同地点的 Beat 应合并到一个场景。
+    - 每个场景必须有非空的 goal / conflict / turn / entry / exit。
+    - entry 必须是"最晚可以进入的时刻"，exit 必须是"最早可以离开的时刻"。
+    - present_character_ids 必须覆盖该场景所有 Beat 涉及的角色。
+    - 不得引入 Bible 之外的地点或角色。
+    """
+    beats_json: str = dspy.InputField()
+    bible_json: str = dspy.InputField()
+    profile_json: str = dspy.InputField()
+
+    scenes_json: str = dspy.OutputField(desc="Scene[] 的 JSON，不含 id")
+    beat_to_scene: str = dspy.OutputField(desc="[{beat_index, scene_index}]")
+
+
+class Dialogue(dspy.Signature):
+    """为单个场景写对白与动作。
+
+    硬约束：
+    - 只能使用 present_character_ids 中的角色说话。
+    - 每条对白不超过 max_line_chars 字。
+    - 全场对白字数应使该场时长贴近其 Beat 的 est_duration_s 之和（按 chars_per_second 换算）。
+    - 必须体现该场的 turn（场景结束时状态必须已改变）。
+    - 若本场含 brand_moment Beat：卖点信息必须由后果或反应体现，禁止角色宣读参数；
+      不得出现 BrandBrief.facts 之外的任何数字或参数。
+    - 必提台词（must_include_lines）若分配到本场，必须原文出现。
+    - 禁用词零出现。
+    """
+    scene_json: str = dspy.InputField()
+    beats_json: str = dspy.InputField(desc="本场承载的 Beat[]")
+    characters_json: str = dspy.InputField(desc="在场角色的完整定义（含 voice_notes/voice_tics）")
+    brand_constraints: str = dspy.InputField(desc="本场适用的品牌约束与可用 facts")
+    profile_json: str = dspy.InputField()
+    retrieved_cases: str = dspy.InputField(desc="同类场景的已验证台词样例")
+
+    lines_json: str = dspy.OutputField(desc="Line[] 的 JSON，不含 id；含 subtext 与 delivery")
+
+
+class Prose(dspy.Signature):
+    """把一集的场景与台词编织成一章小说。这是给商家看的确认物。
+
+    硬约束：
+    - 只能编织叙述层：环境、动作细节、人物内心、转场、时间推进。
+    - 严禁发明新事件、新角色、新地点，严禁改变任何 Beat 的因果。
+    - 对白可以口语化微调，但语义与信息量必须与原 Line 一致。
+    - 必须输出 anchor_map，把每个段落映射回 beat_id 与它包含的 line_ids；
+      所有 Beat 必须被至少一个段落覆盖。
+    - 单段不超过 paragraph_max_chars 字（手机阅读）。
+    - 视角与时态严格遵循 NarrativeVoice。
+    """
+    episode_json: str = dspy.InputField()
+    scenes_with_lines_json: str = dspy.InputField()
+    bible_json: str = dspy.InputField()
+    voice_json: str = dspy.InputField(desc="NarrativeVoice")
+    profile_json: str = dspy.InputField()
+
+    chapter_title: str = dspy.OutputField()
+    paragraphs_json: str = dspy.OutputField(desc="list[str]")
+    anchor_map_json: str = dspy.OutputField(desc="[{paragraph_index, beat_id, line_ids}]")
+
+
+class IntakeNormalize(dspy.Signature):
+    """把商家给的零散需求（微信文字、语音转写、表格）归一化成 NormalizedBrief，
+    并指出缺失的必填信息。
+
+    硬约束：
+    - 不得编造商家未提供的产品事实；缺失项必须列进 missing_fields。
+    - 不得替商家做创意决策（不写故事），只做信息归一。
+    """
+    raw_input: str = dspy.InputField()
+    brand_brief_json: str = dspy.InputField(desc="已有的 BrandBrief（可能为空）")
+    profile_json: str = dspy.InputField()
+
+    normalized_brief: str = dspy.OutputField()
+    missing_fields_json: str = dspy.OutputField(desc="list[{field, why_needed, suggested_question}]")
+
+
+class EditClassify(dspy.Signature):
+    """判断人类对生成文本做的一处修改属于哪一类，并给出可复用的经验陈述。
+    分类体系见 spec/feedback/TAXONOMY.md（D11 八类）。
+
+    硬约束：
+    - dimension 必须严格取自八类之一。
+    - rule_hint 必须是可判定的陈述句（"X 时应该 Y"），不得是感想。
+    - 若这处修改只反映个别客户偏好而非通用规律，dimension 必须是 taste。
+    """
+    node_context: str = dspy.InputField(desc="被改节点及其上下文（场景卡 + 相邻台词）")
+    original_text: str = dspy.InputField()
+    revised_text: str = dspy.InputField()
+    human_comment: str = dspy.InputField(desc="人类批注，可能为空")
+
+    dimension: str = dspy.OutputField(desc="structural|character|placement|dialogue|factual|compliance|producibility|taste")
+    severity: int = dspy.OutputField(desc="1-5")
+    rule_hint: str = dspy.OutputField(desc="一句可判定的经验陈述")
+    rationale: str = dspy.OutputField()
+
+
+class RuleInduce(dspy.Signature):
+    """从一组同类的人类修订观察中归纳出一条可判定的规则。
+
+    硬约束：
+    - statement 必须可被机器或判官判定真假，禁止"应该更好"这类不可判定表述。
+    - 必须指明 form：check（可用 IR 上的谓词表达）/ rubric（需要判断）/ prompt（生成时的指导）/ profile_default。
+    - 若 form=check，必须给出 select 与 assert 的草案（DSL 见 spec/checks/DSL.md）。
+    - 必须列出这条规则不适用的反例场景（防止过度泛化）。
+    - scope 必须是能被这组证据支撑的最小范围。
+    """
+    observations_json: str = dspy.InputField(desc="同簇的 L0 观察，含原文/改后/批注/case_id")
+    existing_rules_json: str = dspy.InputField(desc="同域已有的 L2/L3 规则，用于避免重复与冲突")
+
+    statement: str = dspy.OutputField()
+    form: str = dspy.OutputField()
+    scope_json: str = dspy.OutputField()
+    check_draft_yaml: str = dspy.OutputField(desc="form=check 时给出；否则为空")
+    counterexamples: str = dspy.OutputField()
+    conflicts_with: str = dspy.OutputField(desc="冲突的已有规则 id 列表；无则为空")
+```
+
+```yaml
+# spec/passes/dep_graph.yaml
+# 局部重编译的失效闭包（D5）。改这个文件必须更新 tests/test_recompile.py
+schema_version: "1.0"
+
+passes:
+  p0_intake:    {reads: [raw_brief, raw_brand], writes: [normalized_brief, brand_brief, constraints], granularity: project}
+  p1_bible:     {reads: [normalized_brief, brand_brief, profile], writes: [characters, locations, props, motifs, tone], granularity: project}
+  p2_arc:       {reads: [bible, brand_brief, profile], writes: [seasons, episodes, placement_plan], granularity: project}
+  p3_beatsheet: {reads: [episode, bible, placement_plan, neighbor_summaries, profile], writes: [beats, setup_payoffs, brand_moments], granularity: episode}
+  p4_scene:     {reads: [beats, bible, profile], writes: [scenes, beat_parent], granularity: episode}
+  p5_dialogue:  {reads: [scene, beats, characters, brand_constraints, profile], writes: [lines], granularity: scene}
+  p6_prose:     {reads: [scenes, lines, bible, voice, profile], writes: [chapters], granularity: episode}
+  p7_render:    {reads: [ir], writes: [artifacts], granularity: project, llm: false}
+
+# 字段变更 → 失效的 (pass, 粒度)
+invalidation:
+  "project.logline":            [[p1_bible, project], [p2_arc, project], [p3_beatsheet, all], [p4_scene, all], [p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "brand_brief.placement.*":    [[p2_arc, project], [p3_beatsheet, all], [p4_scene, all], [p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "brand_brief.must_include_lines": [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "brand_brief.banned_words":   [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "characters.*.voice_notes":   [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "episode.logline":            [[p3_beatsheet, self], [p4_scene, self], [p5_dialogue, self_scenes], [p6_prose, self], [p7_render, project]]
+  "episode.hook_promise":       [[p3_beatsheet, self], [p4_scene, self], [p5_dialogue, self_scenes], [p6_prose, self], [p7_render, project]]
+  "beat.summary":               [[p4_scene, parent_episode], [p5_dialogue, parent_scene], [p6_prose, parent_episode], [p7_render, project]]
+  "scene.goal|conflict|turn":   [[p5_dialogue, self], [p6_prose, parent_episode], [p7_render, project]]
+  "line.text":                  [[p6_prose, parent_episode], [p7_render, project]]
+  "voice.*":                    [[p6_prose, all], [p7_render, project]]        # D27 的收益：改视角只重跑小说
+  "profile.novel.*":            [[p6_prose, all], [p7_render, project]]
+  "profile.max_line_chars":     [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+
+# locked 节点保护
+locked_policy: "重编译时 locked==true 的节点，其 payload 与 id 必须逐字保留；其子节点仍可重编译"
+
+# 检查阶段映射（invariants.check_all 的 stage 参数）
+invariant_stages:
+  after_p1: [INV-01, INV-09, INV-10]
+  after_p2: [INV-01, INV-02, INV-03, INV-04, INV-12, INV-13]
+  after_p3: [INV-01, INV-02, INV-03, INV-04, INV-05, INV-06, INV-08, INV-10, INV-15]
+  after_p4: [INV-01, INV-02, INV-03, INV-04, INV-11]
+  after_p5: [INV-01, INV-02, INV-03, INV-07, INV-11]
+  after_p6: [INV-01, INV-14]
+  final: all
+```
+
+```markdown
+<!-- spec/feedback/TAXONOMY.md -->
+# 编辑分类学（D11）
+
+每处人类编辑必须且只能归入一类。`nsc ingest` 的自动分类器输出候选，你在 Langfuse 队列确认。
+分类体系与自动分类的做法借鉴 IteraTeR 的编辑意图标注（`docs/BORROW_MAP.md #10`）。
+
+| dimension | 定义 | 典型信号 | 它应该改进什么 |
+|---|---|---|---|
+| `structural` | Beat 序列/弧线/伏笔错 | 整段搬移、删除整个 Beat、补一个转折 | **北极星指标的分子**；改 p2/p3 的 prompt 与 STR-* 规则 |
+| `character` | 动机不成立、角色声音不一致 | 改动机说明、换说话人、改语气 | p1 的 voice_notes 设计、DLG-004 |
+| `placement` | 植入生硬/位置错/次数错 | 删除夸产品的台词、后移植入、改成动作 | p2/p3 的植入规划、BM-* 规则、rubric#placement_integration |
+| `dialogue` | 腔调、口语度、长度、节奏 | 缩短长句、去掉解释性台词、加打断 | p5 的 prompt、DLG-002/005、rubric#naturalness |
+| `factual` | 产品信息错、参数错 | 改数字、改产品名 | FCT-001、BrandBrief 补全 |
+| `compliance` | 合规/法律风险 | 删绝对化用语、删功效断言 | CMP-* 规则、`_legal_sources.md` |
+| `producibility` | 超预算、场景不可得、演员不够 | 删场景、合并地点、减角色 | PRD-* 规则、Profile 预算 |
+| `taste` | 无可归纳理由的个别偏好 | "我们不喜欢这个名字" | **只能进该客户的 Client Pack** |
+
+## 硬约束 `[[form:check]]` → `nsc.guards.rules_conflict`
+- `taste` 类观察**不得**参与 L0→L1 的全局聚类，只能产出 `scope: {kind: client}` 的规则。
+- 分类为 `structural` 的编辑数是北极星指标（D22）的分子，**统计必须按此分类分解**，混算等于没算。
+```
+
+## B.3 `profiles/` 与 `brands/`
+
+```python
+# profiles/_schema.py
+"""Format Profile 的可执行模式（D18）。新增 Profile 不得改本文件之外的内核代码。"""
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from spec.ir.nodes import Slug
+
+
+class Layers(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    season: bool = False
+    episode: bool = True
+    scene: bool = True
+    beat: bool = True
+    line: bool = True
+
+
+class NovelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = True
+    default_voice: dict = Field(default_factory=dict, description="→ NarrativeVoice 的默认值")
+    styles: list[Slug] = Field(default_factory=lambda: ["web_novel"])
+    chars_per_episode: tuple[int, int] = (1200, 2200)
+
+
+class BeatTemplate(BaseModel):
+    """Beat 模板先验。来源标注为 craft（Save the Cat / Story Circle）或 mined（逆向标注统计）。"""
+    model_config = ConfigDict(extra="forbid")
+    id: Slug
+    source: Literal["craft", "mined", "client"] = "mined"
+    sequence: list[str] = Field(description="beat_kind 序列，允许 '?' 表示可选")
+    note: str = ""
+
+
+class Profile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["1.0"] = "1.0"
+    id: Slug
+    version: str
+    display_name: str
+
+    layers: Layers = Field(default_factory=Layers)
+
+    episode_count: tuple[int, int]
+    duration_target_s: int
+    duration_tolerance: float = Field(default=0.15, ge=0, le=1)
+    beats_per_episode: tuple[int, int]
+    max_scenes_per_episode: int
+    max_characters: int
+    max_line_chars: int
+    chars_per_second: float = Field(default=4.5, gt=0, description="D26 中文对白语速")
+
+    min_emotion_range: float = Field(default=0.6, ge=0, le=2)
+    require_setup_payoff: bool = True
+    max_payoff_span_episodes: int = 2
+    min_voice_tic_ratio: float = 0.15
+    location_cost_budget: float = 3.0
+
+    beat_templates: list[BeatTemplate] = Field(default_factory=list)
+    novel: NovelSettings = Field(default_factory=NovelSettings)
+
+    render_targets: list[Slug] = Field(default_factory=lambda: ["novel_docx", "script_fountain"])
+    enabled_check_domains: list[str] = Field(
+        default_factory=lambda: ["structure", "brand", "dialogue", "novel", "compliance", "producibility", "fact"]
+    )
+    model_tiers: dict[str, str] = Field(
+        default_factory=dict, description="pass_name -> tier（→ config/models.yaml）"
+    )
+```
+
+```yaml
+# profiles/short_drama_v1.yaml
+schema_version: "1.0"
+id: short_drama_v1
+version: "1.0.0"
+display_name: 商家账号连续短剧（6-12 集）
+
+layers: {season: false, episode: true, scene: true, beat: true, line: true}
+
+episode_count: [6, 12]
+duration_target_s: 90
+duration_tolerance: 0.15
+beats_per_episode: [4, 7]
+max_scenes_per_episode: 3
+max_characters: 5
+max_line_chars: 40
+chars_per_second: 4.5
+
+min_emotion_range: 0.7
+require_setup_payoff: true
+max_payoff_span_episodes: 2
+min_voice_tic_ratio: 0.15
+location_cost_budget: 3.0
+
+beat_templates:
+  - id: hook_escalate_reveal
+    source: craft
+    note: "来源：Save the Cat 的节拍思路裁剪到 90 秒；待用 mined 统计替换（T-21）"
+    sequence: [hook, setup, escalation, complication, reversal, brand_moment, cliffhanger]
+  - id: mined_common_6beat
+    source: mined
+    note: "逆向标注 214 条样本中最高频序列；由 nsc annotate priors 生成（T-21 后填入真实值）"
+    sequence: [hook, inciting, escalation, brand_moment, reversal, cliffhanger]
+
+novel:
+  enabled: true
+  styles: [web_novel, warm_realism]
+  chars_per_episode: [1200, 2200]
+  default_voice:
+    person: third_limited
+    tense: past
+    style: web_novel
+    paragraph_max_chars: 180
+    interiority: medium
+
+render_targets: [novel_docx, novel_md, script_fountain, script_docx, storyboard_csv]
+enabled_check_domains: [structure, brand, dialogue, novel, compliance, producibility, fact]
+
+model_tiers:
+  p0_intake: tier_bulk
+  p1_bible: tier_plan
+  p2_arc: tier_plan
+  p3_beatsheet: tier_plan
+  p4_scene: tier_draft
+  p5_dialogue: tier_draft
+  p6_prose: tier_draft
+```
+
+```yaml
+# profiles/short_video_v1.yaml
+# D18 的泛化压测：这个 Profile 的存在是为了防止内核长歪。接入它不得修改 src/nsc/{runtime,checker}。
+schema_version: "1.0"
+id: short_video_v1
+version: "1.0.0"
+display_name: 单条营销短视频（30-60 秒）
+
+layers: {season: false, episode: true, scene: true, beat: true, line: true}
+
+episode_count: [1, 1]
+duration_target_s: 45
+duration_tolerance: 0.20
+beats_per_episode: [3, 5]
+max_scenes_per_episode: 2
+max_characters: 3
+max_line_chars: 28
+chars_per_second: 5.0
+
+min_emotion_range: 0.5
+require_setup_payoff: false        # 45 秒放不下伏笔闭环 → STR-007 的 scope 已排除本 profile
+max_payoff_span_episodes: 1
+min_voice_tic_ratio: 0.10
+location_cost_budget: 1.5
+
+beat_templates:
+  - id: hook_pain_solve_cta
+    source: mined
+    sequence: [hook, complication, brand_moment, cta]
+  - id: contrast_before_after
+    source: mined
+    sequence: [hook, setup, brand_moment, resolution, cta]
+
+novel:
+  enabled: true                     # 仍出"小说"，但形态是一段 300-500 字的短文，供商家确认
+  styles: [micro_prose]
+  chars_per_episode: [300, 500]
+  default_voice:
+    person: third_limited
+    tense: present
+    style: micro_prose
+    paragraph_max_chars: 120
+    interiority: low
+
+render_targets: [novel_md, script_fountain, storyboard_csv]
+enabled_check_domains: [structure, brand, dialogue, novel, compliance, producibility, fact]
+
+model_tiers:
+  p1_bible: tier_draft
+  p2_arc: tier_draft
+  p3_beatsheet: tier_plan
+  p4_scene: tier_draft
+  p5_dialogue: tier_draft
+  p6_prose: tier_draft
+```
+
+```yaml
+# brands/demo_tea/brand.yaml   （示例 Client Pack，用于 P0 端到端跑通）
+schema_version: "1.0"
+brand_id: demo_tea
+brand_name: 清野茶事
+version: "1.0.0"
+industry: beverage
+
+products:
+  - id: light_milk_tea
+    name: 轻乳茶
+    canonical_name: 清野轻乳茶
+    aliases: [轻乳茶]
+    category: 现制茶饮
+    price_cny: 16.0
+    facts:
+      sugar: "不额外添加蔗糖"
+      base: "选用云南高山茶基"
+      cup_ml: "500 毫升"
+
+selling_points:
+  - id: no_sucrose
+    claim: 不额外添加蔗糖
+    priority: 1
+    must_cover: true
+    proof: "配料表可现场展示"
+  - id: real_tea_base
+    claim: 用真茶不用茶粉
+    priority: 2
+    must_cover: true
+    proof: "门店可见茶叶罐与现萃设备"
+  - id: not_bloating
+    claim: 喝完不容易胀
+    priority: 3
+    must_cover: false
+    proof: ""
+    forbidden_phrasings: ["养胃", "促消化", "调理肠胃"]
+
+audience:
+  - id: office_woman_28
+    label: 一线城市 25-32 岁女性白领
+    age_range: "25-32"
+    pains: [下午必须来一杯但怕胖, 体检报告血糖偏高, 觉得无糖饮料难喝]
+    triggers: [同事推荐, 体检结果, 试喝]
+    language_notes: 说话短、爱用反问、不喜欢被说教
+
+usage_scenes:
+  - id: office_afternoon
+    description: 下午三点的办公室工位
+    shootable: true
+  - id: store_counter
+    description: 门店吧台前
+    shootable: true
+  - id: hospital_checkup
+    description: 体检中心走廊
+    shootable: false
+
+tone_words: [真诚, 生活化, 不油腻, 有一点幽默]
+banned_words: [养胃, 促消化, 无糖, 零糖, 减肥, 降血糖]
+must_include_lines: ["不额外加蔗糖"]
+must_include_visuals: [清野轻乳茶的杯身logo]
+
+placement:
+  max_moments_per_episode: 2
+  min_gap_beats: 2
+  max_high_intensity_per_episode: 1
+  require_high_plot_connection: 1
+  forbid_in_beat_kinds: [hook]
+
+legal:
+  banned_words: [最好喝, 第一名, 唯一, 治疗]
+  competitor_names: []      # 按需填
+  claim_whitelist: ["不额外添加蔗糖", "用真茶"]
+  ip_assignment: 交付后著作权归甲方所有
+  legal_refs: []
+
+account_context: >
+  商家自有抖音号 3.2 万粉，此前内容以门店探店与产品特写为主，完播率低。
+  希望用连续短剧提高关注与到店。
+business_goal: consideration
+```
+
+```yaml
+# examples/demo_tea/brief.yaml    （商家原始需求，Pass0 的输入）
+project_title: "下午三点"
+profile: short_drama_v1
+brand: demo_tea
+raw_request: |
+  我们想拍一个 6 集的小短剧，发在自己的抖音号上。
+  主角最好是那种在写字楼上班的女生，因为我们门店周边都是写字楼。
+  想表达的核心是我们家的茶是真材实料、不加蔗糖，喝了不会有负担。
+  预算很低，只能在门店和一个办公室场景拍，演员就我们店员两三个人。
+  希望前几秒就能抓住人，不要一上来就打广告。
+  一集一分半左右。
+episode_count: 6
+notes:
+  - 不要出现竞品
+  - 老板希望有个反转
+```
+
+## B.4 `src/` —— 关键骨架（可丢弃层，但契约要清楚）
+
+```python
+# src/nsc/runtime/cache.py
+"""内容寻址缓存（D5）。这是"改一集不重跑全季"的唯一实现点。"""
+from __future__ import annotations
+
+import functools
+import hashlib
+import json
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar
+
+import diskcache
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+_cache = diskcache.Cache(".diskcache/passes", size_limit=8 * 1024**3)
+
+
+def canonical_json(obj: Any) -> str:
+    return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def cache_key(
+    *,
+    pass_name: str,
+    input_fragment: Any,
+    promptset_ver: str,
+    profile_ver: str,
+    brand_ver: str,
+    ruleset_ver: str,
+    model_id: str,
+    temperature: float,
+    seed: int | None,
+    spec_sha: str,
+) -> str:
+    """D5 缓存键。任何一项变化都必须导致缓存失效——不要"优化"掉任何一项。"""
+    payload = canonical_json(
+        {
+            "p": pass_name, "i": input_fragment, "pv": promptset_ver, "prv": profile_ver,
+            "bv": brand_ver, "rv": ruleset_ver, "m": model_id, "t": temperature,
+            "s": seed, "spec": spec_sha,
+        }
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def cached_pass(pass_name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """装饰编译 Pass。被装饰函数必须接受 kwargs `ctx`（含所有版本号）与 `fragment`。
+
+    TODO(agent, T-04): 实现；必须
+      1. 命中时写 provenance 标记 cache_hit=true，且不产生成本记录
+      2. 未命中时记录 tokens/cost 到 runs 表
+      3. 支持 NSC_NO_CACHE=1 环境变量强制绕过
+    """
+    def deco(fn: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(fn)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            raise NotImplementedError("T-04")
+        return wrapper
+    return deco
+```
+
+```python
+# src/nsc/checker/interpreter.py
+"""声明式规则解释器（D7）。目标 ≤300 行。
+
+不要在这里写任何业务判断。业务判断在 spec/checks/**.yaml。
+借鉴：JMESPath 做 select、simpleeval 做 assert（docs/BORROW_MAP.md #22）。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Literal
+
+Severity = Literal["block", "warn", "info"]
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+    rule_id: str
+    severity: Severity
+    message: str            # 已渲染，遵循 DSL §5，可直接进 GEPA feedback
+    fix_hint: str = ""
+    node_id: str | None = None
+    domain: str = ""
+    tags: tuple[str, ...] = ()
+    rule_ref: str = ""
+
+
+@dataclass(slots=True)
+class CheckReport:
+    findings: list[Finding] = field(default_factory=list)
+    rules_evaluated: int = 0
+    rules_skipped: int = 0
+    errors: list[str] = field(default_factory=list)   # 规则本身写错了（select/assert 报错）
+
+    @property
+    def blocked(self) -> bool:
+        return any(f.severity == "block" for f in self.findings)
+
+    def as_feedback_text(self, max_chars: int = 2400) -> str:
+        """给 GEPA / 给 Pass 自检用。block 优先，同级按 domain 分组。见 gepa_metric.py。"""
+        raise NotImplementedError("T-05")
+
+
+class RuleSet:
+    """加载 spec/checks/**.yaml，按 profile/industry/brand 过滤。"""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.rules: list[dict[str, Any]] = []
+
+    @classmethod
+    def load(
+        cls, root: Path = Path("spec/checks"), *, profile_id: str, industry: str, brand_id: str,
+        stage: str, enabled_domains: list[str],
+    ) -> RuleSet:
+        raise NotImplementedError("T-05")
+
+    @property
+    def version(self) -> str:
+        """ruleset_ver = 所有生效规则文件内容的 sha256 前 12 位。进 provenance。"""
+        raise NotImplementedError("T-05")
+
+
+def evaluate(ruleset: RuleSet, view: dict[str, Any], ctx: dict[str, Any]) -> CheckReport:
+    """对 ir.view() 执行全部规则。
+
+    实现要点（agent 必读）：
+      1. select: jmespath.search(rule["select"], view)。结果非 list 时包成单元素 list。
+      2. group_by: 对 select 结果按 jmespath 求值分组，每组作为一个 item（item 为 list）。
+      3. bind: 对每个 item，逐个 jmespath.search(expr, item)；expr 以 "@.__ctx." 开头时改在 ctx 上求值。
+      4. assert: simpleeval.EvalWithCompoundTypes，names = {item, ctx, **bind}，functions = registry.FUNCS。
+      5. message: 用与 assert 相同的求值环境渲染 {…} 占位（自实现 mini-formatter，禁止 str.format 的属性访问漏洞）。
+      6. 规则自身报错 → 记入 report.errors，**不算 finding**，但 CI 视 errors 非空为失败。
+      7. 每条 finding 命中时写 rule_hits 表（供 D23 指标 4 与规则退役）。
+    """
+    raise NotImplementedError("T-05")
+```
+
+```python
+# src/nsc/checker/registry.py
+"""assert 表达式的白名单函数表（DSL §3）。纯函数、无 IO。"""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from rapidfuzz import fuzz
+
+_PUNCT = re.compile(r"[\s，。、；：？！“”‘’（）《》…—·,.;:?!\"'()\[\]<>~-]+")
+
+
+def chars(s: str | None) -> int:
+    """中文字符数：去空白与标点后的长度。D26 的度量单位。"""
+    return len(_PUNCT.sub("", s or ""))
+
+
+def count(xs: Any) -> int:
+    return len(xs or [])
+
+
+def min_gap(xs: list[dict], key: str = "linear_index") -> float:
+    vals = sorted(x[key] for x in (xs or []) if key in x)
+    if len(vals) < 2:
+        return float("inf")
+    return min(b - a for a, b in zip(vals, vals[1:], strict=True))
+
+
+def positions(xs: list[dict], total: int, key: str = "order") -> list[float]:
+    if not total:
+        return []
+    return [x[key] / max(total - 1, 1) for x in (xs or [])]
+
+
+def distinct(xs: list[Any], key: str | None = None) -> int:
+    if key:
+        return len({x[key] for x in (xs or [])})
+    return len(set(xs or []))
+
+
+def contains_any(s: str | None, words: list[str] | None) -> bool:
+    s = s or ""
+    return any(w and w in s for w in (words or []))
+
+
+def regex_any(s: str | None, patterns: list[str] | None) -> bool:
+    s = s or ""
+    return any(p and re.search(p, s) for p in (patterns or []))
+
+
+def lcs_len(a: str, b: str) -> int:
+    """最长公共**子串**长度（FCT-002）。O(n·m) DP，输入需先截断到 20k 字符。"""
+    raise NotImplementedError("T-05")
+
+
+def sim(a: str, b: str) -> float:
+    return fuzz.ratio(a or "", b or "") / 100.0
+
+
+def emotion_range(beats: list[dict] | None) -> float:
+    vs = [b["emotion"]["valence"] for b in (beats or []) if b.get("emotion")]
+    return (max(vs) - min(vs)) if vs else 0.0
+
+
+def monotone_runs(beats: list[dict] | None) -> int: ...
+def sum_of(xs: list[dict] | None, key: str) -> float: ...
+def pct(a: float, b: float) -> float:
+    return (a / b) if b else 0.0
+
+
+def all_of(xs: list[Any] | None, pred: str) -> bool: ...   # pred 以 x 为变量，用同一 simpleeval 环境
+def any_of(xs: list[Any] | None, pred: str) -> bool: ...
+def order_of(node_id: str) -> int: ...                      # 由 evaluate() 注入闭包
+
+
+FUNCS: dict[str, Any] = {
+    "chars": chars, "count": count, "min_gap": min_gap, "positions": positions,
+    "distinct": distinct, "contains_any": contains_any, "regex_any": regex_any,
+    "lcs_len": lcs_len, "sim": sim, "emotion_range": emotion_range,
+    "monotone_runs": monotone_runs, "sum_of": sum_of, "pct": pct,
+    "all_of": all_of, "any_of": any_of,
+    "len": len, "length": len, "min": min, "max": max, "abs": abs, "int": int, "sorted": sorted,
+}
+```
+
+现在是**最关键的文件**——GEPA 的 metric/feedback（D13 的胜负手）。
+
+```python
+# src/nsc/optimize/gepa_metric.py
+"""GEPA metric + feedback function —— 全系统的胜负手（决策文档第十五章第 3 条）。
+
+GEPA 契约（已核实 dspy 3.x）：
+    def metric(gold, pred, trace=None, pred_name=None, pred_trace=None) -> dspy.Prediction(score=..., feedback=...)
+若只返回 float，GEPA 的反思提示只能看到 "This trajectory got a score of N"，
+最贵的信息（**为什么不好**）会被丢掉。所以本文件的核心产物是 `feedback` 字符串。
+参考：GEPA 论文 arXiv:2507.19457 与 dspy.ai/api/optimizers/GEPA。
+
+## 设计原则（改本文件前必读）
+1. **feedback 的信息密度 > score 的精度。** 宁可 score 粗糙，也要 feedback 具体到"哪句台词、为什么、往哪改"。
+2. **checker 的 message 就是最好的 feedback。** 它是确定性的、可复现的、领域专用的自然语言诊断。
+   这就是为什么 DSL §5 强制 message 写成完整诊断句——那不是给人看的日志，是给优化器看的训练信号。
+3. **人类修订是最高价值的 feedback。** 但只在 trainset 上暴露，valset 只用 checker + 判官，
+   否则 GEPA 会学到"背下这些改法"而不是"学会这类判断"。
+4. **per-predictor 路由。** 给 p3_beatsheet 的 predictor 喂"台词太长"是噪声。见 FEEDBACK_ROUTING。
+5. **分趟优化 + 教师强制。** 不要端到端优化 8 趟（rollout 太贵、归因太难）。
+   优化 p3 时，p0-p2 用黄金 IR 教师强制；优化 p5 时，p0-p4 用黄金 IR。见 gepa_run.py。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Literal
+
+import dspy
+
+# ---------------------------------------------------------------- 路由表
+
+#: 每个 predictor 关心哪些反馈来源。改这个表 = 改 GEPA 的学习目标。
+FEEDBACK_ROUTING: dict[str, dict[str, Any]] = {
+    "p1_bible": {
+        "check_domains": ["structure", "producibility"],
+        "check_tags": ["character", "voice"],
+        "rubric_dims": ["producibility"],
+        "edit_dims": ["character", "producibility"],
+    },
+    "p2_arc": {
+        "check_domains": ["structure", "brand"],
+        "check_tags": ["coverage", "plot_connection", "hook", "placement_position"],
+        "rubric_dims": ["hook_strength", "transportation"],
+        "edit_dims": ["structural", "placement"],
+    },
+    "p3_beatsheet": {
+        "check_domains": ["structure", "brand"],
+        "check_tags": ["hook", "pacing", "setup_payoff", "emotion", "density", "intensity"],
+        "rubric_dims": ["hook_strength", "transportation", "placement_integration"],
+        "edit_dims": ["structural", "placement"],
+    },
+    "p4_scene": {
+        "check_domains": ["structure", "producibility"],
+        "check_tags": ["scene", "producibility"],
+        "rubric_dims": ["producibility"],
+        "edit_dims": ["structural", "producibility"],
+    },
+    "p5_dialogue": {
+        "check_domains": ["dialogue", "brand", "compliance", "fact"],
+        "check_tags": ["length", "banned", "naming", "voice", "must_include", "duration"],
+        "rubric_dims": ["naturalness", "placement_integration"],
+        "edit_dims": ["dialogue", "character", "placement", "factual", "compliance"],
+    },
+    "p6_prose": {
+        "check_domains": ["novel", "compliance", "fact"],
+        "check_tags": ["novel", "anchor", "readability", "consistency"],
+        "rubric_dims": ["naturalness", "transportation"],
+        "edit_dims": ["dialogue", "taste"],
+    },
+}
+
+#: score 的权重。sum == 1.0（测试会检查）
+WEIGHTS: dict[str, float] = {
+    "structure_match": 0.30,   # 与黄金 IR 的结构一致度（可算，稳定）
+    "checker": 0.30,           # L0 通过率（可算，稳定）
+    "rubric": 0.25,            # 判官（会漂，权重刻意压低）
+    "edit_distance": 0.15,     # 与人类改后文本的接近度（仅 trainset 有）
+}
+
+FEEDBACK_BUDGET_CHARS = 2600
+
+
+# ---------------------------------------------------------------- 数据结构
+
+@dataclass(slots=True)
+class MetricParts:
+    structure_match: float
+    checker: float
+    rubric: float
+    edit_distance: float | None
+    findings: list[Any]                 # list[Finding]
+    rubric_detail: dict[str, float]
+    human_edits: list[dict[str, Any]]
+    notes: list[str]
+
+
+# ---------------------------------------------------------------- 主入口
+
+def make_metric(
+    *,
+    split: Literal["train", "val"],
+    ruleset_root: str = "spec/checks",
+    judge_enabled: bool = True,
+    expose_human_edits: bool | None = None,
+) -> Any:
+    """构造 GEPA metric。
+
+    `expose_human_edits` 缺省 = (split == "train")。原则 3。
+    """
+    reveal = (split == "train") if expose_human_edits is None else expose_human_edits
+
+    def metric(
+        gold: dspy.Example,
+        pred: dspy.Prediction,
+        trace: Any = None,
+        pred_name: str | None = None,
+        pred_trace: Any = None,
+    ) -> dspy.Prediction:
+        parts = _compute_parts(gold, pred, judge_enabled=judge_enabled)
+        score = _aggregate(parts, has_edits=reveal and bool(parts.human_edits))
+        feedback = build_feedback(
+            parts, pred_name=pred_name, reveal_human_edits=reveal, budget=FEEDBACK_BUDGET_CHARS
+        )
+        return dspy.Prediction(score=score, feedback=feedback)
+
+    return metric
+
+
+def _aggregate(parts: MetricParts, *, has_edits: bool) -> float:
+    """硬地板：存在 block 级 finding 时直接给 failure_score(0.0)。
+
+    理由：GEPA 的 skip_perfect_score / failure_score 机制依赖分数的语义清晰。
+    一个结构违规的输出不该因为台词漂亮而拿到 0.6——那会教会优化器"用文采换合规"。
+    """
+    if any(getattr(f, "severity", "") == "block" for f in parts.findings):
+        return 0.0
+    w = dict(WEIGHTS)
+    if not has_edits:
+        # 重新归一化，避免 valset 天然吃亏
+        redistribute = w.pop("edit_distance")
+        total = sum(w.values())
+        w = {k: v + redistribute * v / total for k, v in w.items()}
+    s = (
+        w["structure_match"] * parts.structure_match
+        + w["checker"] * parts.checker
+        + w["rubric"] * parts.rubric
+        + w.get("edit_distance", 0.0) * (parts.edit_distance or 0.0)
+    )
+    return max(0.0, min(1.0, s))
+
+
+# ---------------------------------------------------------------- feedback 构造
+
+def build_feedback(
+    parts: MetricParts,
+    *,
+    pred_name: str | None,
+    reveal_human_edits: bool,
+    budget: int = FEEDBACK_BUDGET_CHARS,
+) -> str:
+    """把诊断信息压缩成一段高信息密度的中文反馈。
+
+    ## 优先级（预算耗尽时按此截断）
+    1. **block 级 checker findings**（最确定、最可操作）
+    2. **人类修订对**（最高价值，仅 trainset）：原文 → 改后 → 人类理由
+    3. **最低分的 rubric 维度**（含判官引用的具体 span）
+    4. **warn 级 findings**（同域最多 2 条）
+    5. **一条正面确认**（做对了什么，防止优化器把好的一起改掉 —— 这条经验上很重要）
+
+    ## 格式（GEPA 的反思 LM 要读的，所以要结构化但不要 JSON）
+    ```
+    【必须修正】
+    - [BM-001] 第 3 集有 4 处品牌植入，超过预算 2 处；…请合并第 2、3 处。
+    【人类是怎么改的】
+    - 原文：这款茶用的是进口茶基，热量只有三分之一。
+      改后：（把杯子推过去）不加糖的。
+      理由：念参数太假了，我们客户不会这么说话。
+      → 这类修改反复出现（本类共 5 次）：卖点应由动作与后果承载，不由台词宣称。
+    【判官打分最低的维度】
+    - placement_integration 2/5：判官引用「林姐：这款0蔗糖…」——角色变成播音员，删掉这段剧情不变。
+    【做对了的地方（保持）】
+    - 第 1 集 hook 用"体检报告"起手，3 秒内给出具体冲突。
+    ```
+
+    ## 禁止
+    - 禁止输出黄金答案全文（只给被修改的 span 对照）。
+    - 禁止只写规则 ID 不写内容。
+    - 禁止把 8 个维度全塞进来（反思 LM 会被淹没，GEPA 论文的教训是反馈要聚焦）。
+
+    TODO(agent, T-12): 实现。必须有单元测试验证：
+      - pred_name 路由生效（p3 的反馈里不出现 DLG-002）
+      - reveal_human_edits=False 时输出不含 revised_text
+      - 输出长度 <= budget
+      - block finding 一定出现在第一节
+    """
+    raise NotImplementedError("T-12")
+
+
+def _compute_parts(gold: dspy.Example, pred: dspy.Prediction, *, judge_enabled: bool) -> MetricParts:
+    """计算四个分量。
+
+    structure_match 的定义（p3 为例）：
+      - beat_kind 序列的归一化编辑距离（1 - dist/max_len）× 0.5
+      - hook 位置一致 × 0.15
+      - brand_moment 位置集合的 Jaccard × 0.2
+      - setup_payoff 数量与跨度匹配 × 0.15
+    对 p5：
+      - 说话人序列一致度 × 0.4；每条长度分布 KL × 0.3；必提台词命中 × 0.3
+    对 p6：
+      - anchor 覆盖率 × 0.5；段落数比例 × 0.2；对白相似度均值 × 0.3
+    定义写在 src/nsc/optimize/structure_match.py，**必须是确定性的、无 LLM 的**。
+
+    TODO(agent, T-12)
+    """
+    raise NotImplementedError("T-12")
+```
+
+```python
+# src/nsc/optimize/gepa_run.py
+"""GEPA 运行编排（D13 3 档）。
+
+分趟优化 + 教师强制（原则 5）：
+    nsc optimize --pass p3_beatsheet --auto light
+会构造一个只含 p3 的 dspy.Module，输入直接取黄金 IR 的 p0-p2 产物。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+PassName = Literal["p1_bible", "p2_arc", "p3_beatsheet", "p4_scene", "p5_dialogue", "p6_prose"]
+
+# 优化顺序（先结构后文字：结构错了优化台词是浪费）
+OPTIMIZE_ORDER: tuple[PassName, ...] = ("p3_beatsheet", "p2_arc", "p5_dialogue", "p6_prose", "p4_scene", "p1_bible")
+
+
+def run(
+    pass_name: PassName,
+    *,
+    auto: Literal["light", "medium", "heavy"] = "light",
+    reflection_model_tier: str = "tier_reflect",
+    out_dir: Path = Path("prompts"),
+    max_cost_usd: float = 20.0,
+) -> None:
+    """
+    实现要点（agent 必读）：
+      1. trainset / valset 来自 eval/datasets/<pass_name>_{train,val}.jsonl，
+         由 `nsc eval build-dataset` 从 cases 生成。**train/val 必须按 case 切分，不能按节点切分**
+         （同一个项目的不同集出现在两侧 = 泄漏）。
+      2. metric = make_metric(split="train") 用于 trainset；
+         GEPA 用 valset 追踪 Pareto 分数 → 那里必须用 make_metric(split="val")。
+         dspy.GEPA 只接一个 metric，因此实现方式：metric 内部按 gold.meta["split"] 分流。
+      3. reflection_lm 必须是强模型（config/models.yaml::tier_reflect）；student 用该 pass 的 tier。
+      4. track_stats=True，log_dir=out/gepa/<pass>/<ts>，把 detailed_results 存档（可审计）。
+      5. 产出：compiled program 的 instruction 写入
+         prompts/<pass_name>.json = {
+           "instruction": "...", "_meta": {"generated_by":"gepa", "run_id":..., "spec_sha":...,
+           "seed_sig_hash":..., "content_hash": sha256(instruction), "score_before":..., "score_after":...,
+           "valset_size":..., "cost_usd":...}}
+         `content_hash` 是 CI 检测手改的依据（nsc.guards.prompts_untouched）。
+      6. **回归闸**：score_after 必须 > score_before + 0.02，且在 holdout 上其他 pass 的分数不下降；
+         否则不写入 prompts/，只写 out/gepa/rejected/。
+      7. 成本上限：超过 max_cost_usd 立即停止并保存中间结果。
+
+    TODO(agent, T-13)
+    """
+    raise NotImplementedError("T-13")
+```
+
+```python
+# src/nsc/feedback/align.py
+"""反向对齐器（D10）—— 优先级高于生成质量（决策文档第十五章第 2 条）。
+
+输入：客户回收的 docx（可能带修订）/ 纯文本 / 微信消息
+输出：list[EditRecord]，每条锚定到一个 node_id
+
+## 三级锚点恢复（D29）
+L1 bookmark：docx 中 `NID_<ulid>` 书签 → 直接得到 node_id。最可靠。
+L2 附录索引：文末"锚点索引"表（段落序号 ↔ node_id）。用户删表则失效。
+L3 模糊回退：把交付时的段落序列与回收文本的段落序列做**单调对齐**
+             （Needleman-Wunsch，打分函数 = rapidfuzz 归一化相似度），
+             再在对齐段内做句级二次对齐。
+
+L3 必须保持单调（段落顺序不可交叉），否则会把第 5 集的改动记到第 2 集上。
+这是整个模块最容易出错的地方，`tests/test_align.py` 必须覆盖：
+  - 整段删除 / 整段新增 / 段落顺序调整 / 大幅重写 / 只改标点
+
+## 修订提取
+优先直接解析 OOXML 的 w:ins / w:del / w:comment（拿到作者与时间戳）。
+pandoc --track-changes=all 作为兜底。见 docs/BORROW_MAP.md #18。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+EditType = Literal["insert", "delete", "replace", "move", "comment"]
+AnchorLevel = Literal["bookmark", "appendix", "fuzzy", "failed"]
+
+
+@dataclass(slots=True)
+class EditRecord:
+    node_id: str | None
+    anchor_level: AnchorLevel
+    anchor_confidence: float
+    edit_type: EditType
+    before: str
+    after: str
+    human_comment: str = ""
+    author: str = ""
+    # 由 EditClassify 填充，人工在 Langfuse 确认
+    dimension: str | None = None
+    severity: int | None = None
+    rule_hint: str = ""
+
+
+def extract_revisions(path: Path) -> list[dict]: ...            # T-10
+def recover_anchors(edits: list[dict], delivered_ir_path: Path) -> list[EditRecord]: ...  # T-10
+def align_paragraphs(delivered: list[str], returned: list[str]) -> list[tuple[int | None, int | None]]:
+    """单调对齐。返回 (delivered_idx, returned_idx) 对，None 表示增/删。
+
+    禁止用贪心最近邻——那会在段落重排时崩掉。必须 DP。
+    """
+    raise NotImplementedError("T-10")
+
+
+def ingest(path: Path, *, case_id: str, auto_classify: bool = True) -> list[EditRecord]:
+    """端到端。产出：
+      - feedback 表（D9 五元组）
+      - revision_pairs（before/after/dimension）
+      - preference_pairs（原文 vs 改后，人类偏好=改后）
+      - L0 observations（spec/rules/L0_observations/*.yaml）
+      - Langfuse annotation queue 条目（供你 30s 批量确认）
+    验收：`tests/test_align.py::test_end_to_end_ingest` 中，
+          对 fixtures/ingest/demo_tea_round1.docx 恢复出 ≥90% 的编辑且 node_id 正确。
+    """
+    raise NotImplementedError("T-11")
+```
+
+```python
+# src/nsc/cli.py
+"""nsc CLI —— CLI 是唯一 UI（第十四章：P2 前不做 Web UI）。"""
+from __future__ import annotations
+
+import typer
+
+app = typer.Typer(no_args_is_help=True, add_completion=False)
+
+# --- 编译 ---
+@app.command()
+def run(brief: str, profile: str = "", out: str = "out/", rerank: bool = False) -> None:
+    """端到端编译：brief → IR → 小说 → 剧本。"""
+
+
+@app.command()
+def recompile(ir: str, episode: int | None = None, scene: str | None = None,
+              from_pass: str = "", force: bool = False) -> None:
+    """局部重编译（依赖闭包由 spec/passes/dep_graph.yaml 给出）。"""
+
+
+@app.command()
+def check(ir: str, stage: str = "final", fmt: str = "text") -> None:
+    """L0 检查。exit code：0 全绿 / 1 有 block / 2 规则本身报错。"""
+
+
+@app.command()
+def render(ir: str, target: list[str] = typer.Option(None)) -> None:
+    """渲染交付物（含锚点）。"""
+
+
+# --- 反馈与飞轮 ---
+feedback_app = typer.Typer(); app.add_typer(feedback_app, name="ingest")
+@feedback_app.command("docx")
+def ingest_docx(path: str, case: str) -> None: ...
+@feedback_app.command("text")
+def ingest_text(path: str, case: str) -> None: ...
+
+mine_app = typer.Typer(); app.add_typer(mine_app, name="mine")
+@mine_app.command("run")
+def mine_run(open_pr: bool = False) -> None:
+    """L0→L1 聚类归纳 → L1→L2 验证 → 输出候选规则 PR。"""
+@mine_app.command("retire")
+def mine_retire() -> None: ...
+
+# --- 优化与评测 ---
+@app.command()
+def optimize(pass_: str = typer.Option(..., "--pass"), auto: str = "light") -> None: ...
+
+eval_app = typer.Typer(); app.add_typer(eval_app, name="eval")
+@eval_app.command("l1")
+def eval_l1(sample: int = 12) -> None: ...
+@eval_app.command("build-dataset")
+def eval_build(pass_: str = typer.Option(..., "--pass")) -> None: ...
+
+judge_app = typer.Typer(); app.add_typer(judge_app, name="judge")
+@judge_app.command("calibrate")
+def judge_calibrate(report: str = "out/judge_calibration.md") -> None: ...
+
+# --- 冷启动 ---
+annotate_app = typer.Typer(); app.add_typer(annotate_app, name="annotate")
+@annotate_app.command("ingest")
+def annotate_ingest(source: str) -> None:
+    """逆向标注：字幕/转写 → Narrative IR（D15）。遵守 COMPLIANCE.md §1。"""
+@annotate_app.command("priors")
+def annotate_priors(out: str = "profiles/_mined_priors.yaml") -> None: ...
+@annotate_app.command("roundtrip")
+def annotate_roundtrip(case: str) -> None:
+    """往返重建评测（D16）：原片→IR→重生成→对比。IR 设计的唯一无监督信号。"""
+
+# --- 数据与指标 ---
+db_app = typer.Typer(); app.add_typer(db_app, name="db")
+@db_app.command("rebuild")
+def db_rebuild() -> None: ...
+@db_app.command("export")
+def db_export() -> None: ...
+
+metrics_app = typer.Typer(); app.add_typer(metrics_app, name="metrics")
+@metrics_app.command("weekly")
+def metrics_weekly(write: str = "docs/metrics/") -> None:
+    """D22 北极星 + D23 六个数。"""
+
+dev_app = typer.Typer(); app.add_typer(dev_app, name="dev")
+@dev_app.command("split-checks")
+def split_checks(batch: str) -> None:
+    """把 spec/checks/_BATCH_*.yaml 拆成一文件一规则。"""
+```
+
+```yaml
+# config/models.yaml
+# 模型是生成物（可换），路由策略是资产。改 tier 定义不需要改代码。
+schema_version: "1.0"
+tiers:
+  tier_plan:    {model: "openai/gpt-5.1", temperature: 0.8, max_tokens: 8000}
+  tier_draft:   {model: "openai/gpt-5.1-mini", temperature: 0.9, max_tokens: 6000}
+  tier_bulk:    {model: "openai/gpt-5.1-mini", temperature: 0.2, max_tokens: 4000}
+  tier_judge:   {model: "anthropic/claude-sonnet-4.5", temperature: 0.0, max_tokens: 1500}
+  tier_reflect: {model: "anthropic/claude-opus-4.5", temperature: 1.0, max_tokens: 8000}
+  tier_embed:   {model: "BAAI/bge-m3", local: true}
+
+# ⚠️ 以上模型 ID 必须由 agent 在 T-01 中用 `litellm.model_list` 或官方文档核对后修正。
+# 本文件不参与语义门禁，只参与成本统计与可复现（进 provenance.model_id）。
+
+budgets:
+  per_episode_usd: 0.60
+  per_run_usd: 8.0
+  per_gepa_run_usd: 20.0
+  ci_eval_usd: 3.0
+
+retry: {attempts: 3, backoff: exponential}
+langfuse: {enabled: true, host_env: LANGFUSE_HOST, sample_rate: 1.0}
+```
+
+## B.5 数据模型
+
+```sql
+-- db/migrations/0001_init.sql
+-- A4 证据层。真相在 cases/export/*.jsonl（D28），本库是可重建的工作副本。
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+
+CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+
+-- 一次交付 = 一个 case
+CREATE TABLE cases (
+  case_id       TEXT PRIMARY KEY,             -- 'case:0142'
+  brand_id      TEXT NOT NULL,
+  profile_id    TEXT NOT NULL,
+  industry      TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  source        TEXT NOT NULL CHECK(source IN ('client','reverse_annotation','synthetic')),
+  source_url    TEXT DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'draft'
+                CHECK(status IN ('draft','delivered','accepted','rejected','archived')),
+  accepted_at   TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE TABLE ir_snapshots (
+  snapshot_id   TEXT PRIMARY KEY,
+  case_id       TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL CHECK(kind IN ('generated','human_revised','golden','annotated')),
+  round         INTEGER NOT NULL DEFAULT 1,
+  ir_json       TEXT NOT NULL,
+  spec_sha      TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+);
+
+-- 扁平节点表：让"按节点检索/统计"变成 SQL 而不是 Python 遍历
+CREATE TABLE nodes (
+  node_id       TEXT NOT NULL,
+  snapshot_id   TEXT NOT NULL REFERENCES ir_snapshots(snapshot_id) ON DELETE CASCADE,
+  case_id       TEXT NOT NULL,
+  kind          TEXT NOT NULL,
+  parent_id     TEXT,
+  linear_index  INTEGER,
+  episode_no    INTEGER,
+  beat_kind     TEXT,
+  payload_json  TEXT NOT NULL,
+  text          TEXT DEFAULT '',
+  PRIMARY KEY (snapshot_id, node_id)
+);
+CREATE INDEX idx_nodes_case_kind ON nodes(case_id, kind);
+CREATE INDEX idx_nodes_beatkind ON nodes(beat_kind);
+
+-- D9 反馈五元组
+CREATE TABLE feedback (
+  feedback_id     TEXT PRIMARY KEY,
+  case_id         TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+  target_node_id  TEXT,
+  anchor_level    TEXT NOT NULL CHECK(anchor_level IN ('bookmark','appendix','fuzzy','failed')),
+  anchor_conf     REAL NOT NULL DEFAULT 0,
+  dimension       TEXT NOT NULL CHECK(dimension IN
+                    ('structural','character','placement','dialogue','factual',
+                     'compliance','producibility','taste')),
+  verdict         TEXT NOT NULL CHECK(verdict IN ('accept','reject','revise','praise')),
+  severity        INTEGER NOT NULL CHECK(severity BETWEEN 1 AND 5),
+  rationale_nl    TEXT DEFAULT '',
+  original_text   TEXT DEFAULT '',
+  revised_text    TEXT DEFAULT '',
+  edit_type       TEXT,
+  author          TEXT DEFAULT '',
+  confirmed_by    TEXT DEFAULT '',              -- 人工确认者；空 = 仅 LLM 猜测，不得进 L1 聚类
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX idx_feedback_dim ON feedback(dimension, created_at);
+
+CREATE TABLE revision_pairs (
+  pair_id     TEXT PRIMARY KEY,
+  feedback_id TEXT NOT NULL REFERENCES feedback(feedback_id) ON DELETE CASCADE,
+  unit_kind   TEXT NOT NULL,
+  context_json TEXT NOT NULL,
+  before_text TEXT NOT NULL,
+  after_text  TEXT NOT NULL,
+  dimension   TEXT NOT NULL,
+  split       TEXT NOT NULL DEFAULT 'train' CHECK(split IN ('train','val','test'))
+);
+
+CREATE TABLE preference_pairs (
+  pair_id    TEXT PRIMARY KEY,
+  case_id    TEXT NOT NULL,
+  unit_kind  TEXT NOT NULL,
+  a_text     TEXT NOT NULL,
+  b_text     TEXT NOT NULL,
+  context_json TEXT NOT NULL,
+  human_pref TEXT NOT NULL CHECK(human_pref IN ('a','b','tie')),
+  dimension  TEXT NOT NULL,
+  origin     TEXT NOT NULL CHECK(origin IN ('revision','regeneration','counterexample')),
+  split      TEXT NOT NULL DEFAULT 'train' CHECK(split IN ('train','val','test'))
+);
+
+CREATE TABLE judge_scores (
+  score_id   TEXT PRIMARY KEY,
+  run_id     TEXT NOT NULL,
+  pair_id    TEXT,
+  unit_id    TEXT,
+  dimension  TEXT NOT NULL,
+  mode       TEXT NOT NULL CHECK(mode IN ('pairwise','absolute')),
+  verdict    TEXT NOT NULL,
+  margin     INTEGER,
+  rationale  TEXT DEFAULT '',
+  cited_spans_json TEXT DEFAULT '[]',
+  judge_ver  TEXT NOT NULL,
+  model_id   TEXT NOT NULL,
+  swapped    INTEGER NOT NULL DEFAULT 0,
+  invalid    INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE judge_calibration (
+  item_id     TEXT PRIMARY KEY,
+  pair_id     TEXT,
+  dimension   TEXT NOT NULL,
+  human_verdict TEXT NOT NULL,
+  human_score  INTEGER,
+  source      TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
+-- A5 规则台账（git 中的 yaml 是真相，此表用于命中统计）
+CREATE TABLE rules (
+  rule_id     TEXT PRIMARY KEY,
+  level       TEXT NOT NULL,
+  statement   TEXT NOT NULL,
+  scope_kind  TEXT NOT NULL,
+  scope_value TEXT DEFAULT '',
+  form        TEXT NOT NULL,
+  target      TEXT DEFAULT '',
+  dimension   TEXT DEFAULT '',
+  hit_count   INTEGER NOT NULL DEFAULT 0,
+  effect_size REAL,
+  created_at  TEXT NOT NULL,
+  last_fired_at TEXT,
+  superseded_by TEXT
+);
+
+CREATE TABLE rule_hits (
+  hit_id    TEXT PRIMARY KEY,
+  rule_id   TEXT NOT NULL,
+  check_id  TEXT NOT NULL,
+  case_id   TEXT NOT NULL,
+  node_id   TEXT,
+  run_id    TEXT NOT NULL,
+  severity  TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_rule_hits_rule ON rule_hits(rule_id, created_at);
+
+-- D20 Provenance
+CREATE TABLE runs (
+  run_id        TEXT PRIMARY KEY,
+  case_id       TEXT,
+  pass_name     TEXT NOT NULL,
+  spec_sha      TEXT NOT NULL,
+  profile_ver   TEXT NOT NULL,
+  brand_ver     TEXT NOT NULL,
+  ruleset_ver   TEXT NOT NULL,
+  promptset_ver TEXT NOT NULL,
+  model_id      TEXT NOT NULL,
+  temperature   REAL NOT NULL,
+  seed          INTEGER,
+  input_hash    TEXT NOT NULL,
+  cache_hit     INTEGER NOT NULL DEFAULT 0,
+  tokens_in     INTEGER DEFAULT 0,
+  tokens_out    INTEGER DEFAULT 0,
+  cost_usd      REAL DEFAULT 0,
+  wall_ms       INTEGER DEFAULT 0,
+  langfuse_trace_id TEXT DEFAULT '',
+  created_at    TEXT NOT NULL
+);
+
+-- 1 档检索池
+CREATE TABLE retrieval_items (
+  item_id     TEXT PRIMARY KEY,
+  case_id     TEXT NOT NULL,
+  node_id     TEXT,
+  unit_kind   TEXT NOT NULL,          -- beat_sequence | scene_card | dialogue_block | chapter
+  industry    TEXT NOT NULL,
+  profile_id  TEXT NOT NULL,
+  brand_id    TEXT DEFAULT '',
+  quality     REAL NOT NULL DEFAULT 0,   -- 人类接受 = 1.0；判官高分 = 0.6…
+  content     TEXT NOT NULL,
+  meta_json   TEXT NOT NULL DEFAULT '{}',
+  usable_as_example INTEGER NOT NULL DEFAULT 1,  -- COMPLIANCE：逆向标注片段=0
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX idx_retrieval ON retrieval_items(unit_kind, industry, profile_id, quality DESC);
+
+CREATE VIRTUAL TABLE retrieval_vec USING vec0(
+  item_id TEXT PRIMARY KEY, embedding FLOAT[1024]
+);
+
+CREATE TABLE observations_index (
+  obs_id     TEXT PRIMARY KEY,
+  feedback_id TEXT NOT NULL,
+  cluster_id TEXT,
+  yaml_path  TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE metrics_weekly (
+  week          TEXT PRIMARY KEY,          -- '2025-W03'
+  structural_edit_rate REAL,               -- D22 北极星
+  first_pass_rate      REAL,
+  edit_rate_json       TEXT,               -- 按 D11 八类分解
+  judge_agreement_json TEXT,
+  rule_net_gain_json   TEXT,
+  retrieval_hit_rate   REAL,
+  retrieval_gain       REAL,
+  cost_per_episode_usd REAL,
+  minutes_per_episode  REAL,
+  computed_at   TEXT NOT NULL
+);
+
+INSERT OR REPLACE INTO schema_meta(version, applied_at) VALUES (1, datetime('now'));
+```
+
+```markdown
+<!-- cases/README.md -->
+# cases/ —— A4 证据层
+
+## 真相在 `export/`，不在 `cases.db`（D28）
+```
+cases/
+  export/
+    cases.jsonl              # 一行一个 case
+    ir_snapshots.jsonl       # 一行一个 IR 快照（ir_json 内联）
+    feedback.jsonl
+    revision_pairs.jsonl
+    preference_pairs.jsonl
+    judge_calibration.jsonl
+    retrieval_items.jsonl
+  attachments/               # git-lfs：客户回收的 docx、原始批注截图
+  cases.db                   # gitignored，由 make db-rebuild 生成
+```
+
+`make db-export` 在每次写入后自动调用（CLI 内置），所以 git 里始终是最新真相。
+`make db-rebuild` 在任何机器上从 jsonl 重建 db。**重装机器 / 换语言重写系统时，只需要 export/ 这一个目录。**
+
+## 为什么不用 Postgres
+1 人开发、单机、数据量 <10 万行、需要进 git 做 review。SQLite 是唯一正确答案（D-技术栈）。
+
+## 编号
+`case:NNNN` 四位递增，由 `nsc db next-case-id` 分配。**永不复用。**
+```
+
+## B.6 测试（Agent 的验收面）
+
+```python
+# tests/conftest.py
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(scope="session")
+def profiles() -> dict:
+    return {p.stem: yaml.safe_load(p.read_text("utf-8"))
+            for p in Path("profiles").glob("*.yaml") if not p.stem.startswith("_")}
+
+
+@pytest.fixture(scope="session")
+def demo_brand() -> dict:
+    return yaml.safe_load(Path("brands/demo_tea/brand.yaml").read_text("utf-8"))
+
+
+@pytest.fixture(scope="session")
+def golden_ir() -> dict:
+    """一份人工审定的完整 IR（6 集）。P0 的核心 fixture。
+    T-06 的任务之一就是产出它并提交到 tests/fixtures/golden/demo_tea_ir.json。"""
+    return json.loads((FIXTURES / "golden" / "demo_tea_ir.json").read_text("utf-8"))
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("-m") and "llm" in str(config.getoption("-m")):
+        return
+    skip_llm = pytest.mark.skip(reason="需要 LLM；用 -m llm 或 nightly 运行")
+    for item in items:
+        if "llm" in item.keywords and not config.getoption("--run-llm", default=False):
+            item.add_marker(skip_llm)
+
+
+def pytest_addoption(parser):
+    parser.addoption("--run-llm", action="store_true", default=False)
+```
+
+```python
+# tests/test_invariants.py
+"""IR 不变量测试。这是"代码可丢弃"的验收面（D21 第 2 条）：
+重写 src/ 之后，用同一套测试跑通，即等价。所以本文件**不得** import src/nsc 的内部实现细节，
+只能 import spec.ir 与公开入口。"""
+from __future__ import annotations
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from spec.ir.container import NarrativeIR
+from spec.ir.invariants import ALL_INVARIANTS, check_all, inv_16_id_stability
+
+
+def test_all_invariants_have_implementation():
+    """15+1 条不变量必须都有实现，不允许"文档写了代码没做"。"""
+    import spec.ir.invariants as m
+    missing = [i for i in ALL_INVARIANTS if not hasattr(m, f"inv_{i.split('-')[1]}")
+               and i not in {"INV-01", "INV-10"}]  # 这两条由 Pydantic 保证
+    assert not missing, f"未实现的不变量：{missing}"
+
+
+def test_golden_ir_passes_all(golden_ir, profiles):
+    ir = NarrativeIR.model_validate(golden_ir)
+    v = check_all(ir, profiles["short_drama_v1"], stage="final")
+    assert v == [], f"黄金 IR 违反不变量：{v}"
+
+
+@pytest.mark.parametrize("inv", ["INV-03", "INV-05", "INV-06", "INV-07", "INV-08", "INV-12", "INV-15"])
+def test_each_invariant_catches_its_break(golden_ir, profiles, inv):
+    """对每条不变量，必须有一个"破坏它"的 fixture 并被抓到。
+    fixture 放 tests/fixtures/broken/<INV-ID>.json。缺失 = 测试失败。"""
+    import json
+    from pathlib import Path
+    p = Path(f"tests/fixtures/broken/{inv}.json")
+    assert p.exists(), f"缺少破坏 {inv} 的 fixture：{p}"
+    ir = NarrativeIR.model_validate(json.loads(p.read_text("utf-8")))
+    v = check_all(ir, profiles["short_drama_v1"], stage="final")
+    assert any(x.inv_id == inv for x in v), f"{inv} 未被抓到"
+
+
+def test_id_stability(golden_ir):
+    """INV-16：局部重编译必须保留未变节点的 ID。
+
+    这是**最高优先级测试**。违反它 = 所有历史反馈失效 = 资产系统性损毁。
+    """
+    from nsc.runtime.ir_io import merge_preserving_ids
+    old = NarrativeIR.model_validate(golden_ir)
+    # 只改第 3 集的一句台词
+    new_raw = dict(golden_ir)
+    # ... 构造：重新生成第 3 集，其他集内容不变但 ID 被打乱
+    pytest.skip("T-03 实现 merge_preserving_ids 后启用")
+
+
+@settings(max_examples=50, deadline=None)
+@given(st.integers(min_value=1, max_value=12))
+def test_order_is_contiguous_property(n):
+    """property-based：任意合法构造出的 IR，同 parent 下 order 必须 0..n-1 连续。"""
+    pytest.skip("T-02：需要 IR 构造 strategy（tests/strategies.py）")
+```
+
+```python
+# tests/test_checker_dsl.py
+"""规则 DSL 一致性测试。自动发现 spec/checks/**.yaml，要求每条规则都有 pass/fail fixture。
+组织方式借鉴 CheckList 的 MFT（docs/BORROW_MAP.md #13）。"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+
+CHECKS = sorted(p for p in Path("spec/checks").rglob("*.yaml")
+                if not p.name.startswith("_"))
+FIX = Path("tests/fixtures/checks")
+
+
+def _rule(p: Path) -> dict:
+    return yaml.safe_load(p.read_text("utf-8"))
+
+
+def test_checks_exist():
+    assert len(CHECKS) >= 30, f"首批需要 ≥30 条 L0 规则，当前 {len(CHECKS)}"
+
+
+@pytest.mark.parametrize("path", CHECKS, ids=lambda p: _rule(p)["id"])
+def test_every_rule_has_fixtures(path):
+    rid = _rule(path)["id"]
+    d = FIX / rid
+    assert (d / "pass.json").exists(), f"{rid} 缺少 pass.json"
+    assert (d / "fail.json").exists(), f"{rid} 缺少 fail.json"
+
+
+@pytest.mark.parametrize("path", CHECKS, ids=lambda p: _rule(p)["id"])
+def test_rule_pass_and_fail(path, profiles, demo_brand):
+    from nsc.checker.interpreter import RuleSet, evaluate
+    from nsc.runtime.ir_io import build_view
+    rule = _rule(path)
+    rid = rule["id"]
+    rs = RuleSet.load(profile_id="short_drama_v1", industry="beverage",
+                      brand_id="demo_tea", stage=rule["stage"],
+                      enabled_domains=[rule["domain"]])
+    rs.rules = [rule]  # 只测这一条
+    for name, should_fire in (("pass.json", False), ("fail.json", True)):
+        raw = json.loads((FIX / rid / name).read_text("utf-8"))
+        view = build_view(raw, profiles["short_drama_v1"], demo_brand)
+        rep = evaluate(rs, view, ctx={"profile": profiles["short_drama_v1"], "brand": demo_brand})
+        assert not rep.errors, f"{rid} 规则本身报错：{rep.errors}"
+        fired = any(f.rule_id == rid for f in rep.findings)
+        assert fired == should_fire, f"{rid} 在 {name} 上 fired={fired}，期望 {should_fire}"
+
+
+@pytest.mark.parametrize("path", CHECKS, ids=lambda p: _rule(p)["id"])
+def test_message_quality(path):
+    """DSL §5：message 必须是完整诊断句。这条测试直接保护 GEPA 的输入质量。"""
+    r = _rule(path)
+    msg = r["message"]
+    assert len(msg) >= 30, f"{r['id']} 的 message 过短，无法作为 GEPA 反馈"
+    assert "{" in msg, f"{r['id']} 的 message 未引用任何具体数值/节点"
+    banned = ["invalid", "error", "违规", "不合法", "不符合要求"]
+    assert not any(b in msg and len(msg) < 60 for b in banned), \
+        f"{r['id']} 的 message 像日志而不是诊断"
+```
+
+```python
+# tests/test_spec_guard.py
+"""资产层守卫的测试（守卫本身也要被测）。"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+
+def test_every_spec_statement_is_reducible():
+    """D2：spec/**/*.md 中的规范语句必须带 [[form:...]] 标记。"""
+    from nsc.guards.spec_reduction import scan
+    problems = scan(Path("spec"))
+    assert problems == [], "以下语句缺少形态标记：\n" + "\n".join(map(str, problems))
+
+
+def test_brand_mapping_complete():
+    """spec/brand/mapping.md 中每一行的规则 ID 都必须存在。"""
+    from nsc.guards.checks_schema import validate_brand_mapping
+    assert validate_brand_mapping() == []
+
+
+def test_canonical_rules_have_evidence():
+    from nsc.guards.checks_schema import validate_rules
+    assert validate_rules(level="L3") == []
+
+
+def test_no_business_if_in_python():
+    """AGENTS.md §2：禁止在 Python 里写业务规则。
+    启发式：src/ 中出现 spec/checks 里已有规则的关键词组合即报警（人工白名单在 spec/BUDGETS.yaml）。"""
+    from nsc.guards.budgets import scan_business_logic
+    assert scan_business_logic() == []
+
+
+def test_runtime_line_budget():
+    from nsc.guards.budgets import line_counts
+    counts = line_counts()
+    assert counts["runtime+checker"] <= 1500, \
+        f"手写运行时 {counts['runtime+checker']} 行 > 1500（D21）。把知识抽回 spec/。"
+
+
+def test_prompts_not_hand_edited():
+    from nsc.guards.prompts_untouched import verify
+    assert verify() == []
+
+
+def test_canonical_rule_cap():
+    import yaml
+    n = len(list(Path("spec/rules/L3_canonical").glob("R3-*.yaml")))
+    cap = yaml.safe_load(Path("spec/BUDGETS.yaml").read_text("utf-8"))["max_canonical_rules"]
+    assert n <= cap, f"canonical 规则 {n} 条 > 上限 {cap}（PROMOTION.md 反膨胀）"
+```
+
+```yaml
+# spec/BUDGETS.yaml
+# 预算即架构纪律（D21 / PROMOTION.md）。改这里需要 ADR。
+schema_version: "1.0"
+
+lines:
+  "src/nsc/runtime,src/nsc/checker": 1500      # D21 硬预算
+  "src/nsc/passes": 1200
+  "src/nsc/render": 900
+  "src/nsc/feedback": 900
+  "src/nsc/mining": 700
+  "src/nsc/optimize": 700
+  "src/nsc/judge": 500
+  "src/nsc": 6500                              # 总量警戒线
+
+max_canonical_rules: 120
+max_active_check_rules: 90
+max_rubric_dimensions: 6
+
+feedback:
+  gepa_feedback_chars: 2600
+  checker_report_chars: 2400
+
+business_logic_whitelist:
+  # 允许在代码里出现的、确实属于机制而非业务的判断
+  - "src/nsc/checker/registry.py"
+  - "src/nsc/runtime/ir_io.py"
+```
+
+## B.7 GitHub 门禁体系
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on:
+  pull_request:
+  push: {branches: [main]}
+concurrency: {group: "ci-${{ github.ref }}", cancel-in-progress: true}
+
+permissions: {contents: read}
+
+jobs:
+  # ---------- 阻塞：秒级，无 LLM ----------
+  quality:
+    name: lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: {enable-cache: true}
+      - run: uv sync --all-extras
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run pyright
+
+  spec-guard:
+    name: spec guard (资产层守卫)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}      # ir_schema_diff 需要 base
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - name: D2 每条 spec 语句可归约
+        run: uv run python -m nsc.guards.spec_reduction
+      - name: 规则 schema / ID 唯一 / evidence / legal_ref
+        run: uv run python -m nsc.guards.checks_schema
+      - name: prompts/ 未被手改（D19 硬规则）
+        run: uv run python -m nsc.guards.prompts_untouched
+      - name: IR breaking change 必须带 migration + ADR
+        run: uv run python -m nsc.guards.ir_schema_diff --base "origin/${{ github.base_ref || 'main' }}"
+      - name: 行数与规则数预算（D21）
+        run: uv run python -m nsc.guards.budgets
+      - name: canonical 规则冲突 / taste 隔离
+        run: uv run python -m nsc.guards.rules_conflict
+
+  tests:
+    name: tests (no LLM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: make db-rebuild
+      - run: uv run pytest -m "not llm" -n auto --cov --cov-report=term --cov-fail-under=80
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: test-report, path: out/}
+
+  golden:
+    name: golden regression (结构+渲染快照)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - name: 从黄金 IR 渲染并比对快照（无 LLM）
+        run: uv run pytest -m golden -n auto
+      - name: 锚点往返（渲染→回收→对齐，必须 100% 恢复 node_id）
+        run: uv run pytest tests/test_anchor_roundtrip.py
+
+  asset-change-gate:
+    name: 资产变更需要 ADR
+    if: contains(github.event.pull_request.labels.*.name, 'asset-change')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: 检查本 PR 是否新增/修改了 adr/
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^adr/' \
+            || { echo "::error::标记 asset-change 的 PR 必须包含 ADR（AGENTS.md §5）"; exit 1; }
+```
+
+```yaml
+# .github/workflows/llm-eval.yml
+name: LLM Eval (L1 判官)
+on:
+  pull_request:
+    types: [labeled, synchronize]
+  schedule: [{cron: "0 18 * * *"}]      # 每日 02:00 CST
+  workflow_dispatch:
+
+permissions: {contents: read, pull-requests: write}
+
+jobs:
+  l1:
+    # 只在 PR 打了 affects-generation 标签、或 nightly 时跑（省钱）
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'affects-generation')
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      JUDGE_GATE_ENABLED: ${{ vars.JUDGE_GATE_ENABLED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: make db-rebuild
+      - name: 成本预算护栏（超预算直接失败，不是超支后报告）
+        run: uv run nsc eval l1 --sample ${{ github.event_name == 'schedule' && 40 || 12 }} --max-cost-usd 3.0
+      - name: 判官门禁（仅在 JUDGE_GATE_ENABLED=true 且聚合分低于阈值时阻塞，D6/D8）
+        run: uv run python -m nsc.eval.gate --thresholds eval/thresholds.yaml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: l1-report, path: out/eval/}
+      - name: 在 PR 上贴报告
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with: {path: out/eval/summary.md}
+```
+
+```yaml
+# .github/workflows/judge-calibration.yml
+name: Judge Calibration (每周)
+on:
+  schedule: [{cron: "0 1 * * 1"}]     # 每周一 09:00 CST
+  workflow_dispatch:
+permissions: {contents: write, issues: write, actions: write}
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    env: {ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras && make db-rebuild
+      - id: cal
+        run: uv run nsc judge calibrate --report out/judge_calibration.md --github-output
+      - name: 未达门槛 → 关闸 + 开 Issue（D8）
+        if: steps.cal.outputs.gate_ok != 'true'
+        run: |
+          gh variable set JUDGE_GATE_ENABLED --body "false"
+          gh issue create \
+            --title "判官校准未达门槛（$(date +%F)）：判官门禁已自动关闭" \
+            --label "judge,blocked" \
+            --body-file out/judge_calibration.md
+        env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: 达标 → 开闸
+        if: steps.cal.outputs.gate_ok == 'true'
+        run: gh variable set JUDGE_GATE_ENABLED --body "true"
+        env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: 归档报告
+        run: |
+          mkdir -p docs/metrics/judge && cp out/judge_calibration.md docs/metrics/judge/$(date +%F).md
+          git config user.name nsc-bot && git config user.email bot@local
+          git add docs/metrics/judge && git commit -m "chore(metrics): 判官校准 $(date +%F)" || true
+          git push
+```
+
+```yaml
+# .github/workflows/rule-promotion.yml
+name: Rule Promotion (每周挖掘)
+on:
+  schedule: [{cron: "0 2 * * 1"}]
+  workflow_dispatch:
+permissions: {contents: write, pull-requests: write}
+
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    env: {ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras && make db-rebuild
+      - name: L0→L1 聚类归纳
+        run: uv run nsc mine run
+      - name: L1→L2 留出集验证
+        run: uv run nsc mine validate --report out/mining/validation.md
+      - name: 退役检查
+        run: uv run nsc mine retire
+      - name: 开 PR（人工 approve 才能进 L3）
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/rule-candidates
+          title: "规则候选（自动挖掘 $(date +%F)）"
+          body-path: out/mining/validation.md
+          labels: |
+            rule-candidate
+            asset-change
+          commit-message: "feat(rules): 本周规则候选与退役"
+```
+
+```yaml
+# .github/workflows/metrics.yml
+name: Flywheel Dashboard (每周六个数)
+on:
+  schedule: [{cron: "0 3 * * 1"}]
+  workflow_dispatch:
+permissions: {contents: write, issues: write}
+jobs:
+  dash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras && make db-rebuild
+      - run: uv run nsc metrics weekly --write docs/metrics/
+      - name: 北极星回归告警（D22：结构性编辑率必须单调下降）
+        run: uv run python -m nsc.metrics.northstar_alert --window 8
+      - run: |
+          git config user.name nsc-bot && git config user.email bot@local
+          git add docs/metrics && git commit -m "chore(metrics): 周报 $(date +%V)" || true
+          git push
+      - uses: peter-evans/create-or-update-comment@v4
+        continue-on-error: true
+        with:
+          issue-number: 1        # 固定一个"飞轮周报"Issue
+          body-path: docs/metrics/latest.md
+```
+
+```markdown
+<!-- .github/pull_request_template.md -->
+## 这个 PR 改的是哪一层？（必选其一）
+- [ ] **A 资产层**（`spec/` `profiles/` `brands/` `cases/export/`）→ 必须打标签 `asset-change` 并附 ADR
+- [ ] **B 生成物层**（`src/` `tests/`）→ 无需 ADR
+- [ ] 文档 / CI
+
+## 工单
+Closes #  ·  工单号：T-
+
+## 验收命令（贴出你本地跑通的输出）
+```
+make ci-local
+```
+
+## 检查表
+- [ ] 测试先红后绿（贴出先失败的证据或说明为什么不适用）
+- [ ] 没有在 Python 里写业务规则（新增业务约束都进了 `spec/checks/`）
+- [ ] 新增/修改的每条 check 规则都有 `pass.json` / `fail.json` fixture
+- [ ] 新增 check 规则的 `message` 是完整诊断句（DSL §5），而不是日志
+- [ ] 没有手改 `prompts/`
+- [ ] 手写行数仍在 `spec/BUDGETS.yaml` 预算内
+- [ ] 若改了 IR：附了 `db/migrations/` 或 `migrations/ir/` 脚本与 ADR
+- [ ] 若改了 rubric：重跑了 `make judge-cal` 并贴出一致率
+
+## 影响生成结果吗？
+- [ ] 是 → 请打标签 `affects-generation`（会触发 L1 判官评测，约 $1–3）
+- [ ] 否
+```
+
+```markdown
+<!-- .github/CODEOWNERS -->
+# 资产层必须由你本人 review。Agent 可以提 PR，但不能自动合并。
+/spec/                @OWNER
+/profiles/            @OWNER
+/brands/              @OWNER
+/cases/export/        @OWNER
+/eval/thresholds.yaml @OWNER
+/adr/                 @OWNER
+/.github/             @OWNER
+/COMPLIANCE.md        @OWNER
+# src/ 与 tests/ 不设 owner：Agent 自主区
+```
+
+```yaml
+# .github/labels.yml   （用 `gh label` 或 crazy-max/ghaction-github-labeler 同步）
+- {name: asset-change,       color: "b60205", description: "改动 spec/profiles/brands，需 ADR + 人工 approve"}
+- {name: affects-generation, color: "d93f0b", description: "会改变生成结果，触发 L1 判官评测"}
+- {name: rule-candidate,     color: "0e8a16", description: "自动挖掘的规则候选，待人工晋升"}
+- {name: rule-promote,       color: "0e8a16", description: "L2→L3 晋升"}
+- {name: judge,              color: "5319e7", description: "判官相关"}
+- {name: blocked,            color: "000000", description: "被门禁阻塞"}
+- {name: flywheel,           color: "1d76db", description: "飞轮机制"}
+- {name: cold-start,         color: "fbca04", description: "冷启动/逆向标注"}
+- {name: agent-task,         color: "c5def5", description: "可派给 AI Agent 独立完成"}
+```
+
+```json
+// .github/rulesets/main.json  —— 分支保护即代码
+// 应用：gh api -X POST /repos/{owner}/{repo}/rulesets --input .github/rulesets/main.json
+// ⚠️ GitHub Ruleset 的字段名会随 API 版本变化，agent 首次应用时请对照官方 REST 文档核对。
+{
+  "name": "main protection",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+  "rules": [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "required_linear_history"},
+    {"type": "pull_request",
+     "parameters": {
+       "required_approving_review_count": 1,
+       "dismiss_stale_reviews_on_push": true,
+       "require_code_owner_review": true,
+       "required_review_thread_resolution": true,
+       "require_last_push_approval": false
+     }},
+    {"type": "required_status_checks",
+     "parameters": {
+       "strict_required_status_checks_policy": true,
+       "required_status_checks": [
+         {"context": "lint & typecheck"},
+         {"context": "spec guard (资产层守卫)"},
+         {"context": "tests (no LLM)"},
+         {"context": "golden regression (结构+渲染快照)"}
+       ]
+     }}
+  ],
+  "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]
+}
+```
+
+```markdown
+<!-- docs/GATES.md -->
+# 门禁全景（谁能拦你，拦多久）
+
+## 三层校验（D6）与 CI 的对应
+| 层 | 内容 | CI job | 阻塞 | 典型耗时 | 成本 |
+|---|---|---|---|---|---|
+| **L0-a 结构** | Pydantic + 16 条不变量 | `tests (no LLM)` | ✅ | 20s | $0 |
+| **L0-b 约束** | 34+ 条声明式规则 | `tests (no LLM)` | ✅ | 30s | $0 |
+| **L0-c 资产纪律** | D2 归约 / prompts 未手改 / 行数预算 / 规则冲突 | `spec guard` | ✅ | 15s | $0 |
+| **L0-d 黄金回归** | 渲染快照 + 锚点往返 | `golden regression` | ✅ | 40s | $0 |
+| **L1 判官** | 5 维 rubric，成对为主 | `LLM Eval` | ⚠️ **仅聚合分 < 阈值且 `JUDGE_GATE_ENABLED==true`** | 5–15min | $1–3 |
+| **L2 人类** | 抽样评审 → 结构化 diff | 不在 CI | ❌ 不阻塞，产出资产 | 天 | 你的时间 |
+
+## 为什么判官门禁可以被自动关闭
+判官分会漂移。`judge-calibration.yml` 每周测量判官与人类的一致率，
+低于 `pairwise_gate: 0.78` 时把仓库变量 `JUDGE_GATE_ENABLED` 置 false 并开 Issue。
+**用一个未校准的仪器做质量决策，比不做决策更糟。**（D8）
+
+## 成本护栏
+- `nsc eval l1 --max-cost-usd` 是**硬停机**，不是事后报告。
+- PR 不打 `affects-generation` 标签 → 不跑 LLM → 单个 PR 成本 $0。
+- nightly 抽 40 条，日成本上限约 $3；`config/models.yaml::budgets` 是唯一真相。
+
+## 本地必须跑通才提 PR
+```bash
+make ci-local     # = lint + typecheck + spec-guard + test-fast
+```
+
+## 逃生阀
+只有仓库 admin 可以 bypass（`bypass_actors`），且必须在 PR 描述里写明原因。
+每次 bypass 会被 `metrics.yml` 统计并进周报——**bypass 次数上升是架构在腐烂的第一信号。**
+```
+
+## B.8 ADR
+
+```markdown
+<!-- adr/0000-template.md -->
+# ADR-XXXX：<一句话决策>
+
+- 状态：proposed | accepted | superseded by ADR-YYYY
+- 日期：YYYY-MM-DD
+- 影响层：A1 本体 / A2 约束 / A3 品味 / A4 证据 / A5 知识 / A6 配置 / B 生成物
+
+## 背景
+（是什么问题逼出了这个决策）
+
+## 决定
+（一句话，命令式）
+
+## 被否决的替代
+| 替代 | 为什么否决 |
+|---|---|
+
+## 对下游的约束
+（这个决策让后面的人不能做什么）
+
+## 迁移
+（若是 breaking change：migration 脚本路径 + 回滚方式）
+
+## 验证
+（哪个测试/指标能证明这个决策生效）
+```
+
+```markdown
+<!-- adr/0001-narrative-ir-as-source-of-truth.md -->
+# ADR-0001：Narrative IR 是唯一真相，剧本与小说都是渲染视图
+
+- 状态：accepted
+- 日期：2025-01-01
+- 影响层：A1
+
+## 背景
+商业营销短剧需要在多轮客户反馈中积累经验。若交付物是散文，客户说"第 3 集那句太硬"无法变成训练信号。
+
+## 决定
+采用带稳定 ULID 的分层叙事 IR（`spec/ir/`）。剧本（Fountain）、小说（docx/md）、分镜表全部是 IR 的渲染视图。
+
+## 被否决的替代
+| 替代 | 为什么否决 |
+|---|---|
+| 直接用 Fountain 作为主表示 | 无法锚定、无法机检、无法差分 |
+| 自由 JSON 不带稳定 ID | 客户第二轮反馈就对不上号 |
+| 图数据库（Neo4j） | 1 人运维的过度工程；SQLite + 邻接表足够 |
+
+## 对下游的约束
+- 任何交付格式的新增 = 新增一个 renderer，不得新增主表示。
+- 局部重编译必须保留未变节点的 ID（INV-16），这是最高优先级测试。
+
+## 验证
+`tests/test_invariants.py::test_id_stability`、`tests/test_anchor_roundtrip.py`
+```
+
+```markdown
+<!-- adr/0002-novel-and-script-same-source.md -->
+# ADR-0002：小说与剧本同源双视图，Line 层是共同的戏剧真相
+
+- 状态：accepted
+- 日期：2025-01-01
+- 影响层：A1 / A6
+
+## 背景
+业务上商家更愿意读小说（易读、可转发、可给老板看），制作团队需要剧本。
+若两者各生成一遍，必然讲成两个故事，且反馈无法互相复用。
+
+## 决定
+`Line[]`（对白/动作/画外音）是共同真相。
+- 小说 = `p6_prose`（LLM）在 Line 之上编织叙述层，**不得发明新事件**，必须输出 100% 覆盖的 `anchor_map`。
+- 剧本 = `p7_render`（无 LLM）对 Line 的确定性格式化。
+交付顺序：大纲 → 小说（商家确认）→ 剧本（制作执行）。
+
+## 被否决的替代
+| 替代 | 为什么否决 |
+|---|---|
+| 小说与剧本各自独立生成 | 两个故事、反馈不可复用、一致性无法机检 |
+| 先写小说再从小说抽剧本 | 小说的叙述层会污染 IR；抽取是有损的，反向对齐会退化 |
+| 只出剧本，让商家读剧本 | 商家读不进去 → 确认延迟 → 返工发生在剧本之后（最贵） |
+
+## 对下游的约束
+- `NOV-001`（Beat 覆盖率 100%）与 `NOV-002`（对白相似度 ≥0.7）为 block 级。
+- 叙述视角/人称/文体是 `NarrativeVoice` 渲染参数（ADR-0003），改它只失效 p6/p7。
+
+## 验证
+`tests/test_checker_dsl.py`（NOV-001/002）、`tests/test_recompile.py::test_voice_change_only_invalidates_prose`
+```
+
+```markdown
+<!-- adr/0003-narrative-voice-is-render-param.md -->
+# ADR-0003：叙述视角/人称/文体是渲染参数，不进 IR 主干
+
+- 状态：accepted · 日期：2025-01-01 · 影响层：A1 / A6
+
+## 决定
+`NarrativeVoice`（person / tense / pov / style / paragraph_max_chars / interiority）挂在 IR 的 `voice` 字段，
+但**不参与 Beat/Line 的语义**。默认值来自 `profiles.*.novel.default_voice`。
+
+## 理由
+同一部剧要能同时给出"第三人称限知爽文体"和"第一人称日记体"两版小说给商家选。
+若视角进主干，同构性被破坏，两个 Profile 就会 fork 内核（违反 D18）。
+
+## 对下游的约束
+`dep_graph.yaml` 中 `voice.*` 只失效 `p6_prose` 与 `p7_render`。这条是可测的收益。
+```
+
+```markdown
+<!-- adr/0004-declarative-checks.md -->
+# ADR-0004：检查规则是数据，解释器是代码
+
+- 状态：accepted · 日期：2025-01-01 · 影响层：A2
+
+## 决定
+所有叙事/品牌/合规约束写成 `spec/checks/**.yaml`（JMESPath select + simpleeval assert）。
+解释器 `src/nsc/checker/interpreter.py` ≤300 行，不含任何业务判断。
+
+## 被否决
+| 替代 | 否决理由 |
+|---|---|
+| Python if | 规则被埋进可丢弃层，换语言重写即归零 |
+| 自研 DSL 解析器 | 无收益的复杂度；JMESPath + simpleeval 已够（BORROW_MAP #22） |
+| OPA/Rego | 引入非 Python 运行时，1 人维护不了 |
+
+## 对下游的约束
+- `message` 必须是完整诊断句（DSL §5）。它同时是 GEPA 的 feedback 输入。
+- 每条规则必须有 pass/fail fixture，否则 CI 失败。
+```
+
+```markdown
+<!-- adr/0005-gepa-as-primary-optimizer.md -->
+# ADR-0005：GEPA 是主优化器；P3 前不微调
+
+- 状态：accepted · 日期：2025-01-01 · 影响层：B1
+
+## 决定
+用 `dspy.GEPA`（GEPA: Reflective Prompt Evolution，arXiv:2507.19457，ICLR 2026 Oral）优化全部 prompt。
+metric 返回 `dspy.Prediction(score=..., feedback=...)`，feedback 由 checker message + 人类修订 + 判官理由构成。
+**分趟优化 + 教师强制**，不端到端优化 8 趟。
+
+## 理由
+1. GEPA 吃自然语言反馈，而我们的输入天然就是自然语言批注——这是我们最贵的信息，标量分会把它扔掉。
+2. 样本效率：论文报告在 4 个基准上平均超过 GRPO 约 10%、最高约 20%，rollout 少至 1/35；超 MIPROv2 10%+。
+   一年攒不出几千条剧本反馈，RL 不可用。
+3. 产出物是可读指令，可被人审阅、可反向写回 Spec。权重不行。
+4. 零 GPU、零训练基建。
+
+## 被否决
+RLHF/DPO/GRPO（数据量差两个数量级 + 基建成本）；纯手工调 prompt（不可积累，换模型归零）。
+
+## 对下游的约束
+- `prompts/` 是 GEPA 产物，手改 = CI 失败。
+- 每次 GEPA 写入必须过回归闸：`score_after > score_before + 0.02` 且其他 pass 不退化。
+- `src/nsc/optimize/gepa_metric.py` 是全系统最厚的一个文件，改它需要 ADR。
+```
+
+```markdown
+<!-- adr/0006-sqlite-truth-in-jsonl.md -->
+# ADR-0006：案例库的持久形态是 JSONL，SQLite 只是工作副本
+
+- 状态：accepted · 日期：2025-01-01 · 影响层：A4
+
+## 决定
+`cases/export/*.jsonl` 进 git 且是真相；`cases/cases.db` gitignored，由 `make db-rebuild` 生成。
+CLI 每次写库后自动 `db export`。
+
+## 理由
+A4 必须可 diff、可 code review、可被 AI 直接读取、可在换机/重写系统时零成本迁移。
+二进制 SQLite 进 git 会膨胀且不可审。
+
+## 对下游的约束
+任何写库操作必须同时更新 jsonl，否则 `spec-guard` 的 `db_export_fresh` 检查失败。
+```
+
+## B.9 SOP 文档
+
+```markdown
+<!-- docs/SOP_FEEDBACK_INGEST.md -->
+# SOP · 反馈回收（D9/D10/D11）
+
+> **这个流程的 ROI 高于任何生成质量优化。** 生成差可以靠人补；反馈收不回来是永久损失。
+
+## 0. 前提：交付时就要埋锚点
+`nsc render` 自动做三件事（D29）：
+1. docx 每个段落起始插入书签 `NID_<ulid>`（不可见）
+2. 文末追加「锚点索引」表（一列段落号，一列节点 ID），标题写"（此表可删除）"
+3. 段落顺序与 IR 的 linear_index 严格一致
+
+## 1. 回收（客户端零学习成本）
+客户/制作团队用他们本来就在用的方式：
+- docx 开修订模式改 → 发回来
+- 微信发一段话吐槽 → 转发给你
+- 会议里说 → 你录音后转写
+
+**绝不要求他们打开你的系统。**
+
+## 2. 摄入（你花 ≤5 分钟）
+```bash
+nsc ingest docx path/to/客户回稿.docx --case case:0142
+# 或
+nsc ingest text 微信记录.txt --case case:0142
+```
+输出：
+- `feedback` 表条目（D9 五元组）
+- `revision_pairs` / `preference_pairs`
+- `spec/rules/L0_observations/obs_*.yaml`
+- Langfuse annotation queue 条目
+
+## 3. 确认（你花 30 秒/条，批量）
+打开 Langfuse annotation queue：
+- 确认 `dimension`（八类，见 `spec/feedback/TAXONOMY.md`）
+- 确认 `severity`（1–5）
+- 确认锚点对不对（若 `anchor_level==fuzzy` 且 `confidence<0.85`，重点看）
+- **关键判断**：这条是通用规律还是个别偏好？后者一律标 `taste`（只进 Client Pack）
+
+**未经人工确认的 feedback（`confirmed_by` 为空）不进 L1 聚类。**
+理由：LLM 的分类错误会污染规则库，而规则库是永不丢弃的资产。
+
+## 4. 对齐失败怎么办
+`anchor_level == 'failed'` 的条目会进 `out/ingest/unaligned.md`。
+处理顺序：
+1. 检查客户是不是删了锚点索引表 → 下次交付把表放在更不显眼的位置
+2. 检查是不是整章重写 → 这种情况锚到 Episode 级别即可，不必到 Line
+3. 若失败率 > 10% → 这是 bug，开 issue，优先级最高
+
+## 5. 每周节律（周一 30 分钟）
+```bash
+make db-export        # 确保 jsonl 是最新的
+make mine             # L0→L1→L2，开 PR
+make judge-cal        # 判官健康检查
+make dash             # 六个数
+```
+然后：读 `rule-candidate` PR，approve 该晋升的，关掉不该晋升的。
+```
+
+```markdown
+<!-- docs/SOP_JUDGE_CALIBRATION.md -->
+# SOP · 判官校准（D8）
+
+## 为什么必须做
+不校准的 LLM judge = 用一个未测量的仪器做质量决策。这是"效果预测"从玄学变工程的唯一路径。
+
+## 校准集怎么攒（≥50 条起，目标 200 条）
+| 来源 | 占比 | 怎么来 | 成本 |
+|---|---|---|---|
+| `revision_pairs` | 40% | **免费**：人类改了 = 人类偏好改后 | 0 |
+| `preference_pairs`（重生成） | 30% | 同一 Beat 跑两次，你选一个 | 30s/条 |
+| `counterexamples` | 30% | 已知坏 vs 已知好，锚定极端 | 20s/条 |
+
+## 流程
+```bash
+nsc judge calibrate --report out/judge_calibration.md
+```
+报告包含：
+1. 每维度的**成对一致率**（判官选的 = 人类选的 / 总数）
+2. 每维度的 **Cohen κ**（5 分制绝对分）
+3. **位置偏置**：A 位胜率偏离 0.5 的幅度
+4. **invalid 率**：未引用具体 span 的判定占比
+5. **分歧样本 top 10**（这些是最有信息量的，读它们）
+
+## 门槛（`eval/thresholds.yaml`）
+见 `spec/rubrics/pairwise_protocol.md` §4。
+
+## 改判官 prompt 的正确顺序
+1. 先读分歧样本 top 10 → 判官到底误解了什么
+2. 改 `spec/rubrics/anchors/*.yaml`（**优先改锚定样例，不要改指令**）
+   —— 锚定样例是 A3 资产，指令是 B1 生成物
+3. `make judge-cal` 看一致率是否上升
+4. 若锚例改完还不行 → 用 GEPA 优化判官指令（目标 = 与人类一致率）
+5. **绝不**为了让判官同意某个特定样本而改锚例（那是过拟合到一条数据）
+
+## 判官漂了怎么办
+`judge-calibration.yml` 会自动关闸并开 Issue。你的选项：
+- 换 `tier_judge` 模型 → 重跑校准
+- 补校准集（一致率低通常是校准集覆盖不足，不是判官坏）
+- 收缩维度（`max_rubric_dimensions: 6` 是上限，但 3 个可靠维度好过 5 个不可靠维度）
+```
+
+```markdown
+<!-- docs/SOP_REVERSE_ANNOTATION.md -->
+# SOP · 逆向标注与往返重建（D15/D16）
+
+> 目的：不花标注钱建起黄金集，并**验证 IR 设计对不对**（这是返工成本最高的错误）。
+> 法务边界见 `COMPLIANCE.md §1` —— 先读它。
+
+## 1. 采集
+公开的营销短剧 / 广告片 / 带货短视频。优先选：
+- 有明确品牌植入的
+- 有完整叙事的（不是纯口播）
+- 覆盖 ≥3 个行业（否则先验会偏）
+
+## 2. 转写
+```bash
+nsc annotate ingest <source_dir>
+```
+内部：字幕优先；无字幕用 faster-whisper（带时间戳）；可选 PySceneDetect 做镜头切分辅助 Scene 边界。
+见 `docs/BORROW_MAP.md #21`。
+
+## 3. LLM 标注 → IR
+标注器输出：Beat 切分与 beat_kind、BrandMoment（type/intensity/modality/plot_connection/位置）、
+每 Beat 的 emotion、SetupPayoff、角色与地点。
+
+## 4. 人工只标 30–50 条种子
+用于**验证标注器**，不是用于训练。测量：
+| 字段 | 指标 | 门槛 |
+|---|---|---|
+| beat_kind | 逐 Beat κ | ≥0.60 |
+| Beat 边界 | 边界 F1（±1 秒容差） | ≥0.70 |
+| BrandMoment 位置 | 归一化位置 MAE | ≤0.08 |
+| plot_connection | κ | ≥0.50 |
+不达标 → 改标注器 prompt，**不要**用不可靠标注去生成先验。
+
+## 5. 三样产出
+```bash
+nsc annotate priors --out profiles/_mined_priors.yaml
+```
+1. **结构统计先验** → 写进 `profiles/*.yaml` 的 `beat_templates`（source: mined）与默认预算
+   （Beat 数分布、植入归一化位置直方图、密度、钩子长度、情绪弧形状聚类）
+2. **检索池** → `retrieval_items`（`usable_as_example=0`，只用于结构学习，见 COMPLIANCE §1）
+3. **反例集** → 明显失败的植入 → 变成 `spec/checks/` 规则 + `counterexamples`
+
+## 6. 往返重建（D16）—— 最重要的一步
+```bash
+nsc annotate roundtrip --case case:0301
+```
+`原片 → IR → 用我们的 p3–p6 重新生成 → 与原片对比`
+| 指标 | 含义 |
+|---|---|
+| beat_kind 序列归一化编辑距离 | IR 是否抓住了结构 |
+| BrandMoment 位置分布 KL | IR 是否抓住了植入节奏 |
+| 判官成对（重建 vs 原片） | IR 是否抓住了"好在哪" |
+
+**重建保真度低 = IR 丢了关键信息 = 必须改 IR 模式（开 ADR）。**
+这是唯一不需要人类标注就能检验本体设计的方法。**P1 阶段必须跑，不要拖到 P2。**
+```
+
+```markdown
+<!-- docs/SOP_GEPA.md -->
+# SOP · GEPA 优化（D13 3 档）
+
+## 什么时候跑
+- 每月一次；或分数停滞（连续 2 周北极星无改善）；或换主模型后
+- 攒够 ~30 条新 `revision_pairs` 之后（少于这个数不值得跑）
+
+## 顺序（先结构后文字）
+```bash
+nsc optimize --pass p3_beatsheet --auto light   # 最重要，先跑这个
+nsc optimize --pass p2_arc       --auto light
+nsc optimize --pass p5_dialogue  --auto medium
+nsc optimize --pass p6_prose     --auto light
+```
+理由：结构错了优化台词是浪费。BeatSheet 是整个系统的杠杆点。
+
+## 数据切分（会泄漏的地方）
+**按 case 切分，绝不按节点切分。** 同一个项目的第 2 集在 train、第 5 集在 val = 泄漏
+（人物、调性、品牌约束全都一样）。
+```bash
+nsc eval build-dataset --pass p3_beatsheet   # 自动按 case_id 分层切分
+```
+
+## metric 的两个 split
+- `train`：暴露人类修订（`revised_text`）→ 反馈信息量最大
+- `val`：**只**用 checker + 判官 → 防止 GEPA 背答案
+实现见 `gepa_metric.py::make_metric` 的 `expose_human_edits`。
+
+## 回归闸（不许绕过）
+写入 `prompts/` 的条件：
+1. `score_after > score_before + 0.02`（valset）
+2. 其他 pass 在 holdout 上不退化（`make golden` + 抽样 L1）
+3. 成本未超 `budgets.per_gepa_run_usd`
+不满足 → 结果进 `out/gepa/rejected/`，`prompts/` 不动。
+
+## 读 GEPA 的产出
+`out/gepa/<pass>/<ts>/detailed_results.json` 里有演化轨迹。
+**读演化出的指令**，问自己：
+- 它学到的东西，是不是应该被提升为 `spec/rules/L3_canonical/` 的一条规则？
+- 若是 → 手工把它写成规则（`form: prompt` 或 `form: check`），下次 GEPA 从更高的起点开始。
+这就是"优化结果可以被反向写回 Spec"的具体操作（D13 为什么选 GEPA 的第 3 条理由）。
+
+## 反面清单
+- ❌ 端到端优化 8 趟（rollout 爆炸、归因不可能）
+- ❌ 用 float metric（丢掉 feedback 通道 = 白用 GEPA）
+- ❌ 用弱模型做 reflection_lm（反思质量决定一切，这里不要省钱）
+- ❌ auto="heavy" 起步（先 light 看有没有信号）
+```
+
+```yaml
+# eval/thresholds.yaml
+# 所有门禁阈值的唯一真相。改这里需要 ADR（AGENTS.md §5）。
+schema_version: "1.0"
+
+l0:
+  block_on_any_block_severity: true
+  allow_rule_errors: false          # 规则本身写错 = CI 失败
+
+l1:
+  judge_gate_enabled_var: JUDGE_GATE_ENABLED   # 由 judge-calibration.yml 自动开关
+  aggregate_min: 3.2                            # 5 分制加权均值
+  per_dimension_min_report_only: 2.5
+  sample_size_pr: 12
+  sample_size_nightly: 40
+  max_cost_usd_pr: 3.0
+
+judge_calibration:
+  pairwise_report: 0.65
+  pairwise_gate: 0.78
+  kappa_gate: 0.60
+  max_invalid_rate: 0.05
+  max_position_bias: 0.08
+  min_calibration_items: 50
+
+rule_promotion:
+  min_cluster_size: 3
+  min_distinct_cases: 2
+  check_precision: 0.80
+  check_max_false_fire: 0.05
+  check_min_recall: 0.30
+  rubric_min_delta: 0.15
+  rubric_max_regression: 0.05
+  retire_after_days_unused: 90
+
+annotation:
+  beat_kind_kappa: 0.60
+  boundary_f1: 0.70
+  brand_position_mae: 0.08
+  plot_connection_kappa: 0.50
+
+roundtrip:
+  min_structure_similarity: 0.60
+  max_brand_position_kl: 0.25
+
+northstar:
+  # D22：结构性编辑率的 8 周滑动趋势必须非上升
+  window_weeks: 8
+  alert_on_slope_above: 0.0
+
+# 未完成人工核对的合规规则自动降级（COMPLIANCE §2）
+compliance_downgrade_unreviewed: true
+```
+
+```markdown
+<!-- docs/METRICS.md -->
+# 度量体系（D22/D23）
+
+## 北极星
+**人类结构性编辑率随时间单调下降** = `structural 类编辑数 / 交付集数`，按月滑动。
+
+为什么不是完播率/转化率：它们受剪辑、投流、演员影响，不在你的控制闭环内，
+拿它做北极星会让优化失焦。结构性编辑率是唯一同时证明"资产在复利"和"交付在变好"的指标。
+
+## 六个数（每周看，`docs/metrics/latest.md`）
+| # | 指标 | 定义 | 健康方向 | 报警线 |
+|---|---|---|---|---|
+| 1 | 首过率 | L0+L1 一次通过的集数 / 总集数 | ↑ | <0.5 |
+| 2 | 人类编辑率 | 按 D11 八类分解，**必须分解** | ↓（structural 优先） | structural 上升 2 周 |
+| 3 | 判官-人类一致率 | 每 rubric 维度的成对一致率 | ↑ | <0.78 → 自动关闸 |
+| 4 | 规则命中率与净收益 | 每条 canonical 规则的 hit_count / 误报率 | 命中>0 | 90 天 0 命中 → 退役 |
+| 5 | 检索命中率与增益 | 1 档：检索到 k≥1 的比例 / 开关 A/B 的质量差 | ↑ | 增益 ≤0 → 检索有害 |
+| 6 | 单集成本 | token $ + 墙钟 + **你的分钟数** | ↓ | 你的分钟数上升 |
+
+**第 6 项里"你的分钟数"最重要。** 如果系统让你更忙，它就是在亏钱，不管质量多好。
+
+## 辅助（诊断用，不上仪表盘）
+- 缓存命中率（局部重编译是否真的生效）
+- 锚点恢复率（bookmark / appendix / fuzzy / failed 的分布）
+- CI bypass 次数（架构腐烂的先行指标）
+- L3 canonical 规则数（接近 120 上限时该做合并了）
+```
+
+---
+
+# Part C · 借鉴地图（`docs/BORROW_MAP.md`）
+
+```markdown
+<!-- docs/BORROW_MAP.md -->
+# 借鉴地图 —— 别自己造
+
+> **Agent 动手前必读这个文件。** 每一行都写明了：借什么、不借什么、落到哪个文件、哪个工单。
+> ✅ = 我已核实来源；[待核] = 请你在首次引用时核对编号/作者年份后把标记改成 ✅。
+
+## 一、生成架构
+
+### #1 分层多趟生成 ← Dramatron ✅
+- 来源：Mirowski, Mathewson, Pittman, Evans. *Co-Writing Screenplays and Theatre Scripts with Language Models*. CHI 2023. **arXiv:2209.14958**
+- **借**：`log line → title → characters → plot(场景摘要+beats) → location descriptions → dialogue` 的层级切分；
+  以及"作者可在任意层级重新生成/编辑"的交互模型 → 这正是我们的局部重编译。
+- **不借**：它的 flat prompt 模板与无结构文本输出（我们用类型化 IR 片段）。
+- 落地：`spec/passes/CONTRACTS.md`、`spec/passes/signatures.py`、`src/nsc/passes/`
+- 工单：T-07
+
+### #2 计划-草稿-重排-修订 ← Re3 ✅
+- 来源：Yang, Peng, Tian, Klein. *Re3: Generating Longer Stories With Recursive Reprompting and Revision*. EMNLP 2022. **arXiv:2210.06774**
+- **借**：四段式中的 **rerank**（多候选按连贯性/相关性择优）与 **edit**（事实一致性修订）
+  → `p5_dialogue --rerank`（n=3 候选，L0 过滤 + 判官选优）与 p5 的自检子步。
+- **不借**：rolling-window 递归续写（我们有显式 Beat 计划，不需要它）。
+- 落地：`src/nsc/passes/p5_dialogue.py`
+- 工单：T-07b（默认关闭，成本敏感）
+
+### #3 细化大纲控制 ← DOC ✅
+- 来源：Yang, Klein, Peng, Tian. *DOC: Improving Long Story Coherence With Detailed Outline Control*. ACL 2023. **arXiv:2212.10077**
+- **借**：核心原则 —— **把创作负担从起草前移到规划**（detailed outliner）。
+  我们的具体化：`p3_beatsheet` 必须细到"每个 Beat 可被独立判定通过/不通过"，
+  `summary` 必须是"谁做了什么导致什么"而非抽象概括。
+- **借（变体）**：detailed *controller* 的作用（保证起草不偏离大纲）→ 我们用 **L0 checker + p5 自检** 替代
+  它的可微控制器（我们没有训练环境，也不需要）。
+- 落地：`spec/passes/signatures.py::BeatSheet` 的硬约束、`spec/checks/structure/*`
+- 工单：T-07
+
+### #4 优化器 ← GEPA ✅
+- 来源：Agrawal 等. *GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning*. ICLR 2026 (Oral). **arXiv:2507.19457**
+- 实现：`dspy.GEPA`（引擎来自 `github.com/gepa-ai/gepa`）
+- **借（关键）**：metric 的契约 `metric(gold, pred, trace=None, pred_name=None, pred_trace=None) -> dspy.Prediction(score=..., feedback=...)`。
+  **feedback 字段是文本反馈通道**，会被直接读进反思提示；只返回 float 会让 GEPA 退化。
+  还借：Pareto 候选池选择（`candidate_selection_strategy="pareto"`）、per-predictor 反思（用 `pred_name` 路由）、
+  `auto` 预算档（light/medium/heavy）、`track_stats` 的审计轨迹、`use_merge` 合并互补经验。
+- **不借**：默认 `instruction_proposer`（我们注入领域反射模板，让反思聚焦营销短剧的失败模式）。
+- 落地：`src/nsc/optimize/gepa_metric.py`（**全系统最厚的文件**）、`gepa_run.py`、`docs/SOP_GEPA.md`
+- 工单：T-12（metric）、T-13（编排）
+
+### #5 声明式 LLM 程序 ← DSPy / MIPROv2 [待核编号]
+- DSPy：Khattab 等. *DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines*. **arXiv:2310.03714**
+- MIPROv2：Opsahl-Ong 等. **arXiv:2406.11695**
+- **借**：Signature/Module 抽象（每趟一个 Module，类型化 IO）；MIPROv2 作为 GEPA 的**对照基线**（跑一次证明 GEPA 更好，别盲信）。
+- 落地：`spec/passes/signatures.py`、`eval/baseline_mipro.py`
+- 工单：T-07、T-13
+
+### #6 多趟编译器纪律 ← Nanopass [待核]
+- 来源：Sarkar, Waddell, Dybvig. *A Nanopass Infrastructure for Compiler Education*. ICFP 2004.
+- **借**：每趟只做一件事、趟间是**显式类型化 IR**、每趟可独立测试。这是"对 AI 编码极度友好"的根源。
+- 落地：`spec/passes/CONTRACTS.md` §0
+- 工单：T-07
+
+### #7 增量重算与内容寻址 ← Salsa / Bazel / Nix（工程实践，非论文）
+- **借**：`hash(输入) → 输出` 的内容寻址缓存 + 下游失效闭包（demand-driven invalidation）。
+- **不借**：它们的框架本体（我们用 `diskcache` + 一个装饰器 + 一张 `dep_graph.yaml`）。
+- 落地：`src/nsc/runtime/cache.py`、`spec/passes/dep_graph.yaml`
+- 工单：T-04
+
+### #28 原则驱动的自我修订 ← Constitutional AI [待核]
+- 来源：Bai 等. *Constitutional AI: Harmlessness from AI Feedback*. **arXiv:2212.08073**
+- **借**：critique → revise 的自修订循环，其原则以**显式清单**形式给出。
+  我们的变体：原则**不手写**，而是从 `spec/rules/L3_canonical/` 中 `form: prompt` 的规则动态拼装。
+- **不借**：RLAIF 部分（我们不训练）。
+- 落地：`src/nsc/passes/p5_dialogue.py::self_revise`
+- 工单：T-07b
+
+### #27（可选）Brief 补全 ← STORM [待核]
+- 来源：Shao 等. *Assisting in Writing Wikipedia-like Articles From Scratch with Large Language Models*. NAACL 2024. **arXiv:2402.14207**
+- **借**：多视角提问以扩展信息收集 → 用于 `p0_intake` 的 `missing_fields` 生成（"从这三类人群视角看，还缺什么信息？"）。
+- 优先级：低。P3 再看。
+
+## 二、评测与判官
+
+### #8 判官设计 ← G-Eval / MT-Bench / Prometheus 2 / FLASK [编号待核]
+| 借什么 | 来源 | 落到哪 |
+|---|---|---|
+| rubric + CoT + form-filling 的打分范式 | G-Eval, **arXiv:2303.16634** | `spec/rubrics/rubric_v1.yaml` |
+| **成对比较**优于绝对分；**位置偏置**必须通过交换顺序消除 | MT-Bench, **arXiv:2306.05685** | `pairwise_protocol.md` §3、`judge.position_debias: swap_and_average` |
+| rubric **锚定样例**驱动的细粒度评分；开源判官可作备选 | Prometheus 2, **arXiv:2405.01535** | `spec/rubrics/anchors/*.yaml` |
+| 把能力拆成细粒度技能维度分别评 | FLASK, **arXiv:2307.10928** | rubric 的 5 维分解 |
+- **不借**：G-Eval 的 token-probability 加权（多数商用 API 拿不到 logprobs，且脆）。
+- 工单：T-08
+
+### #9 故事评测维度交叉验证 ← HANNA [待核]
+- 来源：Chhun 等. *Of Human Criteria and Automatic Metrics: A Benchmark of Story Generation Models*. COLING 2022. **arXiv:2208.11646**
+- **借**：其 6 个人评维度（relevance / coherence / empathy / surprise / engagement / complexity）作为**交叉检查表**：
+  若我们的 5 维覆盖不了某类人类批注，说明维度设计漏了。
+- **不借**：直接照搬 6 维（它是通用故事，我们要营销专用的 placement_integration）。
+- 落地：`spec/rubrics/rubric_v1.yaml` 的评审注释
+- 工单：T-08
+
+## 三、反馈与知识沉淀
+
+### #10 编辑意图分类 ← IteraTeR / CoEdIT [编号待核]
+- IteraTeR：Du 等. *Understanding Iterative Revision from Human-Written Text*. ACL 2022. **arXiv:2203.03802**
+- CoEdIT：Raheja 等. *CoEdIT: Text Editing by Task-Specific Instruction Tuning*. EMNLP 2023. **arXiv:2305.09857**
+- **借（IteraTeR）**：① 编辑意图标注体系的做法（我们的 D11 八类是其领域化版本）
+  ② **自动编辑意图分类器**的思路 → `EditClassify` Signature
+  ③ 编辑抽取的对齐方法（原文↔修订文的 span 级对齐）
+- **借（CoEdIT）**："编辑指令对"的数据形态 → 我们的 `revision_pairs`（before/after/dimension）。
+- **不借**：CoEdIT 的指令微调（P3 前不微调）。
+- 落地：`spec/feedback/TAXONOMY.md`、`src/nsc/feedback/classify.py`、`spec/passes/signatures.py::EditClassify`
+- 工单：T-11
+
+### #11 从自然语言反馈学习 ← Learning from Language Feedback [待核]
+- 来源：Scheurer 等. *Training Language Models with Language Feedback* (**arXiv:2204.14146**) 与其 at-scale 版本 (**arXiv:2303.16755**)
+- **借**：把人类批注形式化为可用的学习信号的框架（refinement → selection）。
+  我们的具体化：批注 → `revision_pairs` → GEPA feedback，**不经过权重更新**。
+- 落地：`gepa_metric.py::build_feedback` 的"人类是怎么改的"一节
+- 工单：T-12
+
+### #12 经验 → 可复用规则 ← ExpeL / AWM / Voyager / Generative Agents [编号待核]
+| 借什么 | 来源 | 落到哪 |
+|---|---|---|
+| 从经验池抽取 insight，并用 **ADD / UPVOTE / DOWNVOTE / EDIT** 四种操作维护规则集 | ExpeL, AAAI 2024, **arXiv:2308.10144** | `src/nsc/mining/induce.py` 的操作集、`rules.hit_count` |
+| 从轨迹**归纳可复用 workflow**并按需检索 | Agent Workflow Memory, **arXiv:2409.07429** | `beat_templates`（mined）与 1 档检索的 `unit_kind=beat_sequence` |
+| **skill library：验证通过才入库** | Voyager, **arXiv:2305.16291** | `spec/rules/PROMOTION.md` 的 L1→L2 门禁 |
+| reflection：从多条底层观察合成高层洞察 | Generative Agents, **arXiv:2304.03442** | `RuleInduce` Signature |
+- **关键改造**：以上工作**都没有晋升门禁**，经验池会自我矛盾并膨胀。我们加了 L0→L3 四级 + 120 条硬上限 + 退役机制。
+- 落地：`spec/rules/`、`src/nsc/mining/`
+- 工单：T-14、T-15
+
+### #13 行为测试套件 ← CheckList [待核]
+- 来源：Ribeiro 等. *Beyond Accuracy: Behavioral Testing of NLP Models with CheckList*. ACL 2020. **arXiv:2005.04118**
+- **借**：MFT（最小功能测试）/ INV（不变性）/ DIR（定向期望）三类测试的组织方式
+  → 每条 check 规则的 `pass.json`（INV）+ `fail.json`（MFT）；`counterexamples` 集用 DIR 组织。
+- 落地：`tests/fixtures/checks/<RULE-ID>/`、`tests/test_checker_dsl.py`
+- 工单：T-05
+
+## 四、领域知识（营销 / 叙事）
+
+### #14 情绪弧形状 ← Reagan et al. 2016 [待核]
+- 来源：Reagan, Mitchell, Kiley, Danforth, Dodds. *The emotional arcs of stories are dominated by six basic shapes*. EPJ Data Science, 2016.
+- **借**：六种基本情绪弧形状作为 `EmotionCurve` 的**先验与检查依据**（我们的短剧应落在其中某几种上；全平的曲线是坏味道）。
+- **不借**：他们的 labMT 英文情感词典（中文不适用；我们让 LLM 直接标 valence/arousal）。
+- 落地：`spec/checks/structure/STR-006.yaml`、`nsc annotate priors` 的弧形聚类
+- 工单：T-21
+
+### #15 植入设计理论 ← Russell 2002 / Gupta & Lord 1998 / Balasubramanian 2006 [全部待核]
+| 借什么 | 来源 |
+|---|---|
+| **modality（视觉/听觉）× plot connection（情节关联度）的一致性**决定品牌记忆与态度 → 我们的 `BrandMoment.modality` 与 `plot_connection` 字段，以及 `BM-004`（全季必须有 high plot_connection）、`BM-010`（modality 不得单一） | Russell, C.A. (2002), *JCR* |
+| **prominent vs subtle placement** 的显著性分级 → `BrandMoment.intensity` 1–5 与 `BM-005`（高强度每集 ≤1） | Gupta & Lord (1998), *J. Current Issues & Research in Advertising* |
+| hybrid message 的分类框架 | Balasubramanian, Karrh, Patwardhan (2006), *J. Advertising* |
+- ⚠️ **这三条是我们与通用故事生成器的核心差异点。** 不要把它们当成可选装饰。
+- 落地：`spec/ir/overlays.py::BrandMoment`、`spec/checks/brand/*`、`spec/rubrics/rubric_v1.yaml#placement_integration`
+
+### #16 叙事传输 ← Green & Brock 2000 / Escalas 2004 [待核]
+- Green & Brock (2000), *The role of transportation in the persuasiveness of public narratives*, JPSP —— transportation-imagery model
+- Escalas (2004), narrative transportation 在广告中的作用
+- **借**：`transportation` 这个 rubric 维度的**构念定义与题项**（沉浸 → 情绪 → 品牌态度的因果链），
+  以及它的 positive/negative signals（"情绪先到品牌后到" vs "先讲产品后补情绪"）。
+- 落地：`spec/rubrics/rubric_v1.yaml#transportation`、`anchors/transportation.yaml`
+
+### #26 Beat 模板先验 ← Save the Cat / Story Circle（craft 来源，非论文）
+- **借**：节拍表的**形式**（有名字的功能序列）。
+- **明确标注为可替换**：`beat_templates[].source: craft` 的模板在 `nsc annotate priors` 产出 `source: mined` 的统计模板后
+  应被替换或至少并列。**中国短视频平台的营销短剧节奏与好莱坞三幕剧不同，不要迷信 craft 模板。**
+- 落地：`profiles/*.yaml::beat_templates`
+
+### #25 广告合规词表（法规来源，需人工核对）
+- 见 `spec/checks/compliance/_legal_sources.md`。**未经人工核对的合规规则自动降级为 warn**（`eval/thresholds.yaml`）。
+
+## 五、工程与工具（直接用，别造）
+
+| # | 需求 | 用什么 | 借什么 / 注意 |
+|---|---|---|---|
+| #17 | Spec 驱动开发的目录与流程 | **GitHub spec-kit** 约定 + **AGENTS.md** 约定 + **ADR**（Nygard） | 借目录布局与"spec 先行"的流程纪律；不引入其 CLI 的强制流程 |
+| #18 | Fountain 解析/渲染 | **Fountain 格式标准**（fountain.io）；`screenplain` / `jouvence`（Python 解析）；`pandoc` | 剧本渲染与 docx↔md 转换；**pandoc `--track-changes=all` 作为修订提取的兜底**，主路径直接解析 OOXML `w:ins`/`w:del` |
+| #19 | trace / 打分 / **人工标注队列** / dataset / prompt 管理 | **Langfuse（自托管）** | 借 annotation queue → 省掉自建标注 UI（至少 3 周）。**这是本项目最大的一笔"不造轮子"** |
+| #20 | 向量检索 / 中文 embedding / 聚类 | **sqlite-vec**；**BGE-M3**（BAAI，arXiv:2402.03216 [待核]）；**HDBSCAN** | 单文件向量库零运维；BGE-M3 多语言且中文强；HDBSCAN 不需要预设簇数（规则挖掘的簇数未知） |
+| #21 | ASR 时间戳 / 镜头切分 | **faster-whisper**（或 WhisperX 做对齐）；**PySceneDetect** | 逆向标注的转写与 Scene 边界辅助 |
+| #22 | **checker DSL 的求值** | **JMESPath**（select）+ **simpleeval**（assert） | **不要自己写解析器。** 这一条直接把 D7 的实现难度从"写编译器"降到"写 300 行胶水" |
+| #23 | 不变量测试 / 渲染快照 | **Hypothesis**（property-based）；**syrupy**（snapshot） | IR 不变量天然适合 property-based；渲染器适合 snapshot |
+| #24 | 模型路由与成本统计 | **LiteLLM** | 换模型不改代码；`completion_cost` 直接进 provenance |
+| — | 缓存 | **diskcache** | 内容寻址缓存的存储层 |
+| — | 文本对齐 | **rapidfuzz** | 模糊回退对齐的打分函数；DP 骨架自己写（20 行） |
+| — | 一致性统计 | **statsmodels**（Cohen κ）+ **krippendorff** | 判官校准 |
+
+## 六、明确不借（避免注意力被吞）
+- ❌ 多智能体框架（AutoGen / CrewAI / LangGraph）—— 6–8 趟线性 DAG 用不上，1 人维护不了
+- ❌ "Agents' Room" 类多角色协作写作 —— 与 D6"多智能体互评"否决一致
+- ❌ 向量数据库服务（Milvus / Qdrant / Weaviate）—— sqlite-vec 够
+- ❌ 工作流引擎（Prefect / Airflow / Temporal）
+- ❌ 微调框架（PEFT / TRL）—— P3 前不做
+- ❌ 视频/TTS/剪辑（AnimateDiff / SadTalker / …）—— 另一个业务
+```
+
+---
+
+# Part D · 工单分解（`docs/WORK_ORDERS.md`）
+
+```markdown
+<!-- docs/WORK_ORDERS.md -->
+# 工单（可独立派给 Agent，可独立验收）
+
+约定：每张工单 = 一个 PR。标签 `agent-task`。**验收命令必须能在 CI 里跑。**
+依赖用 `⇐` 表示。⭐ = 关键路径。
+
+---
+## P0 · 地基（~2 周）
+
+### T-01 ⭐ 项目骨架与工具链
+**做**：落盘 `pyproject.toml` / `Makefile` / `.pre-commit-config.yaml` / 目录树 / `config/models.yaml`（核对模型 ID）/ Langfuse docker-compose（`ops/langfuse/`）。
+**产出**：`uv sync` 成功；`make lint typecheck` 通过（空实现允许）。
+**验收**：`make ci-local` 除未实现的测试外全绿；`nsc --help` 输出全部子命令。
+**注意**：`config/models.yaml` 里的模型 ID 是我凭记忆写的，**必须核对后修正**。
+
+### T-02 ⭐ IR 模式与 16 条不变量  ⇐ T-01
+**做**：落盘 `spec/ir/{nodes,overlays,container}.py`；实现 `spec/ir/invariants.py` 全部函数；
+写 `tests/strategies.py`（Hypothesis 的 IR 构造策略）；造 `tests/fixtures/broken/INV-*.json`。
+**验收**：`pytest tests/test_invariants.py` 全绿，含 `test_all_invariants_have_implementation`。
+**禁止**：往 `invariants.py` 里加业务约束（去 `spec/checks/`）。
+
+### T-03 ⭐ IR IO 与视图  ⇐ T-02
+**做**：`src/nsc/runtime/ir_io.py`：`build_view()`（嵌套视图 + `linear_index` + `__` 前缀的派生字段）、
+`emotion_curve()`、`merge_preserving_ids()`（INV-16！）、`load/save` + schema 版本迁移入口。
+**验收**：`tests/test_invariants.py::test_id_stability` 绿；`build_view` 的 snapshot 测试绿。
+**这是全项目风险最高的函数**（`merge_preserving_ids`）：ID 不稳 = 资产归零。写 ≥6 个 case。
+
+### T-04 内容寻址缓存与 Provenance  ⇐ T-03
+**做**：`runtime/cache.py`、`runtime/provenance.py`、`runtime/models.py`（LiteLLM 路由 + 成本统计 + Langfuse trace）。
+**验收**：`tests/test_cache.py`：同输入二次调用不产生 LLM 调用；改任一版本号即失效；`NSC_NO_CACHE=1` 生效。
+
+### T-05 ⭐ Checker 解释器 + 34 条规则  ⇐ T-03
+**做**：`checker/{interpreter,registry,report}.py`；`nsc dev split-checks` 拆分 `_BATCH_1.yaml`；
+为**每条规则**造 `pass.json`/`fail.json`。
+**验收**：`pytest tests/test_checker_dsl.py` 全绿（含 `test_message_quality`）；`nsc check` 三种 exit code 正确；
+`interpreter.py + registry.py` ≤ 400 行。
+
+### T-06 ⭐ 黄金 IR fixture  ⇐ T-02
+**做**：手工（可借 LLM 起草后你审）产出 `tests/fixtures/golden/demo_tea_ir.json`：
+基于 `examples/demo_tea/brief.yaml` 的完整 6 集 IR，含 Line 与 2 章小说，**通过全部 L0**。
+**验收**：`nsc check tests/fixtures/golden/demo_tea_ir.json` 全绿。
+**这是后面一切回归测试的地基**，值得花时间。
+
+### T-07 ⭐ 8 个编译 Pass  ⇐ T-04, T-05
+**做**：`src/nsc/passes/p0..p7`；`spec/passes/signatures.py` 落盘；实现依赖闭包重编译（读 `dep_graph.yaml`）。
+**验收**：`nsc run --brief examples/demo_tea/brief.yaml` 端到端产出 6 集，L0 全绿（标 `llm`）；
+`nsc recompile --episode 5` 只触发第 5 集的 p3–p7（用 `runs` 表断言）；
+`tests/test_recompile.py::test_voice_change_only_invalidates_prose` 绿。
+
+### T-07b Pass5 增强（rerank + 自检）  ⇐ T-07
+默认关闭。`--rerank` 与 `--self-revise` 开关；成本与质量的 A/B 报告进 `out/eval/`。
+
+### T-08 渲染器 + 锚点  ⇐ T-06
+**做**：`render/{fountain,novel,docx,storyboard,anchors}.py`；D29 三重锚点；`out/*/manifest.json`。
+**验收**：`pytest -m golden`（syrupy 快照）；`tests/test_anchor_roundtrip.py`：
+渲染 → 解析回来 → **100%** 恢复 node_id。
+
+### T-09 Spec 守卫（CI 的牙齿）  ⇐ T-05
+**做**：`src/nsc/guards/{spec_reduction,checks_schema,prompts_untouched,ir_schema_diff,budgets,rules_conflict}.py`。
+**验收**：`pytest tests/test_spec_guard.py` 绿；故意手改一个 `prompts/*.json` 后 `make spec-guard` 必须失败。
+
+**P0 退出条件（一起验收）**：`nsc run` 端到端出 6 集小说 + 剧本，L0 全绿，可局部重编译单集，锚点往返 100%。
+
+---
+## P1 · 冷启动与反馈闭环（~3 周）
+
+### T-10 ⭐⭐ 反向对齐器（最高优先级，高于生成质量）  ⇐ T-08
+**做**：`feedback/{docx_revisions,align}.py`：OOXML 修订解析（`w:ins`/`w:del`/`w:comment` + 作者 + 时间戳）；
+pandoc 兜底；三级锚点恢复；**单调 DP 段落对齐**（禁止贪心）。
+**验收**：`tests/test_align.py` 覆盖 5 类编辑（整段删/增/重排/大幅重写/仅标点），
+对 `fixtures/ingest/demo_tea_round1.docx` 恢复率 ≥90% 且 node_id 正确率 100%（在恢复成功的条目上）。
+
+### T-11 ⭐ 反馈摄入流水线  ⇐ T-10
+**做**：`feedback/{classify,ingest}.py`；`EditClassify` 实现；写 `feedback`/`revision_pairs`/`preference_pairs`/`L0_observations`；
+推 Langfuse annotation queue；`nsc ingest docx|text`。
+**验收**：一份带修订 docx → 60s 内产出结构化条目；`confirmed_by` 为空的条目不进 L1 聚类（测试断言）。
+
+### T-16 1 档案例检索（最先见效的积累机制）  ⇐ T-07
+**做**：`retrieval_items` + `retrieval_vec`（BGE-M3）；按 `unit_kind/industry/profile/quality` 检索 k 条注入 Pass；
+`--no-retrieval` 开关做 A/B。
+**验收**：`nsc eval l1 --ab retrieval` 报告检索增益；`usable_as_example=0` 的条目**绝不**作为示例注入（测试断言，COMPLIANCE §1）。
+
+### T-08b 判官 v1  ⇐ T-05
+**做**：`judge/{rubric_judge,pairwise,calibration}.py`；成对协议（含 swap）；`nsc judge calibrate` 报告；
+`spec/rubrics/anchors/*` 补全 5 维 × ≥2 锚例。
+**验收**：≥50 条校准集下产出一致率/κ/位置偏置报告；`nsc eval l1` 可跑；`nsc.eval.gate` 尊重 `JUDGE_GATE_ENABLED`。
+
+### T-21 逆向标注 + 往返重建  ⇐ T-05
+**做**：`annotate/{reverse_annotate,priors,roundtrip}.py`；200–500 条样本；30–50 条人工种子核验；
+产出 `profiles/_mined_priors.yaml` 并**替换** craft 模板；跑往返重建报告。
+**验收**：标注器一致率达 `eval/thresholds.yaml::annotation` 门槛；`nsc annotate roundtrip` 产出结构相似度与 KL；
+若低于 `roundtrip` 门槛 → **开 ADR 提议改 IR**（这是正确结果，不是失败）。
+
+### T-17 SQLite 与 JSONL 双向（D28）  ⇐ T-01
+**做**：`db/migrations/0001_init.sql`、`db/migrate.py`、`nsc db rebuild|export|next-case-id`；
+`spec-guard` 增加 `db_export_fresh` 检查。
+**验收**：`make db-rebuild && make db-export` 后 git 无 diff（幂等）。
+
+**P1 退出条件**：一次真实反馈 1 小时内变成 `revision_pairs` 入库；检索复用可测出正增益；往返重建有基线数字。
+
+---
+## P2 · 飞轮启动（~3 周）
+
+### T-12 ⭐⭐ GEPA metric + feedback function（胜负手）  ⇐ T-11, T-08b
+**做**：`optimize/{gepa_metric,structure_match,feedback_router}.py` 全部实现。
+**验收**：`tests/test_gepa_metric.py` 断言：
+① `pred_name` 路由生效（p3 的 feedback 不含 DLG-002）
+② `split="val"` 时不泄漏 `revised_text`
+③ 长度 ≤ budget
+④ 有 block finding 时 score==0.0
+⑤ `WEIGHTS` 求和为 1
+⑥ feedback 文本包含五节结构且 block 在第一节
+
+### T-13 GEPA 编排  ⇐ T-12
+**做**：`optimize/gepa_run.py`；`nsc eval build-dataset`（**按 case 分层切分**）；回归闸；写 `prompts/*.json` 含 `content_hash`。
+**验收**：`nsc optimize --pass p3_beatsheet --auto light` 跑通并产出可审计的 `detailed_results.json`；
+回归闸生效（人为构造退化时不写入 `prompts/`）；`make prompts-verify` 绿。
+
+### T-14 规则挖掘（L0→L1）  ⇐ T-11
+**做**：`mining/{cluster,induce}.py`：BGE-M3 + HDBSCAN 聚类；`RuleInduce` 归纳；写 `L1_candidates/`。
+**验收**：≥30 条观察下产出 ≥3 条候选，每条带 `evidence_ids ≥3`、`counterexamples` 非空、`conflicts_with` 已检查。
+
+### T-15 规则验证与退役（L1→L2→L3, →deprecated）  ⇐ T-14
+**做**：`mining/{validate,retire}.py`；留出集协议；`rule_hits` 统计；`nsc mine retire`。
+**验收**：`tests/test_mining.py`：验证协议在合成数据上可复现；120 条上限强制生效；
+`taste` 类只能产出 `scope: client` 规则（测试断言）。
+
+### T-18 `short_video_v1` 接入（泛化压测）  ⇐ T-07
+**做**：只改 `profiles/short_video_v1.yaml` + 至多 1 个新 Pass + 规则的 `scope`。
+**验收（关键）**：`git diff --stat` 显示 **`src/nsc/runtime/` 与 `src/nsc/checker/` 零改动**；
+`nsc run --profile short_video_v1` 端到端通过 L0。
+**若做不到零改动 → 说明 IR 抽象漏了，开 ADR 改 IR，不要 fork 内核（D18）。**
+
+### T-19 CI 全套  ⇐ T-09
+**做**：4 个 workflow + 标签 + ruleset + PR/Issue 模板；`nsc.eval.gate`；`nsc.metrics.northstar_alert`。
+**验收**：故意提一个手改 `prompts/` 的 PR → CI 红；不打 `affects-generation` 的 PR → 无 LLM 调用（成本 $0）。
+
+### T-20 指标仪表盘  ⇐ T-17
+**做**：`nsc metrics weekly`；`docs/metrics/latest.md`；北极星趋势告警。
+**验收**：产出六个数 + 北极星；`edit_rate_json` 按 D11 八类分解（混算即失败）。
+
+**P2 退出条件**：第 3 次 GEPA 迭代仍正增益且无回归；`short_video_v1` 接入 PR 未改内核。
+
+---
+## P3 · 商业加固（持续，不排期）
+T-22 Client Pack 化与品牌资产复用 · T-23 分镜与可拍性检查 · T-24 交付模板与品牌化 docx ·
+T-25 成本优化（低层 Pass 换小模型 + 缓存命中率优化） · T-26 `mid_drama_v1` Profile
+
+---
+## 派单建议（单人 + AI Agent）
+- **你必须亲自做**：T-06（黄金 IR）、T-21 的人工种子核验、判官校准的分歧样本阅读、规则 L2→L3 approve。
+  这四件事是"品味"的注入口，外包给 Agent 等于放弃资产。
+- **可全权交 Agent**：T-01, T-04, T-05, T-08, T-09, T-17, T-19, T-20
+- **交 Agent 但你必须 review 设计**：T-02, T-03, T-07, T-10, T-12, T-14, T-15
+- **并行**：T-02/T-03 完成后，T-05 与 T-07 可并行；T-10 与 T-08b 可并行。
+```
+
+```markdown
+<!-- .github/ISSUE_TEMPLATE/agent-task.md -->
+---
+name: Agent 工单
+about: 派给 AI Agent 的独立可验收任务
+labels: [agent-task]
+---
+## 工单号
+T-
+
+## 目标（一句话）
+
+## 必读上下文（不要读整个仓库）
+- [ ] `AGENTS.md`
+- [ ] `docs/BORROW_MAP.md` 第 __ 条
+- [ ] 其他：
+
+## 依赖
+⇐ T-
+
+## 交付物（文件清单）
+
+## 验收命令（必须能在 CI 跑）
+```bash
+```
+
+## 硬约束
+- [ ] 不在 Python 里写业务规则
+- [ ] 不手改 `prompts/`
+- [ ] 行数在 `spec/BUDGETS.yaml` 预算内
+- [ ] 新增 check 规则有 pass/fail fixture 且 message 是完整诊断句
+
+## 如果你发现需要改 `spec/ir/**`
+**停下来**，写 ADR（`adr/`，status: proposed），在 PR 里等人工确认（AGENTS.md §5）。
+```
+
+```markdown
+<!-- .github/ISSUE_TEMPLATE/rule-candidate.md -->
+---
+name: 规则候选（人工发起）
+about: 你从一次交付里看出了一个规律，想让它进规则库
+labels: [rule-candidate, asset-change]
+---
+## 规则陈述（必须可判定）
+> 格式："当 X 时，应该 Y"。不可判定的写法（"应该更自然"）会被打回。
+
+## 证据（≥3 条，来自 ≥2 个 case）
+- case:____ node:____ ：
+- case:____ node:____ ：
+- case:____ node:____ ：
+
+## 形态（D2 三形态）
+- [ ] `schema` → 改 `spec/ir/`（需 ADR）
+- [ ] `check` → 新增 `spec/checks/**.yaml`（附 select/assert 草案）
+- [ ] `rubric` → 新增/修改锚定样例
+- [ ] `prompt` → 进 `L3_canonical` 且 `form: prompt`
+- [ ] `profile_default`
+
+## scope（最小可支撑范围）
+- [ ] global  - [ ] format:____  - [ ] industry:____  - [ ] client:____
+
+## 反例（这条规则什么时候不适用）
+
+## 这条是"品味"还是"规律"？
+若只反映某个客户的偏好 → **必须** `scope: client`（TAXONOMY 的 taste 隔离）。
+```
+
+---
+
+# Part E · 现在怎么开工
+
+**第 1 天**（你）
+1. 建仓库，落盘 Part B 全部文件。
+2. `gh label` 同步 `.github/labels.yml`；应用 `rulesets/main.json`；建"飞轮周报" Issue（issue #1）。
+3. 开 T-01 到 T-09 九张 Issue（用 `agent-task` 模板），把 `docs/WORK_ORDERS.md` 对应段落贴进去。
+4. 校对两处我凭记忆写的东西：`config/models.yaml` 的模型 ID，`docs/BORROW_MAP.md` 中标 `[待核]` 的编号。
+
+**第 2 天起**：派 Agent 做 T-01 → T-02 → T-03（串行，这三个是地基）。T-03 的 `merge_preserving_ids` 你要亲自 review。
+
+**你亲自做的第一件创作性工作是 T-06（黄金 IR）**。它是后面所有回归测试的地基，也是你把"品味"注入系统的第一个入口。别让 Agent 单独完成它。
+
+---
+
+## 三点必须提醒
+
+1. **`docs/BORROW_MAP.md` 里我直接核实过的只有四条**：GEPA（arXiv:2507.19457，ICLR 2026 Oral，metric 契约 `Prediction(score, feedback)`）、Dramatron（arXiv:2209.14958，CHI 2023）、Re3（arXiv:2210.06774）、DOC（arXiv:2212.10077）。其余标 `[待核]` 的 arXiv 编号与作者年份是我依记忆写的，方向可靠但**编号请让 Agent 首次引用时核对**。营销学的三条（Russell 2002 / Gupta & Lord 1998 / Green & Brock 2000）是概念可靠、出处需核。
+
+2. **合规词表是唯一我不敢替你决定的地方**。`spec/checks/compliance/*.yaml` 目前 `reviewed: false`，`eval/thresholds.yaml` 会把它降级为 warn。把它升成 block 之前，必须由你（或律师）核对法条并在 `_legal_sources.md` 登记。这条设计是故意的——让系统在你没核对前不会给出虚假的合规保证。
+
+3. **两张工单的优先级请不要动**：T-10（反向对齐器）在 T-12（GEPA metric）之前，因为没有反馈就没有优化燃料；T-06（黄金 IR）不能派给 Agent，因为它是品味的注入口。这两条一动，飞轮就转不起来。
+
+---
+Learn more:
+1. [1. GEPA Overview](https://dspy.ai/api/optimizers/GEPA/overview/)
+2. [GEPA in depth](https://dspy.ai/diving-deeper/gepa-in-depth/)
+3. [GEPA optimization](https://dspy.ai/getting-started/gepa-optimization/)
+4. [Dspy.GEPA — DSPex v0.12.0](https://hexdocs.pm/dspex/Dspy.GEPA.html)
+5. [Dspy.Teleprompt.GEPA — DSPex v0.12.0](https://hexdocs.pm/dspex/Dspy.Teleprompt.GEPA.html)
+6. [dspy-skills/skills/dspy-gepa-reflective/SKILL.md at master · OmidZamani/dspy-skills · GitHub](https://github.com/OmidZamani/dspy-skills/blob/master/skills/dspy-gepa-reflective/SKILL.md)
+7. [Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/abs/2507.19457)
+8. [Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/html/2507.19457v1)
+9. [GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/pdf/2507.19457?)
+10. [GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://arxiv.org/pdf/2507.19457v1)
+11. [Few-shot Learning-based Adaptive Reflective Engine](https://arxiv.org/html/2608.02919)
+12. [GEPA: Reflective Prompt Evolution Can Outperform Reinforcement Learning](https://huggingface.co/papers/2507.19457)
+13. [Co-Writing Screenplays and Theatre Scripts with Language Models: Evaluation by Industry Professionals](https://dl.acm.org/doi/full/10.1145/3544548.3581225)
+14. [How Dramatron Empowers Co-Creative Scriptwriting with AI Assistance](http://hackernoon.com/preview/kE2LTIEByIVSXFZnm4ur)
+15. [\[2209.14958\] Co-Writing Screenplays and Theatre Scripts with Language Models](https://arxiv.org/abs/2209.14958)
+16. [Co-Writing Screenplays and Theatre Scripts with Language Models](https://dl.acm.org/doi/fullHtml/10.1145/3544548.3581225)
+17. [(PDF) Co-Writing Screenplays and Theatre Scripts with Language Models](https://www.researchgate.net/publication/364027288_Co-Writing_Screenplays_and_Theatre_Scripts_with_Language_Models_An_Evaluation_by_Industry_Professionals)
+18. [Generating Longer Stories With Recursive Reprompting and Revision](https://arxiv.org/abs/2210.06774)
+19. [Resident Evil 3](https://en.wikipedia.org/wiki/Resident_Evil_3:_Nemesis)
+20. [Revision Prompting](https://revisionprompting.info/)
+21. [Aligning Large Language Models with Representation Editing](https://proceedings.neurips.cc/paper_files/paper/2024/hash/41bba7b0f5c81e789a20bb16a370aeeb-Abstract-Conference.html)
+22. [DavidAU/L3.2-Rogue-Creative-Instruct-Uncensored-7B-GGUF · Hugging Face](https://huggingface.co/DavidAU/L3.2-Rogue-Creative-Instruct-Uncensored-7B-GGUF)
+23. [Improving Long Story Coherence With Detailed Outline Control](https://arxiv.org/abs/2212.10077)
+24. [Improving Long Story Coherence With Detailed Outline Control](https://arxiv.org/abs/2212.10077v3)
+25. [Improving Long Story Coherence With Detailed Outline Control](https://arxiv.org/html/2212.10077)
