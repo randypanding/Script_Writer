@@ -1,0 +1,79 @@
+name: CI
+on:
+  pull_request:
+  push: {branches: [main]}
+concurrency: {group: "ci-${{ github.ref }}", cancel-in-progress: true}
+
+permissions: {contents: read}
+
+jobs:
+  # ---------- 阻塞：秒级，无 LLM ----------
+  quality:
+    name: lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: {enable-cache: true}
+      - run: uv sync --all-extras
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run pyright
+
+  spec-guard:
+    name: spec guard (资产层守卫)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}      # ir_schema_diff 需要 base
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - name: D2 每条 spec 语句可归约
+        run: uv run python -m nsc.guards.spec_reduction
+      - name: 规则 schema / ID 唯一 / evidence / legal_ref
+        run: uv run python -m nsc.guards.checks_schema
+      - name: prompts/ 未被手改（D19 硬规则）
+        run: uv run python -m nsc.guards.prompts_untouched
+      - name: IR breaking change 必须带 migration + ADR
+        run: uv run python -m nsc.guards.ir_schema_diff --base "origin/${{ github.base_ref || 'main' }}"
+      - name: 行数与规则数预算（D21）
+        run: uv run python -m nsc.guards.budgets
+      - name: canonical 规则冲突 / taste 隔离
+        run: uv run python -m nsc.guards.rules_conflict
+
+  tests:
+    name: tests (no LLM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: make db-rebuild
+      - run: uv run pytest -m "not llm" -n auto --cov --cov-report=term --cov-fail-under=80
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: test-report, path: out/}
+
+  golden:
+    name: golden regression (结构+渲染快照)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - name: 从黄金 IR 渲染并比对快照（无 LLM）
+        run: uv run pytest -m golden -n auto
+      - name: 锚点往返（渲染→回收→对齐，必须 100% 恢复 node_id）
+        run: uv run pytest tests/test_anchor_roundtrip.py
+
+  asset-change-gate:
+    name: 资产变更需要 ADR
+    if: contains(github.event.pull_request.labels.*.name, 'asset-change')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: 检查本 PR 是否新增/修改了 adr/
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^adr/' \
+            || { echo "::error::标记 asset-change 的 PR 必须包含 ADR（AGENTS.md §5）"; exit 1; }

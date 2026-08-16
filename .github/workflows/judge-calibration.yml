@@ -1,0 +1,35 @@
+name: Judge Calibration (每周)
+on:
+  schedule: [{cron: "0 1 * * 1"}]     # 每周一 09:00 CST
+  workflow_dispatch:
+permissions: {contents: write, issues: write, actions: write}
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    env: {ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras && make db-rebuild
+      - id: cal
+        run: uv run nsc judge calibrate --report out/judge_calibration.md --github-output
+      - name: 未达门槛 → 关闸 + 开 Issue（D8）
+        if: steps.cal.outputs.gate_ok != 'true'
+        run: |
+          gh variable set JUDGE_GATE_ENABLED --body "false"
+          gh issue create \
+            --title "判官校准未达门槛（$(date +%F)）：判官门禁已自动关闭" \
+            --label "judge,blocked" \
+            --body-file out/judge_calibration.md
+        env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: 达标 → 开闸
+        if: steps.cal.outputs.gate_ok == 'true'
+        run: gh variable set JUDGE_GATE_ENABLED --body "true"
+        env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: 归档报告
+        run: |
+          mkdir -p docs/metrics/judge && cp out/judge_calibration.md docs/metrics/judge/$(date +%F).md
+          git config user.name nsc-bot && git config user.email bot@local
+          git add docs/metrics/judge && git commit -m "chore(metrics): 判官校准 $(date +%F)" || true
+          git push

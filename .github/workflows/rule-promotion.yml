@@ -1,0 +1,30 @@
+name: Rule Promotion (每周挖掘)
+on:
+  schedule: [{cron: "0 2 * * 1"}]
+  workflow_dispatch:
+permissions: {contents: write, pull-requests: write}
+
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    env: {ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras && make db-rebuild
+      - name: L0→L1 聚类归纳
+        run: uv run nsc mine run
+      - name: L1→L2 留出集验证
+        run: uv run nsc mine validate --report out/mining/validation.md
+      - name: 退役检查
+        run: uv run nsc mine retire
+      - name: 开 PR（人工 approve 才能进 L3）
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/rule-candidates
+          title: "规则候选（自动挖掘 $(date +%F)）"
+          body-path: out/mining/validation.md
+          labels: |
+            rule-candidate
+            asset-change
+          commit-message: "feat(rules): 本周规则候选与退役"

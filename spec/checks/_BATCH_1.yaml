@@ -1,0 +1,489 @@
+---
+id: STR-001
+title: 每集恰好 1 个 Hook Beat 且位于前 20%
+domain: structure
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  hooks: "beats[?beat_kind=='hook']"
+  total: "length(beats)"
+assert: "count(hooks) == 1 and hooks[0].order <= max(1, int(total * 0.2))"
+message: "第 {item.no} 集的 Hook Beat 数量={count(hooks)}、位置={hooks[0].order if hooks else 'N/A'}（共 {total} 个 Beat）。短视频账号的短剧前 3 秒决定去留，Hook 必须是全集第一个或第二个 Beat 且只能有一个焦点。请把开场收敛为单一悬念。"
+fix_hint: "把非首位的 hook 降级为 escalation，或把真正的钩子提到 order=0。"
+tags: [hook, retention]
+---
+id: STR-002
+title: 每集必须有终态 Beat（cliffhanger 或 resolution）
+domain: structure
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  last: "beats[-1]"
+assert: "last.beat_kind in ['cliffhanger','resolution','cta']"
+message: "第 {item.no} 集最后一个 Beat 是 {last.beat_kind}，不是终态 Beat。观众在集末需要一个明确的'钩住'或'满足'，否则不会点下一集。请把末 Beat 改为 cliffhanger（非末集）或 resolution/cta（末集）。"
+tags: [structure]
+---
+id: STR-003
+title: Beat 数落在 Profile 区间内
+domain: structure
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  lo: "@.__ctx.profile.beats_per_episode[0]"
+  hi: "@.__ctx.profile.beats_per_episode[1]"
+assert: "lo <= length(item.beats) <= hi"
+message: "第 {item.no} 集有 {count(item.beats)} 个 Beat，Profile 要求 {lo}–{hi} 个。Beat 过少会导致节奏拖沓、单个 Beat 撑不满时长；过多会导致每个 Beat 只有几秒、观众跟不上。"
+tags: [pacing]
+---
+id: STR-004
+title: 场景数不超过 Profile 上限
+domain: structure
+severity: block
+stage: after_p4
+select: "episodes[*]"
+bind: {cap: "@.__ctx.profile.max_scenes_per_episode"}
+assert: "count(item.scenes) <= cap"
+message: "第 {item.no} 集有 {count(item.scenes)} 个场景，超过上限 {cap}。每增加一个场景就增加一次转场与布景成本，制作团队的实际预算撑不住。请合并发生在同一地点的相邻场景。"
+tags: [producibility]
+---
+id: STR-005
+title: 场景卡三要素完整
+domain: structure
+severity: block
+stage: after_p4
+select: "episodes[*].scenes[*]"
+assert: "chars(item.goal) >= 4 and chars(item.conflict) >= 4 and chars(item.turn) >= 4"
+message: "场景 {item.id} 的 goal/conflict/turn 至少一项为空或过短（goal={chars(item.goal)}字, conflict={chars(item.conflict)}字, turn={chars(item.turn)}字）。没有'谁要什么/什么挡着/发生了什么不可逆变化'的场景一定是水戏，会被商家一眼看出来。"
+tags: [scene]
+---
+id: STR-006
+title: 情绪曲线不得平坦
+domain: structure
+severity: warn
+stage: after_p3
+select: "episodes[*]"
+assert: "emotion_range(item.beats) >= @.__ctx.profile.min_emotion_range"
+message: "第 {item.no} 集的情绪效价极差只有 {emotion_range(item.beats)}，低于阈值 {@.__ctx.profile.min_emotion_range}。全程情绪平坦意味着没有落差，观众不会产生'想看下去'的张力。请压低某个 Beat 的 valence 制造至暗时刻。"
+tags: [emotion]
+---
+id: STR-007
+title: 每集至少一组伏笔闭环（按 Profile 要求）
+domain: structure
+severity: block
+stage: after_p3
+scope: {profiles: [short_drama_v1]}
+select: "episodes[*]"
+bind: {sp: "@.__ctx.ir.setup_payoffs"}
+assert: "count([x for x in sp if x.episode_no == item.no]) >= 1"
+message: "第 {item.no} 集没有任何 setup→payoff 闭环。营销短剧的复看与转发主要来自'原来这里是埋的'，无伏笔的单集观感等同于流水账。请在前段埋一个道具/一句话，在后段回收。"
+tags: [setup_payoff]
+---
+id: STR-008
+title: 伏笔必须闭环且顺序正确
+domain: structure
+severity: block
+stage: after_p3
+select: "setup_payoffs[*]"
+assert: "order_of(item.setup_beat_id) < order_of(item.payoff_beat_id)"
+message: "伏笔 {item.id}（{item.description}）的回收点在埋设点之前（setup@{order_of(item.setup_beat_id)} vs payoff@{order_of(item.payoff_beat_id)}）。这会让观众先看到答案再看到问题。请交换或重新定位。"
+tags: [setup_payoff]
+---
+id: STR-009
+title: 跨集伏笔跨度不过长
+domain: structure
+severity: warn
+stage: after_p3
+select: "setup_payoffs[*]"
+bind: {span: "@.__ctx.profile.max_payoff_span_episodes"}
+assert: "item.span_episodes <= span"
+message: "伏笔 {item.id} 跨越了 {item.span_episodes} 集，超过建议跨度 {span} 集。短视频观众的记忆窗口很短，跨度太大等于没埋。"
+tags: [setup_payoff]
+---
+id: STR-010
+title: 主角每集出场
+domain: structure
+severity: block
+stage: after_p4
+select: "episodes[*]"
+bind:
+  pro: "@.__ctx.ir.characters[?role=='protagonist'].id"
+assert: "all_of(pro, 'x in item.__present_character_ids')"
+message: "第 {item.no} 集缺少主角出场。观众追的是人不是事，主角缺席会直接掉粉。"
+tags: [character]
+---
+id: STR-011
+title: 开场承诺非空且是疑问/悬念型
+domain: structure
+severity: block
+stage: after_p2
+select: "episodes[*]"
+assert: "chars(item.hook_promise) >= 6"
+message: "第 {item.no} 集的 hook_promise 为空或过短。hook_promise 是'这一集向观众承诺解答的问题'，它是写 Hook Beat 的依据，缺失会导致开场无目的。"
+tags: [hook]
+---
+id: STR-012
+title: 无声明未出场的角色
+domain: structure
+severity: warn
+stage: after_p4
+select: "characters[*]"
+assert: "item.__appearance_count >= 1"
+message: "角色「{item.name}」在人物表中声明但从未在任何场景出场。多余角色会增加选角与片酬成本，且暗示 Bible 与 BeatSheet 脱节。请删除或安排出场。"
+tags: [character, producibility]
+---
+id: STR-013
+title: 必须有目标人群代理角色
+domain: structure
+severity: block
+stage: after_p1
+select: "project"
+bind: {proxies: "@.__ctx.ir.characters[?role=='customer_proxy']"}
+assert: "count(proxies) >= 1 and all_of(proxies, 'chars(x.persona_ref) > 0')"
+message: "全剧没有 role=customer_proxy 且绑定了 brand.audience persona 的角色。营销短剧的代入感来自'那个人就是我'，缺少人群代理角色时观众不会把产品和自己联系起来。"
+tags: [brand, character]
+---
+id: BM-001
+title: 单集品牌植入不超过预算
+domain: brand
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  moments: "beats[?beat_kind=='brand_moment']"
+  limit: "@.__ctx.brand.placement.max_moments_per_episode"
+assert: "count(moments) <= limit"
+message: "第 {item.no} 集有 {count(moments)} 处品牌植入，超过预算 {limit} 处。植入密度过高会打断叙事沉浸并显著降低完播率。请合并讲同一卖点的植入，优先删除 intensity<=2 且 plot_connection=='none' 的那处。"
+evidence: []
+tags: [density]
+---
+id: BM-002
+title: 植入间隔不低于下限
+domain: brand
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  moments: "beats[?beat_kind=='brand_moment']"
+  gap: "@.__ctx.brand.placement.min_gap_beats"
+assert: "min_gap(moments) >= gap"
+message: "第 {item.no} 集有两处植入相隔仅 {min_gap(moments)} 个 Beat（要求 ≥{gap}）。连续植入会让观众立刻识别为广告并划走。请把其中一处移到本集后半段或下一集。"
+tags: [density]
+---
+id: BM-003
+title: 植入不得落在禁止的 Beat 类型内
+domain: brand
+severity: block
+stage: after_p3
+select: "brand_moments[*]"
+bind: {forbid: "@.__ctx.brand.placement.forbid_in_beat_kinds"}
+assert: "item.__anchor_beat_kind not in forbid"
+message: "植入 {item.id} 落在了 {item.__anchor_beat_kind} Beat 上，该类型被禁止（{forbid}）。开场 Hook 一旦出现品牌，观众会在 3 秒内判定为广告，前功尽弃。请把这处植入下移到 escalation 之后。"
+tags: [placement_position]
+---
+id: BM-004
+title: 全季至少 N 处高情节关联植入
+domain: brand
+severity: block
+stage: after_p3
+select: "project"
+bind:
+  high: "@.__ctx.ir.brand_moments[?plot_connection=='high']"
+  need: "@.__ctx.brand.placement.require_high_plot_connection"
+assert: "count(high) >= need"
+message: "全剧只有 {count(high)} 处 plot_connection=='high' 的植入，要求至少 {need} 处。只有当产品是推动剧情的必要条件时，品牌记忆与态度提升才成立；纯背景出现几乎无效。请把某处植入改造成'没有这个产品情节就走不下去'。"
+tags: [plot_connection]
+---
+id: BM-005
+title: 高强度植入数量受限
+domain: brand
+severity: block
+stage: after_p3
+select: "episodes[*]"
+bind:
+  hi: "beats[?beat_kind=='brand_moment'].__intensity"
+  cap: "@.__ctx.brand.placement.max_high_intensity_per_episode"
+assert: "count([x for x in hi if x >= 4]) <= cap"
+message: "第 {item.no} 集有 {count([x for x in hi if x >= 4])} 处 intensity>=4 的显性植入，超过上限 {cap}。硬广每集只能有一次，且应放在情绪高点之后。"
+tags: [intensity]
+---
+id: BM-006
+title: 必覆盖卖点全部被覆盖
+domain: brand
+severity: block
+stage: after_p3
+select: "project"
+bind:
+  need: "@.__ctx.brand.selling_points[?must_cover].id"
+  got: "@.__ctx.ir.brand_moments[*].selling_point_id"
+assert: "all_of(need, 'x in got')"
+message: "以下必覆盖卖点没有任何 BrandMoment 承载：{[x for x in need if x not in got]}。这是商家付费的直接目标，缺失等于交付未完成。请为每个缺失卖点新增或改造一处植入，优先用 usage 或 before_after 形式。"
+tags: [coverage]
+---
+id: BM-007
+title: 必提台词原文出现
+domain: brand
+severity: block
+stage: after_p5
+select: "project"
+bind:
+  need: "@.__ctx.brand.must_include_lines"
+  all_text: "@.__ctx.ir.__all_line_text"
+assert: "all_of(need, 'contains_any(all_text, [x])')"
+message: "以下必提台词未在剧本中原文出现：{[x for x in need if not contains_any(all_text, [x])]}。这些是商家指定的口播/Slogan，必须逐字出现。请安排给最合适的角色，避免生硬念广告。"
+tags: [must_include]
+---
+id: BM-007b
+title: 必现视觉符号出现
+domain: brand
+severity: block
+stage: after_p5
+select: "project"
+bind:
+  need: "@.__ctx.brand.must_include_visuals"
+  desc: "@.__ctx.ir.__all_action_and_scene_text"
+assert: "all_of(need, 'contains_any(desc, [x])')"
+message: "以下必现视觉符号未在任何动作描述或场景描述中出现：{[x for x in need if not contains_any(desc, [x])]}。制作团队按剧本布景，剧本没写就拍不到。"
+tags: [must_include]
+---
+id: BM-008
+title: 植入不得全部集中在尾部
+domain: brand
+severity: warn
+stage: after_p3
+select: "episodes[*]"
+bind: {pos: "positions(beats[?beat_kind=='brand_moment'], length(beats))"}
+assert: "count(pos) == 0 or min(pos) <= 0.8"
+message: "第 {item.no} 集所有植入都在后 20%（位置={pos}）。观众流失主要发生在前半段，全部植入压在结尾意味着大部分人根本没看到。"
+tags: [placement_position]
+---
+id: BM-009
+title: 产品名写法唯一
+domain: brand
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[*]"
+bind:
+  canon: "@.__ctx.brand.__canonical_names"
+  bad: "@.__ctx.brand.__forbidden_name_variants"
+assert: "not contains_any(item.text, bad)"
+message: "台词 {item.id}「{item.text}」中出现了非规范产品名写法。正确写法只能是 {canon}。品牌方对名称写法零容忍，错写会导致整集返工。"
+tags: [naming]
+---
+id: BM-010
+title: 植入渠道不得单一
+domain: brand
+severity: warn
+stage: after_p3
+select: "episodes[*]"
+bind: {mods: "beats[?beat_kind=='brand_moment'].__modality"}
+assert: "count(mods) <= 1 or distinct(mods) >= 2"
+message: "第 {item.no} 集的植入 modality 全部为 {distinct(mods) and mods[0]}。视觉+口语双通道的品牌记忆显著优于单通道；请把其中一处改为另一种通道。"
+tags: [modality]
+---
+id: BM-011
+title: 竞品名零出现
+domain: brand
+severity: block
+stage: after_p5
+select: "project"
+bind:
+  comp: "@.__ctx.brand.legal.competitor_names"
+  all_text: "@.__ctx.ir.__all_text"
+assert: "not contains_any(all_text, comp)"
+message: "交付文本中出现了竞品名：{[x for x in comp if contains_any(all_text, [x])]}。这是合同红线，会直接导致拒收。"
+tags: [legal]
+---
+id: BM-012
+title: 无证据卖点禁止用演示形式
+domain: brand
+severity: block
+stage: after_p3
+select: "brand_moments[*]"
+bind: {unproven: "@.__ctx.brand.selling_points[?proof==''].id"}
+assert: "not (item.proof_mode == 'demo' and item.selling_point_id in unproven)"
+message: "植入 {item.id} 用 demo（当场演示效果）承载卖点 {item.selling_point_id}，但该卖点在 BrandBrief 中没有 proof 字段。演示无法证实的效果构成虚假宣传风险。请改为 reaction 或 contrast 形式。"
+legal_ref: "内部风控：无证据卖点不得演示"
+tags: [legal, proof]
+---
+id: DLG-001
+title: 禁用词零出现
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[*]"
+bind: {banned: "@.__ctx.brand.__all_banned_words"}
+assert: "not contains_any(item.text, banned)"
+message: "台词 {item.id}「{item.text}」命中禁用词。禁用词表来自品牌方与合规清单，无例外。请改写为同义的合规表述。"
+tags: [banned]
+---
+id: DLG-002
+title: 单条台词长度受限
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']"
+bind: {cap: "@.__ctx.profile.max_line_chars"}
+assert: "chars(item.text) <= cap"
+message: "台词 {item.id} 有 {chars(item.text)} 字，超过上限 {cap} 字。短剧的镜头节奏容不下长句，演员也念不自然。请拆成两句或交给对手角色一半。"
+tags: [length]
+---
+id: DLG-003
+title: 说话人必须在场
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']"
+assert: "item.character_id in item.__scene_present_character_ids"
+message: "台词 {item.id} 的说话人不在所属场景的在场角色列表中。这类错误会让制作团队在拍摄现场卡住。"
+tags: [consistency]
+---
+id: DLG-004
+title: 主要角色语音特征可辨识
+domain: dialogue
+severity: warn
+stage: after_p5
+select: "characters[?role=='protagonist' || role=='customer_proxy']"
+bind: {ratio: "@.__ctx.profile.min_voice_tic_ratio"}
+assert: "count(item.voice_tics) == 0 or item.__tic_hit_ratio >= ratio"
+message: "角色「{item.name}」的台词只有 {pct(item.__tic_hit_count, item.__line_count)} 命中其 voice_tics（要求 ≥{ratio}）。所有人说话一个腔是 AI 剧本最容易被识破的地方。"
+tags: [voice]
+---
+id: DLG-005
+title: 台词重复率受限
+domain: dialogue
+severity: warn
+stage: after_p5
+select: "episodes[*]"
+assert: "pct(item.__duplicate_line_count, item.__line_count) <= 0.05"
+message: "第 {item.no} 集有 {item.__duplicate_line_count} 条重复台词（占 {pct(item.__duplicate_line_count, item.__line_count)}）。重复通常意味着模型在填时长而不是推进剧情。"
+tags: [quality]
+---
+id: DLG-006
+title: 台词总字数匹配时长预算
+domain: dialogue
+severity: block
+stage: after_p5
+select: "episodes[*]"
+bind:
+  cps: "@.__ctx.profile.chars_per_second"
+  tol: "@.__ctx.profile.duration_tolerance"
+assert: "abs(pct(item.__dialogue_chars, cps * item.duration_target_s) - 1) <= tol"
+message: "第 {item.no} 集对白共 {item.__dialogue_chars} 字，按 {cps} 字/秒需 {item.__dialogue_chars / cps} 秒，目标时长 {item.duration_target_s} 秒（容差 ±{tol}）。字数与时长不匹配会导致成片被迫删戏或注水。"
+tags: [duration]
+---
+id: NOV-001
+title: 小说章节必须 100% 覆盖对应 Beat
+domain: novel
+severity: block
+stage: after_p6
+select: "chapters[*]"
+assert: "item.__beat_coverage == 1.0"
+message: "章节 {item.id} 只覆盖了对应集 {pct(item.__covered_beats, item.__total_beats)} 的 Beat（未覆盖：{item.__missing_beat_ids}）。小说是商家的确认物，漏掉的 Beat 意味着商家确认了一个和剧本不同的故事。"
+tags: [novel, anchor]
+---
+id: NOV-002
+title: 小说与剧本对白一致
+domain: novel
+severity: warn
+stage: after_p6
+select: "chapters[*].__dialogue_pairs[*]"
+assert: "sim(item.novel_text, item.line_text) >= 0.7"
+message: "章节 {item.chapter_id} 中对应 Line {item.line_id} 的对白与剧本差异过大（相似度 {sim(item.novel_text, item.line_text)}）。小说和剧本必须是同一个故事的两个视图；若确需改写请同时更新 Line。"
+tags: [novel, consistency]
+---
+id: NOV-003
+title: 小说段落长度受限
+domain: novel
+severity: warn
+stage: after_p6
+select: "chapters[*].paragraphs[*]"
+bind: {cap: "@.__ctx.ir.voice.paragraph_max_chars"}
+assert: "chars(item) <= cap"
+message: "存在 {chars(item)} 字的段落，超过 {cap} 字。手机端阅读长段落会被直接跳过，商家在手机上看不完就等于没确认。"
+tags: [novel, readability]
+---
+id: CMP-001
+title: 广告绝对化用语零出现
+domain: compliance
+severity: block
+stage: after_p6
+select: "project"
+bind:
+  words: "@.__ctx.compliance.absolute_terms"
+  all_text: "@.__ctx.ir.__all_text"
+assert: "not contains_any(all_text, words)"
+message: "交付文本中出现绝对化用语：{[x for x in words if contains_any(all_text, [x])]}。此类表述在商业宣传中存在明确合规风险，必须替换为可证实的相对表述。"
+legal_ref: "spec/checks/compliance/_legal_sources.md#absolute-terms"
+tags: [legal]
+---
+id: CMP-002
+title: 功效表述白名单外零出现
+domain: compliance
+severity: block
+stage: after_p6
+select: "project"
+bind:
+  claims: "@.__ctx.compliance.regulated_claim_patterns"
+  wl: "@.__ctx.brand.legal.claim_whitelist"
+  all_text: "@.__ctx.ir.__all_text"
+assert: "not regex_any(all_text, [c for c in claims if c not in wl])"
+message: "交付文本出现了受管制的功效/疗效类表述，且不在该品牌的 claim_whitelist 中。请改为体验描述（'喝完觉得很舒服'）而非功效断言。"
+legal_ref: "spec/checks/compliance/_legal_sources.md#health-claims"
+tags: [legal]
+---
+id: PRD-001
+title: 场地成本不超预算档
+domain: producibility
+severity: warn
+stage: after_p4
+select: "episodes[*]"
+bind: {cap: "@.__ctx.profile.location_cost_budget"}
+assert: "sum_of(item.__locations, 'cost_weight') <= cap"
+message: "第 {item.no} 集的场地成本权重合计 {sum_of(item.__locations, 'cost_weight')}，超过预算档 {cap}。制作团队通常只能拿到 1–2 个可控场地。"
+tags: [producibility]
+---
+id: PRD-002
+title: 角色数不超预算
+domain: producibility
+severity: block
+stage: after_p1
+select: "project"
+bind: {cap: "@.__ctx.profile.max_characters"}
+assert: "count(@.__ctx.ir.characters) <= cap"
+message: "全剧有 {count(@.__ctx.ir.characters)} 个角色，超过上限 {cap}。商家自拍短剧的常态是 2–4 个可用演员，超出就拍不了。"
+tags: [producibility]
+---
+id: PRD-003
+title: 不得使用不可拍摄的场景/道具
+domain: producibility
+severity: warn
+stage: after_p4
+select: "episodes[*].scenes[*]"
+assert: "item.__location_cost_tier != 'unavailable'"
+message: "场景 {item.id} 使用了标记为 unavailable 的场地。请替换为 BrandBrief 中 shootable==true 的使用场景。"
+tags: [producibility]
+---
+id: FCT-001
+title: 产品参数必须来自 BrandBrief
+domain: fact
+severity: block
+stage: after_p6
+select: "project"
+bind: {claims: "@.__ctx.ir.__numeric_claims"}
+assert: "all_of(claims, 'x.value in @.__ctx.brand.__all_fact_values')"
+message: "交付文本中出现了 BrandBrief 未提供的产品参数/数字：{[x for x in claims if x.value not in @.__ctx.brand.__all_fact_values]}。模型自造参数是最危险的失败模式，会造成商家的法律风险。"
+tags: [hallucination, legal]
+---
+id: FCT-002
+title: 不得复用案例库原文
+domain: fact
+severity: block
+stage: after_p6
+select: "project"
+bind: {snips: "@.__ctx.ir.__retrieved_case_snippets"}
+assert: "all_of(snips, 'lcs_len(x, @.__ctx.ir.__all_text) <= 12')"
+message: "交付文本与检索到的参考案例存在超过 12 字的连续重合。案例库仅用于学习结构与手法，不得复用文字（见 COMPLIANCE.md §1）。"
+tags: [legal, plagiarism]

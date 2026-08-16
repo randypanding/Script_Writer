@@ -1,0 +1,39 @@
+name: LLM Eval (L1 判官)
+on:
+  pull_request:
+    types: [labeled, synchronize]
+  schedule: [{cron: "0 18 * * *"}]      # 每日 02:00 CST
+  workflow_dispatch:
+
+permissions: {contents: read, pull-requests: write}
+
+jobs:
+  l1:
+    # 只在 PR 打了 affects-generation 标签、或 nightly 时跑（省钱）
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'affects-generation')
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      JUDGE_GATE_ENABLED: ${{ vars.JUDGE_GATE_ENABLED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: make db-rebuild
+      - name: 成本预算护栏（超预算直接失败，不是超支后报告）
+        run: uv run nsc eval l1 --sample ${{ github.event_name == 'schedule' && 40 || 12 }} --max-cost-usd 3.0
+      - name: 判官门禁（仅在 JUDGE_GATE_ENABLED=true 且聚合分低于阈值时阻塞，D6/D8）
+        run: uv run python -m nsc.eval.gate --thresholds eval/thresholds.yaml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: l1-report, path: out/eval/}
+      - name: 在 PR 上贴报告
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with: {path: out/eval/summary.md}

@@ -1,0 +1,16 @@
+# 由 nsc ingest 自动写入。人不手写。
+id: R0-0001
+level: L0
+statement: "客户把'这款茶用的是进口茶基，热量只有三分之一'整句删掉，改成一个动作（把杯子推过去）。"
+scope: {kind: client, value: demo_tea}
+form: non-normative
+dimension: placement
+evidence_ids: [case:0142]
+created_at: "2025-01-03T10:22:00Z"
+extra:
+  target_node_id: 01JB4ZQ8XK2N7T5V9WB3H0C6RD
+  verdict: reject
+  severity: 3
+  rationale_nl: "念参数太假了，我们客户不会这么说话"
+  revised_text: "（把杯子推过去）不加糖的。"
+  original_text: "这款茶用的是进口茶基，热量只有普通奶茶的三分之一。"

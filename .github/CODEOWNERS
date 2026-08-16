@@ -1,0 +1,10 @@
+# 资产层必须由你本人 review。Agent 可以提 PR，但不能自动合并。
+/spec/                @OWNER
+/profiles/            @OWNER
+/brands/              @OWNER
+/cases/export/        @OWNER
+/eval/thresholds.yaml @OWNER
+/adr/                 @OWNER
+/.github/             @OWNER
+/COMPLIANCE.md        @OWNER
+# src/ 与 tests/ 不设 owner：Agent 自主区

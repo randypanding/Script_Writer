@@ -1,0 +1,68 @@
+[project]
+name = "nsc"
+version = "0.1.0"
+description = "Narrative Spec Compiler - marketing short-drama novel & screenplay generator"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+  "dspy>=3.0",                 # dspy.GEPA 需要 3.x
+  "litellm>=1.55",
+  "python-ulid>=3.0",
+  "jmespath>=1.0",             # checker DSL select
+  "simpleeval>=1.0",           # checker DSL assert（安全求值，勿换 eval）
+  "pyyaml>=6.0",
+  "jinja2>=3.1",
+  "typer>=0.12",
+  "rich>=13.9",
+  "diskcache>=5.6",            # 内容寻址缓存
+  "python-docx>=1.1",          # docx 生成 + 修订 XML 解析
+  "lxml>=5.3",
+  "rapidfuzz>=3.10",           # 模糊回退对齐
+  "sqlite-vec>=0.1.6",
+  "sentence-transformers>=3.2",# BGE-M3
+  "hdbscan>=0.8.40",
+  "numpy>=2.1",
+  "scipy>=1.14",
+  "langfuse>=2.53",
+  "krippendorff>=0.8",
+  "statsmodels>=0.14",         # cohen_kappa
+]
+
+[project.optional-dependencies]
+annotate = ["faster-whisper>=1.1", "scenedetect>=0.6"]
+dev = [
+  "pytest>=8.3", "pytest-cov>=6.0", "pytest-xdist>=3.6",
+  "hypothesis>=6.115",         # IR 不变量 property-based
+  "syrupy>=4.8",               # 渲染快照
+  "ruff>=0.8", "pyright>=1.1.390", "pre-commit>=4.0",
+]
+
+[project.scripts]
+nsc = "nsc.cli:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+[tool.ruff.lint]
+select = ["E","F","I","N","UP","B","SIM","RUF","ANN","T20"]
+ignore = ["ANN101","ANN102","E501"]
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN","T20"]
+
+[tool.pyright]
+include = ["src", "spec", "tests"]
+strict = ["src/nsc/runtime", "src/nsc/checker", "spec/ir"]
+pythonVersion = "3.12"
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+markers = [
+  "llm: 需要调用 LLM（CI 默认跳过，仅 nightly / label 触发）",
+  "golden: 黄金回归测试",
+  "slow: >10s",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/nsc/checker", "src/nsc/runtime", "src/nsc/feedback"]

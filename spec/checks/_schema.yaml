@@ -1,0 +1,33 @@
+# checker 规则的 JSON Schema（供 nsc.guards.checks_schema 校验）
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: NSC Check Rule
+type: object
+additionalProperties: false
+required: [id, title, domain, severity, stage, select, assert, message]
+properties:
+  id: {type: string, pattern: "^[A-Z]{3,4}-[0-9]{3}[a-z]?$"}
+  title: {type: string, minLength: 4}
+  domain: {enum: [structure, brand, dialogue, novel, compliance, producibility, fact]}
+  severity: {enum: [block, warn, info]}
+  status: {enum: [active, deprecated], default: active}
+  stage: {enum: [after_p2, after_p3, after_p4, after_p5, after_p6, final]}
+  scope:
+    type: object
+    additionalProperties: false
+    properties:
+      profiles: {type: array, items: {type: string}}
+      industries: {type: array, items: {type: string}}
+      brands: {type: array, items: {type: string}}
+  select: {type: string, minLength: 1}
+  group_by: {type: [string, "null"]}
+  bind: {type: object, additionalProperties: {type: string}}
+  assert: {type: string, minLength: 1}
+  message: {type: string, minLength: 20}      # 强制 message 有信息量（DSL §5）
+  fix_hint: {type: string}
+  evidence: {type: array, items: {type: string, pattern: "^case:[0-9]{4}$"}}
+  rule_ref: {type: string}
+  legal_ref: {type: string}
+  tags: {type: array, items: {type: string}}
+allOf:
+  - if: {properties: {domain: {const: compliance}}}
+    then: {required: [legal_ref], properties: {legal_ref: {minLength: 4}}}

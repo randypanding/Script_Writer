@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks: [{id: ruff, args: [--fix]}, {id: ruff-format}]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ["--maxkb=512"]        # 大文件走 git-lfs
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+  - repo: local
+    hooks:
+      - id: prompts-are-generated
+        name: "prompts/ 是生成物，禁止手改"
+        entry: uv run python -m nsc.guards.prompts_untouched
+        language: system
+        files: ^prompts/
+        pass_filenames: false
+      - id: checks-schema
+        name: "checker 规则 schema 校验"
+        entry: uv run python -m nsc.guards.checks_schema
+        language: system
+        files: ^spec/checks/
+        pass_filenames: false
+      - id: budgets
+        name: "手写行数预算"
+        entry: uv run python -m nsc.guards.budgets
+        language: system
+        files: ^src/
+        pass_filenames: false

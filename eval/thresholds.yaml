@@ -1,0 +1,51 @@
+# eval/thresholds.yaml
+# 所有门禁阈值的唯一真相。改这里需要 ADR（AGENTS.md §5）。
+schema_version: "1.0"
+
+l0:
+  block_on_any_block_severity: true
+  allow_rule_errors: false          # 规则本身写错 = CI 失败
+
+l1:
+  judge_gate_enabled_var: JUDGE_GATE_ENABLED   # 由 judge-calibration.yml 自动开关
+  aggregate_min: 3.2                            # 5 分制加权均值
+  per_dimension_min_report_only: 2.5
+  sample_size_pr: 12
+  sample_size_nightly: 40
+  max_cost_usd_pr: 3.0
+
+judge_calibration:
+  pairwise_report: 0.65
+  pairwise_gate: 0.78
+  kappa_gate: 0.60
+  max_invalid_rate: 0.05
+  max_position_bias: 0.08
+  min_calibration_items: 50
+
+rule_promotion:
+  min_cluster_size: 3
+  min_distinct_cases: 2
+  check_precision: 0.80
+  check_max_false_fire: 0.05
+  check_min_recall: 0.30
+  rubric_min_delta: 0.15
+  rubric_max_regression: 0.05
+  retire_after_days_unused: 90
+
+annotation:
+  beat_kind_kappa: 0.60
+  boundary_f1: 0.70
+  brand_position_mae: 0.08
+  plot_connection_kappa: 0.50
+
+roundtrip:
+  min_structure_similarity: 0.60
+  max_brand_position_kl: 0.25
+
+northstar:
+  # D22：结构性编辑率的 8 周滑动趋势必须非上升
+  window_weeks: 8
+  alert_on_slope_above: 0.0
+
+# 未完成人工核对的合规规则自动降级（COMPLIANCE §2）
+compliance_downgrade_unreviewed: true

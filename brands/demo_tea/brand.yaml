@@ -1,0 +1,78 @@
+schema_version: "1.0"
+brand_id: demo_tea
+brand_name: 清野茶事
+version: "1.0.0"
+industry: beverage
+
+products:
+  - id: light_milk_tea
+    name: 轻乳茶
+    canonical_name: 清野轻乳茶
+    aliases: [轻乳茶]
+    category: 现制茶饮
+    price_cny: 16.0
+    facts:
+      sugar: "不额外添加蔗糖"
+      base: "选用云南高山茶基"
+      cup_ml: "500 毫升"
+
+selling_points:
+  - id: no_sucrose
+    claim: 不额外添加蔗糖
+    priority: 1
+    must_cover: true
+    proof: "配料表可现场展示"
+  - id: real_tea_base
+    claim: 用真茶不用茶粉
+    priority: 2
+    must_cover: true
+    proof: "门店可见茶叶罐与现萃设备"
+  - id: not_bloating
+    claim: 喝完不容易胀
+    priority: 3
+    must_cover: false
+    proof: ""
+    forbidden_phrasings: ["养胃", "促消化", "调理肠胃"]
+
+audience:
+  - id: office_woman_28
+    label: 一线城市 25-32 岁女性白领
+    age_range: "25-32"
+    pains: [下午必须来一杯但怕胖, 体检报告血糖偏高, 觉得无糖饮料难喝]
+    triggers: [同事推荐, 体检结果, 试喝]
+    language_notes: 说话短、爱用反问、不喜欢被说教
+
+usage_scenes:
+  - id: office_afternoon
+    description: 下午三点的办公室工位
+    shootable: true
+  - id: store_counter
+    description: 门店吧台前
+    shootable: true
+  - id: hospital_checkup
+    description: 体检中心走廊
+    shootable: false
+
+tone_words: [真诚, 生活化, 不油腻, 有一点幽默]
+banned_words: [养胃, 促消化, 无糖, 零糖, 减肥, 降血糖]
+must_include_lines: ["不额外加蔗糖"]
+must_include_visuals: [清野轻乳茶的杯身logo]
+
+placement:
+  max_moments_per_episode: 2
+  min_gap_beats: 2
+  max_high_intensity_per_episode: 1
+  require_high_plot_connection: 1
+  forbid_in_beat_kinds: [hook]
+
+legal:
+  banned_words: [最好喝, 第一名, 唯一, 治疗]
+  competitor_names: []      # 按需填
+  claim_whitelist: ["不额外添加蔗糖", "用真茶"]
+  ip_assignment: 交付后著作权归甲方所有
+  legal_refs: []
+
+account_context: >
+  商家自有抖音号 3.2 万粉，此前内容以门店探店与产品特写为主，完播率低。
+  希望用连续短剧提高关注与到店。
+business_goal: consideration

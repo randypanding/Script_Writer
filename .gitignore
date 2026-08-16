@@ -1,0 +1,11 @@
+out/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+cases/cases.db          # 工作副本，真相在 cases/export/*.jsonl (D28)
+cases/cases.db-*
+.diskcache/
+.env
+.langfuse/

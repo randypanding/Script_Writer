@@ -1,0 +1,52 @@
+# D18 的泛化压测：这个 Profile 的存在是为了防止内核长歪。接入它不得修改 src/nsc/{runtime,checker}。
+schema_version: "1.0"
+id: short_video_v1
+version: "1.0.0"
+display_name: 单条营销短视频（30-60 秒）
+
+layers: {season: false, episode: true, scene: true, beat: true, line: true}
+
+episode_count: [1, 1]
+duration_target_s: 45
+duration_tolerance: 0.20
+beats_per_episode: [3, 5]
+max_scenes_per_episode: 2
+max_characters: 3
+max_line_chars: 28
+chars_per_second: 5.0
+
+min_emotion_range: 0.5
+require_setup_payoff: false        # 45 秒放不下伏笔闭环 → STR-007 的 scope 已排除本 profile
+max_payoff_span_episodes: 1
+min_voice_tic_ratio: 0.10
+location_cost_budget: 1.5
+
+beat_templates:
+  - id: hook_pain_solve_cta
+    source: mined
+    sequence: [hook, complication, brand_moment, cta]
+  - id: contrast_before_after
+    source: mined
+    sequence: [hook, setup, brand_moment, resolution, cta]
+
+novel:
+  enabled: true                     # 仍出"小说"，但形态是一段 300-500 字的短文，供商家确认
+  styles: [micro_prose]
+  chars_per_episode: [300, 500]
+  default_voice:
+    person: third_limited
+    tense: present
+    style: micro_prose
+    paragraph_max_chars: 120
+    interiority: low
+
+render_targets: [novel_md, script_fountain, storyboard_csv]
+enabled_check_domains: [structure, brand, dialogue, novel, compliance, producibility, fact]
+
+model_tiers:
+  p1_bible: tier_draft
+  p2_arc: tier_draft
+  p3_beatsheet: tier_plan
+  p4_scene: tier_draft
+  p5_dialogue: tier_draft
+  p6_prose: tier_draft

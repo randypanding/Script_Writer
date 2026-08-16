@@ -1,0 +1,22 @@
+# config/models.yaml
+# 模型是生成物（可换），路由策略是资产。改 tier 定义不需要改代码。
+schema_version: "1.0"
+tiers:
+  tier_plan:    {model: "openai/gpt-5.1", temperature: 0.8, max_tokens: 8000}
+  tier_draft:   {model: "openai/gpt-5.1-mini", temperature: 0.9, max_tokens: 6000}
+  tier_bulk:    {model: "openai/gpt-5.1-mini", temperature: 0.2, max_tokens: 4000}
+  tier_judge:   {model: "anthropic/claude-sonnet-4.5", temperature: 0.0, max_tokens: 1500}
+  tier_reflect: {model: "anthropic/claude-opus-4.5", temperature: 1.0, max_tokens: 8000}
+  tier_embed:   {model: "BAAI/bge-m3", local: true}
+
+# ⚠️ 以上模型 ID 必须由 agent 在 T-01 中用 `litellm.model_list` 或官方文档核对后修正。
+# 本文件不参与语义门禁，只参与成本统计与可复现（进 provenance.model_id）。
+
+budgets:
+  per_episode_usd: 0.60
+  per_run_usd: 8.0
+  per_gepa_run_usd: 20.0
+  ci_eval_usd: 3.0
+
+retry: {attempts: 3, backoff: exponential}
+langfuse: {enabled: true, host_env: LANGFUSE_HOST, sample_rate: 1.0}

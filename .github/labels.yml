@@ -1,0 +1,9 @@
+- {name: asset-change,       color: "b60205", description: "改动 spec/profiles/brands，需 ADR + 人工 approve"}
+- {name: affects-generation, color: "d93f0b", description: "会改变生成结果，触发 L1 判官评测"}
+- {name: rule-candidate,     color: "0e8a16", description: "自动挖掘的规则候选，待人工晋升"}
+- {name: rule-promote,       color: "0e8a16", description: "L2→L3 晋升"}
+- {name: judge,              color: "5319e7", description: "判官相关"}
+- {name: blocked,            color: "000000", description: "被门禁阻塞"}
+- {name: flywheel,           color: "1d76db", description: "飞轮机制"}
+- {name: cold-start,         color: "fbca04", description: "冷启动/逆向标注"}
+- {name: agent-task,         color: "c5def5", description: "可派给 AI Agent 独立完成"}

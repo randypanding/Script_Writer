@@ -1,0 +1,4 @@
+cases/attachments/** filter=lfs diff=lfs merge=lfs -text
+prompts/**           linguist-generated=true
+out/**               linguist-generated=true
+*.jsonl              text eol=lf

@@ -1,0 +1,41 @@
+# 局部重编译的失效闭包（D5）。改这个文件必须更新 tests/test_recompile.py
+schema_version: "1.0"
+
+passes:
+  p0_intake:    {reads: [raw_brief, raw_brand], writes: [normalized_brief, brand_brief, constraints], granularity: project}
+  p1_bible:     {reads: [normalized_brief, brand_brief, profile], writes: [characters, locations, props, motifs, tone], granularity: project}
+  p2_arc:       {reads: [bible, brand_brief, profile], writes: [seasons, episodes, placement_plan], granularity: project}
+  p3_beatsheet: {reads: [episode, bible, placement_plan, neighbor_summaries, profile], writes: [beats, setup_payoffs, brand_moments], granularity: episode}
+  p4_scene:     {reads: [beats, bible, profile], writes: [scenes, beat_parent], granularity: episode}
+  p5_dialogue:  {reads: [scene, beats, characters, brand_constraints, profile], writes: [lines], granularity: scene}
+  p6_prose:     {reads: [scenes, lines, bible, voice, profile], writes: [chapters], granularity: episode}
+  p7_render:    {reads: [ir], writes: [artifacts], granularity: project, llm: false}
+
+# 字段变更 → 失效的 (pass, 粒度)
+invalidation:
+  "project.logline":            [[p1_bible, project], [p2_arc, project], [p3_beatsheet, all], [p4_scene, all], [p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "brand_brief.placement.*":    [[p2_arc, project], [p3_beatsheet, all], [p4_scene, all], [p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "brand_brief.must_include_lines": [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "brand_brief.banned_words":   [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "characters.*.voice_notes":   [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+  "episode.logline":            [[p3_beatsheet, self], [p4_scene, self], [p5_dialogue, self_scenes], [p6_prose, self], [p7_render, project]]
+  "episode.hook_promise":       [[p3_beatsheet, self], [p4_scene, self], [p5_dialogue, self_scenes], [p6_prose, self], [p7_render, project]]
+  "beat.summary":               [[p4_scene, parent_episode], [p5_dialogue, parent_scene], [p6_prose, parent_episode], [p7_render, project]]
+  "scene.goal|conflict|turn":   [[p5_dialogue, self], [p6_prose, parent_episode], [p7_render, project]]
+  "line.text":                  [[p6_prose, parent_episode], [p7_render, project]]
+  "voice.*":                    [[p6_prose, all], [p7_render, project]]        # D27 的收益：改视角只重跑小说
+  "profile.novel.*":            [[p6_prose, all], [p7_render, project]]
+  "profile.max_line_chars":     [[p5_dialogue, all], [p6_prose, all], [p7_render, project]]
+
+# locked 节点保护
+locked_policy: "重编译时 locked==true 的节点，其 payload 与 id 必须逐字保留；其子节点仍可重编译"
+
+# 检查阶段映射（invariants.check_all 的 stage 参数）
+invariant_stages:
+  after_p1: [INV-01, INV-09, INV-10]
+  after_p2: [INV-01, INV-02, INV-03, INV-04, INV-12, INV-13]
+  after_p3: [INV-01, INV-02, INV-03, INV-04, INV-05, INV-06, INV-08, INV-10, INV-15]
+  after_p4: [INV-01, INV-02, INV-03, INV-04, INV-11]
+  after_p5: [INV-01, INV-02, INV-03, INV-07, INV-11]
+  after_p6: [INV-01, INV-14]
+  final: all

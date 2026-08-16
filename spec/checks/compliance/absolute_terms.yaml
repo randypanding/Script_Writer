@@ -1,0 +1,14 @@
+# 由 nsc compile-constraints 注入 ctx.compliance.absolute_terms
+# ⚠️ 未完成人工核对前，本表在 eval/thresholds.yaml 中被降级为 warn
+version: "0.1-draft"
+reviewed: false
+terms:
+  - 国家级
+  - 最高级
+  - 最佳
+  - 第一品牌
+  - 唯一
+  - 绝无
+  - 100%有效
+  - 永久
+  - 彻底解决

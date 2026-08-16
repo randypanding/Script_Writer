@@ -1,0 +1,18 @@
+id: R3-0001
+level: L3
+statement: >
+  品牌植入不得出现在每集的 Hook Beat 内；最早只能出现在第一个 escalation 之后。
+rationale: >
+  逆向标注的 214 条公开营销短剧样本中，前 3 秒出现品牌的样本，其人工判定"像广告"的比例为
+  71%，而首次植入在 30% 时长之后的样本仅 18%。三个客户的修订记录中共有 5 处
+  把开场植入手动后移。
+scope: {kind: global}
+form: check
+target: spec/checks/brand/BM-003.yaml
+evidence_ids: [case:0142, case:0177, case:0203, obs:01JB4Z..., obs:01JB50...]
+dimension: placement
+hit_count: 0
+effect_size: null
+validation_report: docs/metrics/validations/R3-0001.md
+created_at: "2025-01-01T00:00:00Z"
+last_fired_at: null

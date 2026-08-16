@@ -1,0 +1,68 @@
+# A3 品味资产。修改本文件必须同时更新 judge_calibration 并重跑 make judge-cal。
+schema_version: "1.0"
+version: "1.0.0"
+scale: {min: 1, max: 5, allow_half: false}
+
+# 判官的默认工作模式是【成对比较】（D6/D8）。绝对分仅用于报告与趋势。
+default_mode: pairwise
+
+dimensions:
+  - id: naturalness
+    name: 台词自然度
+    weight: 0.25
+    applies_to: [line, scene, chapter]
+    question: "这些台词像真人在这个情境下会说的话吗？还是像在念台词/念广告？"
+    positive_signals: [口语省略, 打断与重叠, 信息不对称, 潜台词, 角色间语气差异]
+    negative_signals: [解释性台词, 自报动机, 书面语, 所有人一个腔, 复述已知信息]
+    anchors_file: anchors/naturalness.yaml
+
+  - id: hook_strength
+    name: 钩子与记忆点强度
+    weight: 0.20
+    applies_to: [episode, beat]
+    question: "前 3 秒/开场第一个 Beat 能让人停下来吗？有没有一个可被转述的记忆点？"
+    positive_signals: [立刻的具体冲突, 反常识状态, 未解答的问题, 可复述的一句话]
+    negative_signals: [环境铺垫开场, 自我介绍开场, 抽象情绪开场, 无信息的悬念]
+    anchors_file: anchors/hook_strength.yaml
+
+  - id: transportation
+    name: 代入与情感迁移
+    weight: 0.20
+    applies_to: [episode, chapter]
+    question: "读者/观众会被带进故事、并把这种情绪迁移到品牌上吗？"
+    construct_ref: "叙事传输（narrative transportation）；见 docs/BORROW_MAP.md #16"
+    positive_signals: [目标人群的具体痛点, 可感知的代价, 主角选择而非被动, 情绪先到品牌后到]
+    negative_signals: [先讲产品后补情绪, 痛点泛泛, 主角无能动性, 情绪与品牌无因果]
+    anchors_file: anchors/transportation.yaml
+
+  - id: placement_integration
+    name: 植入自然度与信息达成
+    weight: 0.25
+    applies_to: [beat, scene, episode]
+    question: "产品是长在剧情里的，还是贴上去的？商家要的卖点信息真的传达到了吗？"
+    construct_ref: "modality × plot-connection congruence；见 docs/BORROW_MAP.md #15"
+    positive_signals: [产品是解决冲突的必要条件, 卖点由后果体现而非台词宣称, 反对者被说服的过程]
+    negative_signals: [角色突然开始夸产品, 卖点用形容词堆叠, 植入可删除而剧情不变, 旁白报参数]
+    anchors_file: anchors/placement_integration.yaml
+
+  - id: producibility
+    name: 可拍性
+    weight: 0.10
+    applies_to: [scene, episode]
+    question: "以商家自有团队 1–2 天、2–4 个演员、1–2 个场地的条件，这个能拍出来吗？"
+    positive_signals: [场景可复用, 无群演, 无特效, 道具易得, 动作简单]
+    negative_signals: [户外大场面, 需要儿童或动物, 需要车辆改装, 需要多机位调度, 时间跨度需要换装]
+    anchors_file: anchors/producibility.yaml
+
+aggregate:
+  formula: "weighted_mean"
+  # D6：仅聚合分低于阈值时阻塞；阈值在 eval/thresholds.yaml
+  block_on: aggregate_only
+
+judge:
+  # 判官本身是可优化产物（D8）。以下 instruction 是种子，优化后写入 prompts/judge_*.json
+  seed_instruction_file: seeds/judge_pairwise.md
+  position_debias: swap_and_average   # MT-Bench 的位置偏置消除，见 BORROW_MAP #8
+  require_rationale: true
+  require_span_citation: true         # 必须引用具体台词/段落，否则判定无效
+  max_output_tokens: 900

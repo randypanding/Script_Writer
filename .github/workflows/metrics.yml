@@ -1,0 +1,24 @@
+name: Flywheel Dashboard (每周六个数)
+on:
+  schedule: [{cron: "0 3 * * 1"}]
+  workflow_dispatch:
+permissions: {contents: write, issues: write}
+jobs:
+  dash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras && make db-rebuild
+      - run: uv run nsc metrics weekly --write docs/metrics/
+      - name: 北极星回归告警（D22：结构性编辑率必须单调下降）
+        run: uv run python -m nsc.metrics.northstar_alert --window 8
+      - run: |
+          git config user.name nsc-bot && git config user.email bot@local
+          git add docs/metrics && git commit -m "chore(metrics): 周报 $(date +%V)" || true
+          git push
+      - uses: peter-evans/create-or-update-comment@v4
+        continue-on-error: true
+        with:
+          issue-number: 1        # 固定一个"飞轮周报"Issue
+          body-path: docs/metrics/latest.md

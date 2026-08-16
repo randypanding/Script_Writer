@@ -1,0 +1,25 @@
+# 预算即架构纪律（D21 / PROMOTION.md）。改这里需要 ADR。
+schema_version: "1.0"
+
+lines:
+  "src/nsc/runtime,src/nsc/checker": 1500      # D21 硬预算
+  "src/nsc/passes": 1200
+  "src/nsc/render": 900
+  "src/nsc/feedback": 900
+  "src/nsc/mining": 700
+  "src/nsc/optimize": 700
+  "src/nsc/judge": 500
+  "src/nsc": 6500                              # 总量警戒线
+
+max_canonical_rules: 120
+max_active_check_rules: 90
+max_rubric_dimensions: 6
+
+feedback:
+  gepa_feedback_chars: 2600
+  checker_report_chars: 2400
+
+business_logic_whitelist:
+  # 允许在代码里出现的、确实属于机制而非业务的判断
+  - "src/nsc/checker/registry.py"
+  - "src/nsc/runtime/ir_io.py"
