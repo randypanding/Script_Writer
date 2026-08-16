@@ -1,0 +1,110 @@
+# EditClassify 判定标准（D11 八维 + verdict + severity + 重写归并判据）
+# 本文件是资产：代码只负责把它拼进 prompt 并校验输出合法性，判定知识全部在这里。
+# 修改本文件 = 改判定标准，按 AGENTS.md §0 资产层流程走（ADR + evidence）。
+schema_version: "1.0"
+id: edit_classify_rubric
+tier: tier_bulk # 分类是轻量批量任务，路由到 tier_bulk
+
+task: |
+  你是资深短剧/小说策划的审片助手。客户在我们交付的文稿上留下了编辑
+  （删除/插入/改写/批注）。你要对每一处编辑做语义判定，输出四元组：
+  dimension（八类之一）、verdict（客户态度）、severity（1-5）、
+  rationale_nl（一句可直接用于规则挖掘的诊断句：说清楚"客户为什么改，
+  暴露了我们哪条生成习惯的缺陷"，禁止只写"客户改了台词"这种废话）。
+
+dimensions:
+  structural:
+    definition: Beat 序列/弧线/伏笔错误
+    signals: [整段搬移, 删除整个 Beat, 补一个转折]
+    improves: p2/p3 的 prompt 与 STR-* 规则；北极星指标的分子
+  character:
+    definition: 动机不成立、角色声音不一致
+    signals: [改动机说明, 换说话人, 改语气]
+    improves: p1 的 voice_notes 设计、DLG-004
+  placement:
+    definition: 植入生硬/位置错/次数错
+    signals: [删除夸产品的台词, 后移植入, 改成动作]
+    improves: p2/p3 的植入规划、BM-* 规则
+  dialogue:
+    definition: 腔调、口语度、长度、节奏
+    signals: [缩短长句, 去掉解释性台词, 加打断]
+    improves: p5 的 prompt、DLG-002/005
+  factual:
+    definition: 产品信息错、参数错
+    signals: [改数字, 改产品名]
+    improves: FCT-001、BrandBrief 补全
+  compliance:
+    definition: 合规/法律风险
+    signals: [删绝对化用语, 删功效断言]
+    improves: CMP-* 规则
+  producibility:
+    definition: 超预算、场景不可得、演员不够
+    signals: [删场景, 合并地点, 减角色]
+    improves: PRD-* 规则、Profile 预算
+  taste:
+    definition: 无可归纳理由的个别偏好（只能进该客户的 Client Pack，不进全局聚类）
+    signals: [我们不喜欢这个名字]
+
+verdicts:
+  accept: 客户明确保留/肯定原文（纯肯定批注）
+  reject: 客户删除原文（整句/整段不要了）
+  revise: 客户改写或新增了内容
+  praise: 客户表扬某处写得好（无修改诉求）
+
+severity_anchors:
+  1: 标点/措辞微调，不影响理解
+  2: 句级修改，局部影响
+  3: 段级修改，影响节拍或信息传达
+  4: 跨段/结构影响，或潜在合规风险
+  5: 颠覆性：主线、人设、合规底线被动到
+
+few_shots:
+  - before: 这款茶用的是进口茶基，热量只有普通奶茶的三分之一。
+    after: （把杯子推过去）不加糖的。
+    edit_type: replace
+    dimension: placement
+    verdict: revise
+    severity: 3
+    rationale_nl: 客户删掉参数宣读改成动作，说明生成的植入台词在念卖点而不是演戏。
+  - before: 这是我们喝过最好喝的茶！
+    after: ""
+    edit_type: delete
+    dimension: compliance
+    verdict: reject
+    severity: 4
+    rationale_nl: 客户整句删除绝对化用语，说明生成未遵守广告法禁用词红线。
+  - before: 林晚把体检报告翻了个底朝天，血糖那栏的箭头让她心里一沉。
+    after: 林晚把体检报告翻了个底朝天，血糖那栏的箭头让她心里一沉！
+    edit_type: replace
+    dimension: dialogue
+    verdict: revise
+    severity: 1
+    rationale_nl: 仅标点情绪强化，属措辞微调，无需归纳规则。
+  - before: ""
+    after: 镜头转到天台，她一个人吹了很久的风。
+    edit_type: insert
+    dimension: structural
+    verdict: revise
+    severity: 3
+    rationale_nl: 客户补了一个情绪缓冲 Beat，说明生成的节拍弧在这里缺少喘息点。
+
+output_contract: |
+  输入 JSON：{"records": [{"index", "edit_type", "before", "after", "human_comment", "context"}]}
+  输出 JSON（严格）：
+  {"records": [{"index": <int>, "dimension": <八类之一>, "verdict": <accept|reject|revise|praise>,
+                "severity": <1-5 整数>, "rationale_nl": <一句诊断句>}]}
+  只输出 JSON，不要任何解释文字。每条输入必须恰好有一条输出，index 对应。
+
+rewrite_resolution: |
+  确定性对齐器遇到"完全重写"（字面值相似度极低）的段落时，只能给出 delete+insert。
+  你要用语义判断它到底是哪种：
+  A) 同一叙事节点被重写 —— 叙事功能不变（同一 Beat 的承担者：同角色、同场景目标、
+     同事件功能，只是换了个写法）→ same_node=true（保留原 node_id，记 replace）。
+  B) 真正的新内容 —— 叙事功能改变（换了事件、换了场景目标、新增支线）→ same_node=false
+     （记 delete + insert）。
+  判据优先级：事件功能 > 场景目标 > 角色在场 > 字面重合度。
+
+rewrite_output_contract: |
+  输入 JSON：{"pairs": [{"index", "before", "after", "context"}]}
+  输出 JSON（严格）：{"pairs": [{"index": <int>, "same_node": <true|false>}]}
+  只输出 JSON。每对输入必须恰好有一条输出，index 对应。

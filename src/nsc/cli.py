@@ -133,10 +133,71 @@ feedback_app = typer.Typer()
 app.add_typer(feedback_app, name="ingest")
 
 
+def _ingest_common(
+    kind: str,
+    path: str,
+    case: str,
+    delivered: str | None,
+    db: str,
+    out: str,
+    obs_dir: str,
+    no_classify: bool,
+) -> None:
+    from nsc.feedback.ingest import ingest_docx, ingest_text
+    from nsc.runtime.models import ModelRouter
+
+    router = None if no_classify else ModelRouter()
+    kwargs: dict[str, Any] = {
+        "case_id": case,
+        "db_path": db,
+        "router": router,
+        "obs_dir": obs_dir,
+        "out_dir": out,
+    }
+    if kind == "docx":
+        report = ingest_docx(path, delivered_path=delivered, **kwargs)
+    else:
+        report = ingest_text(path, **kwargs)
+    if report.dry_run:
+        typer.secho(
+            f"干跑（--no-classify）：恢复 {len(report.records)} 处编辑，未落库"
+            "（dimension 未判定，schema 不允许写入）",
+            fg="yellow",
+        )
+        return
+    typer.secho(
+        f"摄入完成：{len(report.feedback_ids)} 条 feedback "
+        f"（{len(report.unaligned)} 条对齐失败，见 out/ingest/unaligned.md）\n"
+        f"annotation 队列：{report.queue_path}（confirmed_by 均为空，请到 Langfuse 批量确认）",
+        fg="green",
+    )
+
+
 @feedback_app.command("docx")
-def ingest_docx(path: str, case: str) -> None: ...
+def ingest_docx_cmd(
+    path: str,
+    case: str,
+    delivered: str = typer.Option(None, help="交付物（docx/anchors.csv/txt），供 L3 模糊对齐"),
+    db: str = "cases/cases.db",
+    out: str = "out",
+    obs_dir: str = "spec/rules/L0_observations",
+    no_classify: bool = False,
+) -> None:
+    """带修订 docx → 结构化反馈条目（feedback/revision_pairs/preference_pairs/L0 观测）。"""
+    _ingest_common("docx", path, case, delivered, db, out, obs_dir, no_classify)
+
+
 @feedback_app.command("text")
-def ingest_text(path: str, case: str) -> None: ...
+def ingest_text_cmd(
+    path: str,
+    case: str,
+    db: str = "cases/cases.db",
+    out: str = "out",
+    obs_dir: str = "spec/rules/L0_observations",
+    no_classify: bool = False,
+) -> None:
+    """纯文本/微信消息摄入：每行一条 comment 型反馈。"""
+    _ingest_common("text", path, case, None, db, out, obs_dir, no_classify)
 
 
 mine_app = typer.Typer()
