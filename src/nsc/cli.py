@@ -296,13 +296,87 @@ def mine_run(
     )
 
 
+@mine_app.command("validate")
+def mine_validate(
+    holdout: str = typer.Option(
+        ..., help="留出集 jsonl：{rule_id, before, after, rationale_nl, applies, case_id}"
+    ),
+    rules_root: str = "spec/rules",
+) -> None:
+    """L1→L2 留出集验证。通过者移动文件到 L2_validated 并附验证报告。"""
+    from nsc.mining.validate import validate_candidates
+
+    holdout_by_rule: dict[str, list[dict]] = {}
+    for line in Path(holdout).read_text("utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        holdout_by_rule.setdefault(str(row.pop("rule_id")), []).append(row)
+    results = validate_candidates(
+        holdout_by_rule,
+        l1_dir=Path(rules_root) / "L1_candidates",
+        l2_dir=Path(rules_root) / "L2_validated",
+    )
+    for r in results:
+        mark = "✓ 晋升 L2" if r.passed else "✗ 留 L1"
+        typer.secho(
+            f"{r.rule_id} [{r.form}] {mark}：{r.reason}", fg="green" if r.passed else "yellow"
+        )
+
+
 @mine_app.command("retire")
-def mine_retire() -> None: ...
+def mine_retire(rules_root: str = "spec/rules") -> None:
+    """退役 hit_count==0 且超 90 天的 L3 规则；报告 canonical 是否超上限。"""
+    from nsc.mining.retire import retire
+
+    res = retire(l3_dir=Path(rules_root) / "L3_canonical")
+    for rid in res.retired:
+        typer.secho(f"退役 {rid}（hit_count=0 且超 90 天）", fg="yellow")
+    if res.over_budget:
+        typer.secho(
+            f"⚠ canonical 超上限：{res.canonical_count}/{res.max_canonical}，新增前须先合并或退役",
+            fg="red",
+        )
+    else:
+        typer.secho(
+            f"canonical {res.canonical_count}/{res.max_canonical}；退役 {len(res.retired)} 条",
+            fg="cyan",
+        )
 
 
 # --- 优化与评测 ---
 @app.command()
-def optimize(pass_: str = typer.Option(..., "--pass"), auto: str = "light") -> None: ...
+def optimize(
+    pass_: str = typer.Option(..., "--pass"),
+    auto: str = "light",
+    db: str = "cases/cases.db",
+    max_cost: float = 20.0,
+    use_judge: bool = False,
+) -> None:
+    """跑一趟 GEPA 优化（分趟 + 教师强制 + 回归闸）。写入需 score_after>before+0.02。"""
+    from nsc.optimize.gepa_run import run
+    from nsc.runtime.models import ModelRouter
+
+    judge = None
+    if use_judge:
+        from nsc.judge.rubric_judge import RubricJudge
+
+        judge = RubricJudge()
+    result = run(
+        pass_,  # type: ignore[arg-type]
+        auto=auto,  # type: ignore[arg-type]
+        db_path=db,
+        max_cost_usd=max_cost,
+        router=ModelRouter(),
+        judge=judge,
+    )
+    if result["written"]:
+        typer.secho(
+            f"✓ 写入 {result['path']}（{result['score_before']} → {result['score_after']}，${result['cost_usd']}）",
+            fg="green",
+        )
+    else:
+        typer.secho(f"✗ 未写入：{result['reason']}", fg="yellow")
 
 
 eval_app = typer.Typer()
@@ -323,7 +397,23 @@ def eval_l1(sample: int = 12, ab: str | None = None) -> None:
 
 
 @eval_app.command("build-dataset")
-def eval_build(pass_: str = typer.Option(..., "--pass")) -> None: ...
+def eval_build(
+    pass_: str = typer.Option(..., "--pass"),
+    db: str = "cases/cases.db",
+    out: str = "eval/datasets",
+) -> None:
+    """从 cases 生成 GEPA train/val（按 case 分层切分，防泄漏）。"""
+    from nsc.optimize.build_dataset import build_dataset
+
+    stats = build_dataset(db, pass_, out_dir=out)
+    typer.secho(
+        f"数据集 {pass_}：train={stats['n_train']}（{len(stats['train_cases'])} case）"
+        f" val={stats['n_val']}（{len(stats['val_cases'])} case）→ {stats['train_path']}",
+        fg="green",
+    )
+    if set(stats["train_cases"]) & set(stats["val_cases"]):
+        typer.secho("⚠ train/val 共享 case，存在泄漏！", fg="red", err=True)
+        raise typer.Exit(1)
 
 
 judge_app = typer.Typer()
