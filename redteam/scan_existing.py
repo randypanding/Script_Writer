@@ -88,17 +88,15 @@ def classify(url):
     pl = path.rstrip('/')
     last = pl.split('/')[-1] if pl else ''
     l = last.lower()
-    # RSS / feed
-    if url.lower().endswith(RSS_END) or 'rss' in l or 'feed' in l or 'atom' in l:
-        if url.lower().endswith(('.xml', '.rss')) or 'rss' in l or 'feed' in l:
-            return 'rss'
-    # 列表中枢：末段命中
+    # 仅接受 feed / 末段中枢词命中。绝不用"中段含 news"来判定——
+    # 否则单篇文章 /news/<slug> 会被误判为列表页。
+    if url.lower().endswith(RSS_END) or 'feed' in l or 'atom' in l or l == 'rss' or l.startswith('rss'):
+        return 'rss'
     if l in HUB_LAST_SEG:
         return 'list_page_hub'
-    # 非文章路径且含中段中枢词
-    segs = [s for s in pl.split('/') if s]
-    if len(segs) <= 3 and any(s.lower() in HUB_ANY_SEG for s in segs):
-        return 'list_page'
+    # 年份/月份归档列表页（如 /news/media-releases/2025 ）→ 也是时间排序列表
+    if re.fullmatch(r'(19|20)\d{2}', l) or re.fullmatch(r'(19|20)\d{2}-\d{1,2}', l):
+        return 'list_page_archive'
     return None
 
 def process(host, baseurl, reg_urls):
