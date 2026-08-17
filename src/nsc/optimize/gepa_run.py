@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
+from nsc.optimize.plateau import should_stop
+
 PassName = Literal["p1_bible", "p2_arc", "p3_beatsheet", "p4_scene", "p5_dialogue", "p6_prose"]
 
 # 优化顺序（先结构后文字：结构错了优化台词是浪费）
@@ -73,33 +75,52 @@ def run(
             "score_before": 0.0,
             "score_after": 0.0,
             "cost_usd": 0.0,
+            "cycles": 0,
+            "plateau_reason": "",
         }
 
     # 2. metric：按 gold.split 分流（train 暴露人类修订，val 只用 checker+判官）
     scorer = make_judge_scorer(judge) if judge is not None else None
     metric = _make_split_metric(scorer)
 
-    # 3. 跑 GEPA（注入桩或真实 runner）
+    # 3. 跑 GEPA（注入桩或真实 runner）：T-41 plateau 迭代循环——每轮以上轮最优指令为
+    #    种子，归一化指标 append 进 history；Δ<0.03@≥3 轮或 6 轮上限即停（原因透传）。
     runner = gepa_runner or dspy_gepa_runner
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     log_dir = str(Path(log_root) / pass_name / ts)
     seed_instruction = _seed_instruction(pass_name)
-    result = runner(
-        pass_name=pass_name,
-        auto=auto,
-        trainset=trainset,
-        valset=valset,
-        metric=metric,
-        reflection_tier=reflection_model_tier,
-        seed_instruction=seed_instruction,
-        router=router,
-        log_dir=log_dir,
-        max_cost_usd=max_cost_usd,
-    )
 
+    history: list[float] = []
+    best: dict[str, Any] = {}
+    total_cost = 0.0
+    plateau_reason = ""
+    for _cycle in range(6):  # 上限 = should_stop 默认 max_cycles
+        result = runner(
+            pass_name=pass_name,
+            auto=auto,
+            trainset=trainset,
+            valset=valset,
+            metric=metric,
+            reflection_tier=reflection_model_tier,
+            seed_instruction=seed_instruction,
+            router=router,
+            log_dir=log_dir,
+            max_cost_usd=max_cost_usd,
+        )
+        score = min(max(float(result.get("score_after", 0.0)), 0.0), 1.0)  # 归一化到 [0,1]
+        history.append(score)
+        total_cost += float(result.get("cost_usd", 0.0))
+        if not best or score > float(best.get("score_after", 0.0)):
+            best = result
+        seed_instruction = str(result.get("instruction", "")) or seed_instruction
+        stop, plateau_reason = should_stop(history)
+        if stop:
+            break
+
+    result = best
     score_before = float(result.get("score_before", 0.0))
     score_after = float(result.get("score_after", 0.0))
-    cost = float(result.get("cost_usd", 0.0))
+    cost = total_cost
     instruction = str(result.get("instruction", ""))
 
     # 4. 成本上限：超了不写入，保存中间结果
@@ -113,6 +134,8 @@ def run(
             "score_before": score_before,
             "score_after": score_after,
             "cost_usd": cost,
+            "cycles": len(history),
+            "plateau_reason": plateau_reason,
         }
 
     # 5. 回归闸：score_after 必须 > score_before + margin，否则不写入 prompts/
@@ -130,6 +153,8 @@ def run(
             "score_before": score_before,
             "score_after": score_after,
             "cost_usd": cost,
+            "cycles": len(history),
+            "plateau_reason": plateau_reason,
         }
 
     # 6. 写入 prompts/<pass>.json（含 content_hash，CI 检测手改的依据）
@@ -148,6 +173,8 @@ def run(
             "valset_size": len(valset),
             "cost_usd": cost,
             "created_at": ts,
+            "cycles": len(history),
+            "plateau_reason": plateau_reason,
         },
     }
     path = out_dir / f"{pass_name}.json"
@@ -159,6 +186,8 @@ def run(
         "score_before": score_before,
         "score_after": score_after,
         "cost_usd": cost,
+        "cycles": len(history),
+        "plateau_reason": plateau_reason,
     }
 
 

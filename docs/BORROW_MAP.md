@@ -166,7 +166,7 @@
 ### #25 广告合规词表（法规来源，需人工核对）
 - 见 `spec/checks/compliance/_legal_sources.md`。**未经人工核对的合规规则自动降级为 warn**（`eval/thresholds.yaml`）。
 
-### #29 小说文笔工艺 ← story-craft 技能 ✅（已吸收，见 ADR-0010）
+### #37 小说文笔工艺 ← story-craft 技能 ✅（已吸收，见 ADR-0010）
 - 来源：内部创意写作技能 `story-craft-skill.md`（已删除并并入项目资产）。
 - **借**：show-don't-tell、感官锚点、对白动作节拍、反 AI 指纹、风格温度五档、3:1 节奏、角色 Soul Field（五维角色卡）。
 - **不借**：同人/CP/连载站运营/世界观设定书等模块——本项目为营销短剧（先小说确认物、再剧本执行物），不需要。
@@ -196,3 +196,87 @@
 - ❌ 工作流引擎（Prefect / Airflow / Temporal）
 - ❌ 微调框架（PEFT / TRL）—— P3 前不做
 - ❌ 视频/TTS/剪辑（AnimateDiff / SadTalker / …）—— 另一个业务
+- ❌ 长篇工具链的 @DSL 注入 / 动态 Schema / KG 图库 / git 全量 keep-discard / 绝对评分门禁 / ops.jsonl 审计 / 5-agent 人审工作台 / ReACT 场景推演 / 三裁判辩论仲裁 —— 逐一裁决见 #29–#36 与 `docs/UPGRADE_PLAN_2026-08-17.md` §11（T-42）
+
+## 七、长篇工程化升级（2026-08-17，T-42 / `docs/UPGRADE_PLAN_2026-08-17.md`）
+
+> 以下 8 条对应本轮升级的 8 个外部方案（事实层见 `docs/RESEARCH_EXTERNAL_2026-08-17.md`，均已代码级精读核实）。
+
+### #29 承重节拍红线 ← novel-studio ✅
+- 来源：`github.com/Ddhjx-code/novel-studio`（"以人为中心的创作工作台"，多 Agent + RAG + 文件即记忆）
+- **借**：承重 beat 红线（每集 ≥1 引爆 + ≥1 高潮、情感弧零振幅即失败）→ STR-014/015；
+  大纲/分析报告语言残留词表（"核心动机""信息边界"等禁入正文）→ PRS-009；
+  十维度审查与已有 rubric 六维的映射（作交叉检查表，不新增维度）。
+- **不借**：5-agent 工作台与人审循环 —— 与全自动编译回路冲突（AGENTS.md 多智能体禁令，人审只在交付后 docx 反馈单入口）。
+- 落地：`spec/checks/structure/STR-014.yaml`、`STR-015.yaml`、`spec/checks/prose/PRS-009.yaml`、`spec/rubrics/rubric_v1.yaml`（映射注记）
+- 工单：T-27、T-28
+
+### #30 修订循环与相对排名 ← autonovel ✅
+- 来源：`github.com/NousResearch/autonovel`（modify-evaluate-keep/discard 路线，已产出 75k 字真小说）
+- **借**：12 条结构性反模式（OVER-EXPLAIN / TRIADIC LISTING / BALANCED ANTITHESIS 等）→ prose_craft 锚点；
+  修订 brief 五节结构（PROBLEM / WHAT TO KEEP / WHAT TO CHANGE / VOICE RULES / TARGET）→ T-31；
+  Elo 相对排名思想 → T-40；plateau 停止条件（相邻轮次无明显提升即停）→ T-41。
+- **不借**：git 全量 keep/discard —— 局部重编译（dep_graph 失效闭包）粒度更精确；
+  绝对评分门禁 —— 其 1-10 分实测塌缩到 ~2 分带宽，反向背书我们的成对判官路线（决策 #10）。
+- 落地：`spec/rubrics/anchors/prose_craft.yaml`、`src/nsc/revise/revision_brief.py`、`src/nsc/eval/elo.py`、`src/nsc/optimize/gepa_run.py`
+- 工单：T-30、T-31、T-40、T-41
+
+### #31 定点修复与词表 ← inkos ✅
+- 来源：`github.com/Narcooo/inkos`（7 真相文件 + 37 维审计 + spot-fix 路线）
+- **借**：spot-fix 两级匹配（精确唯一命中 → 空白归一化回退）+ 50% 采用门槛 → `revise/patch.py`；
+  revisionGate 三档（strict / lenient / always）→ `revise/gate.py`；
+  疲劳词 / 禁句式 / 元叙事 / 集体反应词表与正则 → `prose/_wordlists.yaml`（PRS-003/007/008/013）；
+  快照"退步即回滚" → `revise/snapshot.py`。
+- **不借**：7 个真相文件的全量读写 —— 百万字级线性膨胀；用类型化 IR + build_view 派生视图替代。
+  37 维 LLM 审计 —— 成本随章数线性走；确定性 checker（79 条规则）已覆盖其可机械化部分。
+- 落地：`src/nsc/revise/patch.py`、`gate.py`、`snapshot.py`、`spec/checks/prose/_wordlists.yaml`
+- 工单：T-27、T-32
+
+### #32 事件模板与历史压缩 ← StoryWriter ✅
+- 来源：THU-KEG. *StoryWriter*. **arXiv:2506.16445**（事件图大纲法，8000 词长故事验证）
+- **借**：事件模板（Setting / Character / Action / Conflict / Twist）作为 `Beat.summary` 的
+  写作格式引导（只改 p3 签名 docstring，不改 IR schema）→ T-36；
+  MessageRedact 历史压缩：`current_no − 2` 及更早的集压至 ~10% 摘要、保留首部与末两条原样 → `context/compress.py`。
+- **不借**：AutoGen 多 agent 编排 —— 编排框架禁令（纯 Python 函数 + `@cached_pass`）。
+- 落地：`src/nsc/passes/p3_beatsheet.py`（签名）、`src/nsc/context/compress.py`
+- 工单：T-33、T-36
+
+### #33 Fact 生命周期与上下文预算 ← FicForge ✅
+- 来源：`github.com/nbssdlkm/FicForge`（编辑器 + Facts/Summary/Thread/RAG 四层记忆路线）
+- **借**：Fact 生命周期（active/unresolved/resolved/deprecated）与 known_to / hidden_from
+  可见性语义 → IR1.1 `Fact`（ADR-0012）；
+  P0-P5 六层上下文预算竞争 + P0 核心 400 token 低保永不裁剪 → `context/assembler.py`。
+- **不借**："AI 建议人确认"档 —— 全自动闭环不变（回路内人审破坏可缓存性与无人值守）；
+  ops.jsonl 操作审计日志 —— git + 确定性重编译已覆盖同等追溯需求。
+- 落地：`spec/ir/overlays.py::Fact`、`src/nsc/context/assembler.py`
+- 工单：T-33、T-34
+
+### #34 关系显式存储 ← NovelForge ✅
+- 来源：`github.com/RhythmicWave/NovelForge`（Schema-first：卡片树 + 知识图谱 + 动态输出模型）
+- **借**：关系显式存储思想 —— `Fact(type=relationship)` + `caused_by` 因果链，
+  用 IR 不变量 INV-17/18 等价实现其 KGRelation 唯一约束（零新依赖，不建 KG 图库）。
+- **不借**：@DSL 声明式注入 —— 依赖前端全量内存卡片，百万字级即崩（反模式 #8）；
+  动态用户 Schema —— spec/ 统一模式是全部可测试性的根基，用户扩展走 profiles 元数据。
+- 落地：`spec/ir/overlays.py`、`spec/ir/invariants`（INV-17/18）
+- 工单：T-34
+
+### #35 暗线状态机与角色心智 OS ← novel-distiller ✅
+- 来源：`github.com/FutureFuzzy/novel-distiller`（方法论蒸馏路线：SKILL.md 思维操作系统）
+- **借**：暗线数值状态 schema —— `StateVariable` / `DarkThread` / `StateChange`（声明式存储 +
+  `build_view` 确定性重放派生 current / current_stage）；
+  角色心智 OS 字段 —— `MentalModel` / `ExpressionDNA` / decision_heuristics / honest_boundaries（上限裁剪）；
+  番茄平台 must_avoid 词表 → CMP-003..007 + `_platform_terms.yaml`。
+- **不借**：ReACT 场景推演 —— 每场景多轮 agent 自问自答，踩多智能体边界且成本不可控。
+- 落地：`spec/ir/overlays.py`、`spec/ir/nodes.py`（Character 扩展）、`spec/checks/compliance/CMP-003..007.yaml`
+- 工单：T-29、T-34、T-35
+
+### #36 节奏显式化与 Idea Bank ← One Sentence, One Drama ✅
+- 来源：*One Sentence, One Drama*. **arXiv:2605.22144**（cs.CV，2026-05；单句想法→短剧系统，与 NSC 同业务域）
+- **借**：节奏显式化字段 —— `Scene.opening_attractor` / `escalation_beats` / `ending_hook`；
+  知识状态线 —— `KnowledgeState`（观众知道/角色知道/仍隐藏/新证据）；
+  Idea Bank（删得好但可能还有用的素材存档复活，防修订过度修正）→ T-41；
+  多视角不互评思想 —— 三视角判官是同一调用内的视角注记、确定性聚合 → T-39。
+- **不借**：视频 / 3D 首帧 / BGM / 转场管线 —— 不做视频（业务边界）；
+  三裁判辩论仲裁 —— 多智能体互评禁令（AGENTS.md 硬约束）。
+- 落地：`spec/ir/nodes.py::Scene`、`spec/ir/overlays.py::KnowledgeState`、`src/nsc/revise/idea_bank.py`、`src/nsc/judge/rubric_judge.py`
+- 工单：T-34、T-36、T-39、T-41

@@ -470,6 +470,51 @@ def judge_calibrate(
         typer.secho(f"gate_ok 已写入：{github_output}", fg="cyan")
 
 
+# --- Idea Bank（T-41） ---
+bank_app = typer.Typer()
+app.add_typer(bank_app, name="bank")
+
+
+@bank_app.command("list")
+def bank_list(
+    project: str = typer.Option(..., "--project", help="项目 ID（默认库 out/<project>/state.db）"),
+    db: str = typer.Option("", "--db", help="state 库路径；缺省 out/<project>/state.db"),
+    all: bool = typer.Option(False, "--all", help="含已复活条目"),
+) -> None:
+    """列出项目素材银行条目（JSONL；默认只列未复活的可注入候选）。"""
+    from nsc.revise import list_ideas
+
+    db_path = Path(db) if db else Path("out") / project / "state.db"
+    rows = list_ideas(db_path, project, include_revived=all)
+    for row in rows:
+        typer.echo(json.dumps(row, ensure_ascii=False))
+    if not rows:
+        typer.secho("（idea bank 为空）", fg="yellow")
+
+
+@bank_app.command("revive")
+def bank_revive(
+    bank_id: str,
+    db: str = typer.Option("", "--db", help="state 库路径"),
+    project: str = typer.Option("", "--project", help="用于推导默认库 out/<project>/state.db"),
+) -> None:
+    """标记素材已被重新采用（revive 后不再注入 Pass 上下文）。"""
+    from nsc.revise import revive
+
+    if db:
+        db_path = Path(db)
+    elif project:
+        db_path = Path("out") / project / "state.db"
+    else:
+        db_path = Path("out/state.db")
+    try:
+        row = revive(db_path, bank_id)
+    except ValueError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1) from e
+    typer.secho(f"已复活：{row['bank_id']}（{row['node_kind']}）{row['content']}", fg="green")
+
+
 # --- 冷启动 ---
 annotate_app = typer.Typer()
 app.add_typer(annotate_app, name="annotate")

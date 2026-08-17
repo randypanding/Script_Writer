@@ -9,15 +9,19 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from nsc.checker.interpreter import RuleSet, evaluate
+from nsc.checker.interpreter import CheckReport, RuleSet, evaluate
+from nsc.revise.gate import Counts
+from nsc.revise.idea_bank import deposit, list_ideas, render_for_prompt
+from nsc.revise.snapshot import save_snapshot
 from nsc.runtime.ir_io import build_view, merge_preserving_ids
 from spec.ir.container import NarrativeIR, NovelChapter, Provenance
-from spec.ir.invariants import check_all, inv_16_id_stability
+from spec.ir.invariants import Violation, check_all, inv_16_id_stability
 
 from . import (
     PassContext,
@@ -94,21 +98,14 @@ def _retry_pass(fn: Any, ctx: PassContext, fragment: dict[str, Any], *, attempts
                 raise
 
 
-def check_stage(
+def _run_checks(
     ctx: PassContext, ir: NarrativeIR, inv_stage: str, rule_stage: str | None = None
-) -> None:
-    """阶段 L0：先不变量，后声明式规则。block/违规即 PassFailure。
-
-    不变量与规则的 stage 解耦：INV-11（每 Beat 有台词）在 after_p4 的不变量集里，
-    但台词 p5 才生成，所以 p4 之后的检查用 after_p3 的不变量 + after_p4 的规则。
-    """
+) -> tuple[list[Violation], CheckReport | None]:
+    """跑阶段 L0（不变量 + 声明式规则）并返回原始结果；不抛 PassFailure（供快照计数）。"""
     violations = check_all(ir, ctx.profile, stage=inv_stage)
-    if violations:
-        v = violations[0]
-        raise PassFailure(v.node_id, "；".join(x.message for x in violations[:3]))
     stage = rule_stage if rule_stage in _RULE_STAGES else None
     if stage is None:
-        return
+        return violations, None
     view = build_view(ir.model_dump(), ctx.profile, ctx.brand)
     rs = RuleSet.load(
         profile_id=str(ctx.profile.get("id", "")),
@@ -118,10 +115,120 @@ def check_stage(
         enabled_domains=list(ctx.profile.get("enabled_check_domains", [])),
     )
     rep = evaluate(rs, view, ctx={"profile": ctx.profile, "brand": ctx.brand})
-    if rep.errors:
-        raise PassFailure(None, "规则本身报错：" + "；".join(rep.errors[:3]))
-    if rep.blocked:
-        raise PassFailure(None, rep.as_feedback_text())
+    return violations, rep
+
+
+def _fail_on_violations(violations: list[Violation], rep: CheckReport | None) -> None:
+    """检查结果 → PassFailure（block/违规即抛，诊断可直接喂 GEPA）。"""
+    if violations:
+        v = violations[0]
+        raise PassFailure(v.node_id, "；".join(x.message for x in violations[:3]))
+    if rep is not None:
+        if rep.errors:
+            raise PassFailure(None, "规则本身报错：" + "；".join(rep.errors[:3]))
+        if rep.blocked:
+            raise PassFailure(None, rep.as_feedback_text())
+
+
+def check_stage(
+    ctx: PassContext, ir: NarrativeIR, inv_stage: str, rule_stage: str | None = None
+) -> None:
+    """阶段 L0：先不变量，后声明式规则。block/违规即 PassFailure。
+
+    不变量与规则的 stage 解耦：INV-11（每 Beat 有台词）在 after_p4 的不变量集里，
+    但台词 p5 才生成，所以 p4 之后的检查用 after_p3 的不变量 + after_p4 的规则。
+    """
+    violations, rep = _run_checks(ctx, ir, inv_stage, rule_stage)
+    _fail_on_violations(violations, rep)
+
+
+def _counts_of(violations: list[Violation], rep: CheckReport | None) -> Counts:
+    """T-38 快照计数：不变量违规计入 block，规则 findings 按 severity 统计。"""
+    block, warn, info = len(violations), 0, 0
+    for f in rep.findings if rep is not None else []:
+        if f.severity == "block":
+            block += 1
+        elif f.severity == "warn":
+            warn += 1
+        else:
+            info += 1
+    return Counts(block=block, warn=warn, info=info)
+
+
+def _state_db(ctx: PassContext, project_id: str) -> Path:
+    """T-38/T-41 共用的项目 state 库：out/<project_id>/state.db（快照链 + idea bank）。"""
+    return ctx.out_dir / project_id / "state.db"
+
+
+def _snapshot_safe(
+    db_path: Path, project_id: str, stage: str, ir: NarrativeIR, counts: Counts
+) -> None:
+    """T-38 快照落盘。机制容错：失败只记 stderr 一行，绝不破坏主管线。"""
+    try:
+        save_snapshot(db_path, project_id, stage, ir.model_dump_json(), counts)
+    except Exception as e:  # state 库故障不应吞掉编译产物（机制容错，非结构错误吞并）
+        sys.stderr.write(f"[snapshot] 快照写入失败（project={project_id} stage={stage}）：{e}\n")
+
+
+def _final_check_and_snapshot(ctx: PassContext, ir: NarrativeIR, project_id: str) -> None:
+    """final 检查 + 快照：先统计计数落盘（有 block 也存，stage=final-blocked，回退需要），再抛。"""
+    violations, rep = _run_checks(ctx, ir, "final", "final")
+    counts = _counts_of(violations, rep)
+    db_path = _state_db(ctx, project_id)
+    _snapshot_safe(db_path, project_id, "final-blocked" if counts.block else "final", ir, counts)
+    _fail_on_violations(violations, rep)
+
+
+def _deposit_safe(
+    db_path: Path,
+    project_id: str,
+    node_kind: str,
+    content: str,
+    source_node_id: str = "",
+    removed_run_id: str = "",
+    reason: str = "",
+) -> None:
+    """T-41 idea bank 入库。机制容错：失败只记 stderr 一行。"""
+    try:
+        deposit(
+            db_path,
+            project_id,
+            node_kind,
+            content,
+            source_node_id=source_node_id,
+            removed_run_id=removed_run_id,
+            reason=reason,
+        )
+    except Exception as e:  # bank 故障不应吞掉重编译（机制容错）
+        sys.stderr.write(f"[idea_bank] deposit 失败（project={project_id}）：{e}\n")
+
+
+def _deposit_removed_beats(
+    db_path: Path, project_id: str, raw: dict[str, Any], ep_id: str, run_id: str
+) -> None:
+    """T-41：局部重编译替换前，把该集被删 Beat 的 summary 存入素材银行。"""
+    scene_ids = {s["id"] for s in raw["scenes"] if s["parent_id"] == ep_id}
+    for b in raw["beats"]:
+        if b["parent_id"] in scene_ids:
+            _deposit_safe(
+                db_path,
+                project_id,
+                "beat",
+                str(b.get("summary", "")),
+                source_node_id=str(b.get("id", "")),
+                removed_run_id=run_id,
+                reason="recompile_replace",
+            )
+
+
+def _revivable_layer(db_path: Path, project_id: str) -> str:
+    """T-41：idea bank 未复活素材的可选注入层；空库/故障 → 空串（stub 路径零影响）。"""
+    try:
+        ideas = list_ideas(db_path, project_id)
+    except Exception as e:  # bank 故障时静默降级为无注入（机制容错）
+        sys.stderr.write(f"[idea_bank] 读取失败（project={project_id}）：{e}\n")
+        return ""
+    return render_for_prompt(ideas, limit=5) if ideas else ""
 
 
 def _retrieved(ctx: PassContext, unit_kind: str, query: str) -> str:
@@ -193,15 +300,18 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     bible = {k: r1[k] for k in ("characters", "locations", "props", "motifs", "tone")}
     st.update(bible)
 
-    r2 = _retry_pass(
-        p2_arc.run,
-        ctx,
-        {
-            "bible": bible,
-            "project_id": st["project"]["id"],
-            "retrieved_cases": _retrieved(ctx, "scene_card", r0["normalized_brief"]),
-        },
-    )
+    pid = str(st["project"]["id"])
+    bank_db = _state_db(ctx, pid)
+    # T-41：bank 有未复活素材才附素材层（空则不加，stub 路径零影响）
+    revivable = _revivable_layer(bank_db, pid)
+    frag2 = {
+        "bible": bible,
+        "project_id": st["project"]["id"],
+        "retrieved_cases": _retrieved(ctx, "scene_card", r0["normalized_brief"]),
+    }
+    if revivable:
+        frag2["revivable_ideas"] = revivable
+    r2 = _retry_pass(p2_arc.run, ctx, frag2)
     track()
     st["seasons"] = [r2["season"]]
     st["episodes"] = r2["episodes"]
@@ -242,6 +352,8 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 }
                 if diag:
                     frag3["_previous_failure"] = diag
+                if revivable:
+                    frag3["revivable_ideas"] = revivable
                 r3 = _retry_pass(p3_beatsheet.run, ctx, frag3)
                 track()
                 prev_summary = "；".join(b["summary"] for b in r3["beats"])
@@ -261,7 +373,11 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 st["beats"] = [b for b in st["beats"] if b["_episode_id"] != ep["id"]] + r4["beats"]
             st["setup_payoffs"] = p3_beatsheet.resolve_pending(st["setup_payoffs"])
             st["facts"] = p3_beatsheet.apply_fact_cascade(st["facts"])
-            check_stage(ctx, cur(), "after_p3", "after_p4")
+            ir3 = cur()
+            violations, rep = _run_checks(ctx, ir3, "after_p3", "after_p4")
+            _fail_on_violations(violations, rep)
+            # T-38：p3 全季后处理（facts 级联）完成且相位检查通过 → 存快照
+            _snapshot_safe(bank_db, pid, "after_p3", ir3, _counts_of(violations, rep))
             _dbg("p3/p4-phase check passed")
             break
         except PassFailure as e:
@@ -330,7 +446,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     track()
     ir = cur()
     _dbg("final check start")
-    check_stage(ctx, ir, "final", "final")
+    _final_check_and_snapshot(ctx, ir, pid)  # T-38：final 检查 + 快照（blocked 也存）
     _dbg("final check passed")
     return ir
 
@@ -354,26 +470,28 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
     def track() -> None:
         run_ids.append(ctx.run_id)
 
-    r3 = _retry_pass(
-        p3_beatsheet.run,
-        ctx,
-        {
-            "episode": ep,
-            "bible": bible,
-            "placement": _placement_of(raw, ep),
-            "required_brand_moment_beats": len(_placement_of(raw, ep)),
-            "prev_episode_summary": _episode_digest(raw, ordered[idx - 1]["id"]) if idx > 0 else "",
-            "next_episode_promise": ordered[idx + 1]["hook_promise"]
-            if idx + 1 < len(ordered)
-            else "",
-            # ADR-0012：其他集已成立的 facts 可被本集回收；状态声明域来自 IR 表
-            "known_facts": _known_facts(
-                [f for f in raw.get("facts", []) if f.get("episode_no") != ep["no"]]
-            ),
-            "declared_state": _declared_state(raw),
-            "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
-        },
-    )
+    pid = str(raw["project"]["id"])
+    bank_db = _state_db(ctx, pid)
+    # T-41：上次重编译存入 bank 的未复活素材作为可选注入层（空则不加）
+    revivable = _revivable_layer(bank_db, pid)
+
+    frag3 = {
+        "episode": ep,
+        "bible": bible,
+        "placement": _placement_of(raw, ep),
+        "required_brand_moment_beats": len(_placement_of(raw, ep)),
+        "prev_episode_summary": _episode_digest(raw, ordered[idx - 1]["id"]) if idx > 0 else "",
+        "next_episode_promise": ordered[idx + 1]["hook_promise"] if idx + 1 < len(ordered) else "",
+        # ADR-0012：其他集已成立的 facts 可被本集回收；状态声明域来自 IR 表
+        "known_facts": _known_facts(
+            [f for f in raw.get("facts", []) if f.get("episode_no") != ep["no"]]
+        ),
+        "declared_state": _declared_state(raw),
+        "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
+    }
+    if revivable:
+        frag3["revivable_ideas"] = revivable
+    r3 = _retry_pass(p3_beatsheet.run, ctx, frag3)
     track()
     r4 = _retry_pass(p4_scene.run, ctx, {"episode": ep, "beats": r3["beats"], "bible": bible})
     track()
@@ -387,6 +505,8 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
         lines += r5["lines"]
 
     ep["state_changes"] = r3.get("state_changes", [])
+    # T-41：替换/删除 beats 前把被删内容存入 idea bank（回退复用的素材银行）
+    _deposit_removed_beats(bank_db, pid, raw, ep["id"], ctx.run_id)
     new_raw = _splice_episode(
         raw,
         ep["id"],
@@ -425,7 +545,7 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
     bad = inv_16_id_stability(old, merged)
     if bad:
         raise PassFailure(bad[0].node_id, "；".join(x.message for x in bad[:3]))
-    check_stage(ctx, merged, "final", "final")
+    _final_check_and_snapshot(ctx, merged, pid)  # T-38：final 检查 + 快照（blocked 也存）
     p7_render.run(ctx, merged.model_dump())
     return merged
 

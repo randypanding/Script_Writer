@@ -72,34 +72,29 @@ class Module(DSPyPass):
 @cached_pass("p3_beatsheet")
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     ep = fragment["episode"]
-    out = Module()(
-        ctx,
-        with_diag(
-            {
-                "episode_json": json.dumps(ep, ensure_ascii=False),
-                "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
-                "placement_for_episode": json.dumps(fragment["placement"], ensure_ascii=False),
-                "prev_episode_summary": fragment.get("prev_episode_summary", ""),
-                "next_episode_promise": fragment.get("next_episode_promise", ""),
-                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-                "retrieved_cases": fragment.get("retrieved_cases", ""),
-                "beat_schema_hint": _BEAT_HINT,
-                "setup_payoffs_contract": _SP_CONTRACT,
-                "facts_contract": _FACT_CONTRACT,
-                "state_changes_contract": _SC_CONTRACT,
-                "known_facts": json.dumps(fragment.get("known_facts", []), ensure_ascii=False),
-                "declared_state": json.dumps(
-                    fragment.get("declared_state", {}), ensure_ascii=False
-                ),
-                "required_brand_moment_beats": fragment.get("required_brand_moment_beats", 0),
-                # 品牌植入预算真相（brand.placement）：间隔/密度/禁用 Beat 类型，排布时必须遵守
-                "brand_placement_budget": json.dumps(
-                    ctx.brand.get("placement", {}), ensure_ascii=False
-                ),
-            },
-            fragment,
-        ),
-    )
+    inputs = {
+        "episode_json": json.dumps(ep, ensure_ascii=False),
+        "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
+        "placement_for_episode": json.dumps(fragment["placement"], ensure_ascii=False),
+        "prev_episode_summary": fragment.get("prev_episode_summary", ""),
+        "next_episode_promise": fragment.get("next_episode_promise", ""),
+        "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
+        "retrieved_cases": fragment.get("retrieved_cases", ""),
+        "beat_schema_hint": _BEAT_HINT,
+        "setup_payoffs_contract": _SP_CONTRACT,
+        "facts_contract": _FACT_CONTRACT,
+        "state_changes_contract": _SC_CONTRACT,
+        "known_facts": json.dumps(fragment.get("known_facts", []), ensure_ascii=False),
+        "declared_state": json.dumps(fragment.get("declared_state", {}), ensure_ascii=False),
+        "required_brand_moment_beats": fragment.get("required_brand_moment_beats", 0),
+        # 品牌植入预算真相（brand.placement）：间隔/密度/禁用 Beat 类型，排布时必须遵守
+        "brand_placement_budget": json.dumps(ctx.brand.get("placement", {}), ensure_ascii=False),
+    }
+    # T-41 idea bank：可选"可复活素材"层（pipeline 组装，空则不加）
+    revivable = str(fragment.get("revivable_ideas", "") or "")
+    if revivable:
+        inputs["revivable_ideas"] = revivable
+    out = Module()(ctx, with_diag(inputs, fragment))
     raw_beats = inner_json(out["beats_json"], "p3_beatsheet", "beats_json")
     raw_sps = inner_json(out["setup_payoffs_json"], "p3_beatsheet", "setup_payoffs_json")
     if not isinstance(raw_beats, list) or not raw_beats:

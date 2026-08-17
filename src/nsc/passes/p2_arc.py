@@ -45,20 +45,19 @@ class Module(DSPyPass):
 
 @cached_pass("p2_arc")
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
-    out = Module()(
-        ctx,
-        with_diag(
-            {
-                "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
-                "brand_brief_json": json.dumps(ctx.brand, ensure_ascii=False),
-                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-                "retrieved_cases": fragment.get("retrieved_cases", ""),
-                "placement_schema_hint": _PLACEMENT_HINT + "；intensity 必须是 1-5 的整数",
-                "narrative_state_hints": _STATE_HINTS,
-            },
-            fragment,
-        ),
-    )
+    inputs = {
+        "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
+        "brand_brief_json": json.dumps(ctx.brand, ensure_ascii=False),
+        "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
+        "retrieved_cases": fragment.get("retrieved_cases", ""),
+        "placement_schema_hint": _PLACEMENT_HINT + "；intensity 必须是 1-5 的整数",
+        "narrative_state_hints": _STATE_HINTS,
+    }
+    # T-41 idea bank：可选"可复活素材"层（pipeline 组装，空则不加）
+    revivable = str(fragment.get("revivable_ideas", "") or "")
+    if revivable:
+        inputs["revivable_ideas"] = revivable
+    out = Module()(ctx, with_diag(inputs, fragment))
     episodes = inner_json(out["episodes_json"], "p2_arc", "episodes_json")
     placement = inner_json(out["placement_plan_json"], "p2_arc", "placement_plan_json")
     if not isinstance(episodes, list) or not episodes:
