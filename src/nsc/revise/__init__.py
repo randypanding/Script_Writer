@@ -8,14 +8,19 @@ from __future__ import annotations
 from nsc.revise.gate import Counts, decide
 from nsc.revise.idea_bank import deposit, list_ideas, render_for_prompt, revive
 from nsc.revise.patch import Patch, PatchResult, apply_patches, parse_patches
+from nsc.revise.revision_brief import BriefSources, brief_sections, brief_type, build_brief
 from nsc.revise.snapshot import best_snapshot, list_snapshots, rollback_to, save_snapshot
 
 __all__ = [
+    "BriefSources",
     "Counts",
     "Patch",
     "PatchResult",
     "apply_patches",
     "best_snapshot",
+    "brief_sections",
+    "brief_type",
+    "build_brief",
     "decide",
     "deposit",
     "list_ideas",

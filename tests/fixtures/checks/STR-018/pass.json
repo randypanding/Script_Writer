@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.1",
+  "project": {
+    "id": "01JT37STR01800000000000P1",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea"
+  },
+  "seasons": [
+    {
+      "id": "01JT37STR01800000000000S1",
+      "kind": "season",
+      "parent_id": "01JT37STR01800000000000P1",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚"
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01JT37STR018000000000E001",
+      "kind": "episode",
+      "parent_id": "01JT37STR01800000000000S1",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    }
+  ],
+  "scenes": [
+    {
+      "id": "01JT37STR018000000000SC01",
+      "kind": "scene",
+      "parent_id": "01JT37STR018000000000E001",
+      "order": 0,
+      "location_id": "01JT37STR018000000000L001",
+      "time_of_day": "day",
+      "interior": true,
+      "present_character_ids": ["01JT37STR018000000000C001"],
+      "goal": "林晚要确认报告读数",
+      "conflict": "陈经理催着要她签字",
+      "turn": "她发现同一杯茶两种说法",
+      "entry": "林晚刚坐下",
+      "exit": "她抓起杯子出门"
+    }
+  ],
+  "beats": [
+    {
+      "id": "01JT37STR0180000000B001",
+      "kind": "beat",
+      "parent_id": "01JT37STR018000000000SC01",
+      "order": 0,
+      "beat_kind": "hook",
+      "summary": "体检报告特写",
+      "function": "推动",
+      "emotion": {"valence": 0.3, "arousal": 0.4},
+      "est_duration_s": 14,
+      "brand_moment_id": null
+    },
+    {
+      "id": "01JT37STR0180000000B002",
+      "kind": "beat",
+      "parent_id": "01JT37STR018000000000SC01",
+      "order": 1,
+      "beat_kind": "reversal",
+      "summary": "报告上的名字不是她的",
+      "function": "转折",
+      "emotion": {"valence": -0.2, "arousal": 0.7},
+      "est_duration_s": 18,
+      "brand_moment_id": null
+    },
+    {
+      "id": "01JT37STR0180000000B003",
+      "kind": "beat",
+      "parent_id": "01JT37STR018000000000SC01",
+      "order": 2,
+      "beat_kind": "cta",
+      "summary": "她决定查监控",
+      "function": "收束",
+      "emotion": {"valence": 0.5, "arousal": 0.6},
+      "est_duration_s": 12,
+      "brand_moment_id": null
+    }
+  ],
+  "lines": [],
+  "characters": [
+    {
+      "id": "01JT37STR018000000000C001",
+      "name": "林晚",
+      "role": "protagonist",
+      "voice_tics": []
+    }
+  ],
+  "locations": [
+    {
+      "id": "01JT37STR018000000000L001",
+      "name": "办公室工位",
+      "cost_tier": "free"
+    }
+  ],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "chapters": [],
+  "facts": [],
+  "threads": [],
+  "state_variables": [],
+  "dark_threads": []
+}

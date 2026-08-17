@@ -33,3 +33,23 @@
 - 40% 来自 `revision_pairs`（原文 vs 人类改后 → 人类偏好已知，是免费的校准数据）
 - 30% 来自 `preference_pairs`（同一 Beat 的两次生成，你人工选）
 - 30% 来自 `counterexamples`（已知坏样本 vs 已知好样本，锚定极端）
+
+## 6. 三视角注记（ADR-0014）`[[form:non-normative]]`
+
+判官在**同一次 LLM 调用**的指令内额外输出三个视角的注记，不改变该次调用的分数/判定：
+
+| 视角 id | 角色 | 关注 |
+|---|---|---|
+| `editor` | 编辑 | prose 工艺、声音一致性 |
+| `genre_reader` | 类型读者 | 节奏、钩子、翻页欲 |
+| `lay_reader` | 普通读者 | 情绪是否诚实、像不像真人反应（不用行话术语） |
+
+- 输出结构：在既有 JSON 上新增 `perspectives: {editor: {note}, genre_reader: {note}, lay_reader: {note}}` 与 `perspective_disagreement: bool`（三视角注记对同一文本出现方向相反的判断时由判官自报）。
+- 解析防御：LLM 省略 `perspectives` → 空 dict，不判 `invalid`、不触发重试。
+- disagreement 语义：**分歧项 = 编辑决策点**。写入 feedback 供人工裁决，**不作门禁**、不进 §4 的任何门槛指标；校准报告仅统计"带 perspectives 的样本中 disagreement 占比"（一行报告项）。
+- 聚合不变：分数聚合与成对归并保持确定性；perspectives 仅随判官结果透传持久化（trace / 结果 dict），不参与任何聚合公式。
+- 边界声明：这是**同一判官调用内的多视角注记**（单次 LLM 调用的结构化输出扩展），不是多智能体互评/辩论，无 agent 间通信，不触碰 AGENTS.md §2"禁止多智能体互评"红线。
+
+## 7. Elo 锦标赛（ADR-0014）`[[form:non-normative]]`
+
+章节间相对排序用 Elo 锦标赛（`nsc eval l1 --tournament`）：初始 1500、K=32、4 轮 Swiss（Elo 降序相邻配对）、无平局（judge_fn 必须返回 1.0/0.0）、每章截断 3000 字。输出排名报告**仅作分析**，不进门禁，也不得作为 rule mining 的 evidence（相对序不构成绝对质量证据）。

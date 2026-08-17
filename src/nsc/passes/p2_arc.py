@@ -1,25 +1,46 @@
-"""p2_arc：Bible → Season + Episode[] + 植入预算分配（placement_plan）。"""
+"""p2_arc：Bible → Season + Episode[] + 植入预算分配（placement_plan）+ 叙事状态规划。"""
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
-from spec.ir.overlays import BrandMoment
+from spec.ir.overlays import BrandMoment, DarkThread, StateVariable, Thread
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
-from .schema_bridge import schema_hint
+from . import (
+    DSPyPass,
+    PassContext,
+    PassFailure,
+    cached_pass,
+    inner_json,
+    new_id,
+    optional_json,
+    with_diag,
+)
+from .schema_bridge import allowed_values, coerce_enum, schema_hint
 
 #: placement_plan 的取值真相在 BrandMoment（spec/ir）；机械派生给模型看。
 _PLACEMENT_HINT = schema_hint(
     BrandMoment, skip=("id", "anchor_beat_id", "integration_note", "prop_id")
 )
 
+#: ADR-0012 叙事状态三张表的字段真相（key 由 Pass 校验 slug，id 由 Pass 分配）。
+_STATE_HINTS = {
+    "threads": schema_hint(Thread, skip=("id",)),
+    "dark_threads": schema_hint(DarkThread),
+    "state_variables": schema_hint(StateVariable),
+}
+
+#: StateVariable/DarkThread 的 key 契约（spec/ir.nodes.Slug）
+_SLUG_RE = re.compile(r"[a-z0-9_]{2,48}")
+
 
 class Module(DSPyPass):
     signature = signatures.Arc
     pass_name = "p2_arc"
+    optional_outputs = ("threads_json", "dark_threads_json", "state_variables_json")
 
 
 @cached_pass("p2_arc")
@@ -33,6 +54,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                 "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
                 "retrieved_cases": fragment.get("retrieved_cases", ""),
                 "placement_schema_hint": _PLACEMENT_HINT + "；intensity 必须是 1-5 的整数",
+                "narrative_state_hints": _STATE_HINTS,
             },
             fragment,
         ),
@@ -71,6 +93,8 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                 "duration_target_s": int(ep.get("duration_target_s") or target),
                 "hook_promise": str(ep.get("hook_promise", "")).strip(),
                 "cliffhanger": str(ep.get("cliffhanger", "") or ""),
+                # ADR-0012：回收声明机械过滤，保证 INV-20（引用存在且严格更早）
+                "responds_to": _coerce_responds_to(ep.get("responds_to"), no=i + 1),
                 "provenance_id": ctx.run_id,
                 "locked": False,
             }
@@ -79,5 +103,91 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         "season": season,
         "episodes": ep_nodes,
         "placement_plan": placement,
+        "threads": _coerce_threads(optional_json(out, "threads_json", "p2_arc")),
+        "state_variables": _coerce_state_vars(optional_json(out, "state_variables_json", "p2_arc")),
+        "dark_threads": _coerce_dark_threads(optional_json(out, "dark_threads_json", "p2_arc")),
         "_usage": out["_usage"],
     }
+
+
+def _coerce_responds_to(refs: Any, *, no: int) -> list[int]:
+    """ADR-0012 / INV-20 机械归一：只保留指向更早集的合法集号，非法值丢弃不失败。"""
+    out: list[int] = []
+    for r in refs or []:
+        try:
+            r = int(r)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= r < no and r not in out:
+            out.append(r)
+    return out
+
+
+def _coerce_threads(raw: Any) -> list[dict[str, Any]]:
+    """Thread[] 机械归一（可缺省→空表）：缺标题/非 dict 丢弃；status 落合法值域。"""
+    out = []
+    for t in raw if isinstance(raw, list) else []:
+        if not isinstance(t, dict):
+            continue
+        title = str(t.get("title", "")).strip()
+        if not title:
+            continue
+        out.append(
+            {
+                "id": new_id(),
+                "title": title,
+                "state": str(t.get("state", "") or ""),
+                "status": coerce_enum(
+                    t.get("status", "active"), allowed_values(Thread, "status"), "active"
+                ),
+            }
+        )
+    return out
+
+
+def _coerce_state_vars(raw: Any) -> list[dict[str, Any]]:
+    """StateVariable[] 机械归一（可缺省→空表）：key 必须 slug、name 必填，其余落默认。"""
+    out = []
+    for v in raw if isinstance(raw, list) else []:
+        if not isinstance(v, dict):
+            continue
+        key = str(v.get("key", "")).strip()
+        name = str(v.get("name", "")).strip()
+        if not key or not name or not _SLUG_RE.fullmatch(key):
+            continue
+        typ = str(v.get("type", "number") or "number").strip().lower()
+        init = v.get("initial", 0)
+        out.append(
+            {
+                "key": key,
+                "name": name,
+                "type": typ if typ in ("number", "string") else "number",
+                "initial": init
+                if isinstance(init, (int, float, str)) and not isinstance(init, bool)
+                else 0,
+                "description": str(v.get("description", "") or ""),
+            }
+        )
+    return out
+
+
+def _coerce_dark_threads(raw: Any) -> list[dict[str, Any]]:
+    """DarkThread[] 机械归一（可缺省→空表）：key 必须 slug、stages 至少 2 段。"""
+    out = []
+    for d in raw if isinstance(raw, list) else []:
+        if not isinstance(d, dict):
+            continue
+        key = str(d.get("key", "")).strip()
+        name = str(d.get("name", "")).strip()
+        stages = [str(s).strip() for s in d.get("stages") or [] if str(s).strip()]
+        if not key or not name or len(stages) < 2 or not _SLUG_RE.fullmatch(key):
+            continue
+        out.append(
+            {
+                "key": key,
+                "name": name,
+                "stages": stages,
+                "description": str(d.get("description", "") or ""),
+            }
+        )
+    return out

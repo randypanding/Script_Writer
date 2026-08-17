@@ -388,13 +388,20 @@ def eval_l1(
     sample: int = 12,
     ab: str | None = None,
     max_cost_usd: float = typer.Option(3.0, help="本次评测成本上限（美元），超出即中止"),
+    tournament: bool = typer.Option(
+        False, "--tournament", help="对样本章节跑 Elo 锦标赛（ADR-0014，仅分析不进门禁）"
+    ),
 ) -> None:
-    """L1 评测。默认判官评分；--ab retrieval：两臂编译对比检索增益。"""
-    from nsc.eval.l1 import run_ab_retrieval, run_l1_judge
+    """L1 评测。默认判官评分；--ab retrieval：两臂编译对比检索增益；--tournament：Elo 锦标赛。"""
+    from nsc.eval.l1 import run_ab_retrieval, run_l1_judge, run_l1_tournament
 
     if ab == "retrieval":
         report = run_ab_retrieval(sample=sample, max_cost_usd=max_cost_usd)
         typer.secho(f"检索 A/B 报告：{report}", fg="green")
+        return
+    if tournament:
+        report = run_l1_tournament(sample=sample)
+        typer.secho(f"Elo 锦标赛排名：{report}", fg="green")
         return
     report = run_l1_judge(sample=sample, max_cost_usd=max_cost_usd)
     typer.secho(f"判官 L1 报告：{report}", fg="green")

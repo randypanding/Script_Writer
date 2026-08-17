@@ -13,25 +13,40 @@
 | Pass | 输入 | 输出 | LLM | 检查阶段 |
 |---|---|---|---|---|
 | `p0_intake` | RawBrief(yaml) + RawBrandBrief + Profile | NormalizedBrief, BrandBrief, Constraint[] | 轻（补全/归一） | — |
-| `p1_bible` | NormalizedBrief, BrandBrief, Profile | Character[], Location[], Prop[], Motif[], ToneSpec | 是 | `after_p1` |
-| `p2_arc` | Bible, BrandBrief, Profile | Season, Episode[], BrandMoment 预算分配草案 | 是 | `after_p2` |
-| `p3_beatsheet` | Episode(单集), Bible, 预算, 邻集摘要 | Beat[](含 brand_moment 占位 + emotion + SetupPayoff 声明) | 是 | `after_p3` |
-| `p4_scene` | Beat[](单集), Bible | Scene[] + Beat→Scene 归属 | 是 | `after_p4` |
+| `p1_bible` | NormalizedBrief, BrandBrief, Profile | Character[](含可选心智 OS 字段), Location[], Prop[], Motif[], ToneSpec | 是 | `after_p1` |
+| `p2_arc` | Bible, BrandBrief, Profile | Season, Episode[](含 responds_to), Thread[]/StateVariable[]/DarkThread[](可选), BrandMoment 预算分配草案 | 是 | `after_p2` |
+| `p3_beatsheet` | Episode(单集), Bible, 预算, 邻集摘要, known_facts, declared_state | Beat[](含 brand_moment 占位 + emotion + SetupPayoff 声明), Fact[](可选), Episode.state_changes(可选) | 是 | `after_p3` |
+| `p4_scene` | Beat[](单集), Bible | Scene[](含可选节奏/知识状态字段) + Beat→Scene 归属 | 是 | `after_p4` |
 | `p5_dialogue` | Scene(单场), Bible, 该场 Beat[], 品牌约束 | Line[] | 是 | `after_p5` |
 | `p6_prose` | Episode 的 Scene[]+Line[], Bible, NarrativeVoice | NovelChapter(段落 + anchor_map) | 是 | `after_p6` |
 | `p7_render` | 完整 IR | Fountain / novel.docx / script.docx / storyboard.csv | **否** | `final` |
 
 ## 2. 逐 Pass 关键约束
 
+### p1_bible
+- Character 可附带心智 OS 字段（`mental_models`/`decision_heuristics`/`honest_boundaries`/`expression_dna`，ADR-0012）；
+  LLM 省略时默认空，畸形嵌套条目由 Pass 机械过滤，不因缺失而失败。
+
 ### p2_arc
 - 必须为每个 `must_cover` 卖点分配 ≥1 个 BrandMoment 槽位，并写明 `modality` 与 `plot_connection` 计划。
 - 必须输出 `hook_promise` 与 `cliffhanger`（末集除外）。
+- 叙事状态规划（ADR-0012，全部可缺省）：`threads/dark_threads/state_variables` 三张表 + 每集
+  `responds_to`（Pass 机械过滤保证 INV-20：只保留指向更早集的合法集号）。
 - 借鉴：Dramatron 的 log line → plot 层级（BORROW_MAP #1）；DOC 的"创作负担前移"（#3）。
 
 ### p3_beatsheet
 - **最重要的一趟**。BeatSheet 必须细到"每个 Beat 可被独立判定通过/不通过"（DOC 的 detailed outliner 原则）。
 - 单集生成，输入含 `prev_episode_summary` 与 `next_episode_promise`，不含全季全文（可缓存、可局部重编译）。
 - 必须声明 `SetupPayoff`（可跨集，跨集则 payoff_beat_id 留 `PENDING:<slug>`，由 p3 的全季后处理解引用）。
+- `Beat.summary` 采用事件模板（地点/人物/行动/冲突/反转 一句话，签名 docstring 引导）。
+- 叙事状态输出（ADR-0012，全部可缺省）：`facts_json`（resolves = 同集下标 / 已知前集 fact id / null，
+  **不做 PENDING:slug 解引用**——SetupPayoff 的 slug 机制与 Fact 的 id 语义不同；跨集回收状态级联由
+  `apply_fact_cascade` 全季后处理翻转，等价于 resolve_pending 的角色）与 `state_changes_json`
+  （key 限 declared_state 已声明的状态变量/暗线，delta 按声明类型机械转换）。
+
+### p4_scene
+- Scene 可附带节奏与知识状态字段（`opening_attractor`/`escalation_beats`/`ending_hook`/`knowledge_state`，
+  ADR-0012），LLM 省略时默认空。
 
 ### p5_dialogue
 - 单场生成。输入必须包含该场的 `goal/conflict/turn` 与在场角色的 `voice_notes/voice_tics`。

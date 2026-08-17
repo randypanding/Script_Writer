@@ -19,6 +19,10 @@ class Bible(dspy.Signature):
     - 角色总数不得超过 max_characters。
     - 每个角色必须有可区分的说话方式（voice_notes）与 1-3 个标记词（voice_tics）。
     - 地点必须从 brand.usage_scenes 中 shootable=true 的场景派生，或标注 cost_tier。
+    - 每个角色可附带心智 OS（ADR-0012，可省略，省略即默认空）：
+      mental_models（name/description/trigger/action_tendency/failure_mode，至多 5 个）、
+      decision_heuristics（至多 7 条）、honest_boundaries、
+      expression_dna（syntax/rhetoric/emotion_temperature/signature_lines）。
     """
 
     normalized_brief: str = dspy.InputField(desc="归一化后的商家需求")
@@ -26,7 +30,10 @@ class Bible(dspy.Signature):
     profile_json: str = dspy.InputField(desc="Format Profile 的约束摘要")
     retrieved_cases: str = dspy.InputField(desc="检索到的同行业已验证案例（可为空）")
 
-    characters_json: str = dspy.OutputField(desc="Character[] 的 JSON，不含 id")
+    characters_json: str = dspy.OutputField(
+        desc="Character[] 的 JSON，不含 id；可含可选心智 OS 字段"
+        "（mental_models/decision_heuristics/honest_boundaries/expression_dna），省略则默认空"
+    )
     locations_json: str = dspy.OutputField(desc="Location[] 的 JSON，不含 id")
     props_json: str = dspy.OutputField(desc="Prop[] 的 JSON，不含 id")
     motifs_json: str = dspy.OutputField(desc="Motif[] 的 JSON，不含 id")
@@ -41,6 +48,9 @@ class Arc(dspy.Signature):
     - 每个 must_cover=true 的卖点必须被分配到至少一集，并给出该处植入的 modality 与 plot_connection 计划。
     - 全季至少 require_high_plot_connection 处 plot_connection=high。
     - 每集必须给出 hook_promise（本集向观众承诺解答的问题）；除末集外必须给出 cliffhanger。
+    - 叙事状态规划（ADR-0012，全部可省略，省略即空表）：threads / dark_threads /
+      state_variables；每集可在 episode 内用 responds_to 声明回收哪些更早集的悬念
+      （集号必须严格小于本集）。
     """
 
     bible_json: str = dspy.InputField()
@@ -49,12 +59,22 @@ class Arc(dspy.Signature):
     retrieved_cases: str = dspy.InputField()
 
     episodes_json: str = dspy.OutputField(
-        desc="Episode[] 的 JSON（no/title/logline/hook_promise/cliffhanger）"
+        desc="Episode[] 的 JSON（no/title/logline/hook_promise/cliffhanger；"
+        "可含 responds_to:[更早集号]）"
     )
     placement_plan_json: str = dspy.OutputField(
         desc="[{episode_no, selling_point_id, type, intensity, modality, plot_connection, intent}]"
     )
     season_arc: str = dspy.OutputField(desc="一段话说明整季弧线")
+    threads_json: str = dspy.OutputField(
+        desc="Thread[] 的 JSON（title/state/status），可省略（ADR-0012，缺省即空表）"
+    )
+    dark_threads_json: str = dspy.OutputField(
+        desc="DarkThread[] 的 JSON（key/name/stages[]/description，至少 2 段），可省略（ADR-0012，缺省即空表）"
+    )
+    state_variables_json: str = dspy.OutputField(
+        desc="StateVariable[] 的 JSON（key/name/type/initial/description），可省略（ADR-0012，缺省即空表）"
+    )
 
 
 class BeatSheet(dspy.Signature):
@@ -67,7 +87,12 @@ class BeatSheet(dspy.Signature):
     - 本集分配到的每个植入必须落成一个 beat_kind=brand_moment 的 Beat，且不得与 hook 相邻或落在 hook 上。
     - 每个 Beat 必须给出 emotion(valence, arousal) 与 est_duration_s，总时长贴近 duration_target_s。
     - 必须声明至少一组 setup→payoff；跨集回收时 payoff 写 "PENDING:<slug>"。
-    - summary 必须是"谁做了什么导致什么"，不得是抽象概括（如"两人产生矛盾"）。
+    - summary 必须采用事件模板（五要素一句话）：地点/人物/行动/冲突/反转，
+      形如"茶饮店：林晚当众核对配料表，冲突是陈经理的说法相反，反转是标签背面另有代糖来源"；
+      不得是抽象概括（如"两人产生矛盾"）。
+    - 叙事状态（ADR-0012，可省略，省略即空表）：facts_json 里 resolves 填同集下标、
+      已知前集 fact 的 id（见 known_facts）或 null（尚未回收）；state_changes_json 的
+      key 只能用已声明的状态变量/暗线 key（见 declared_state）。
     """
 
     episode_json: str = dspy.InputField(desc="本集的 Episode 骨架")
@@ -80,6 +105,14 @@ class BeatSheet(dspy.Signature):
 
     beats_json: str = dspy.OutputField(desc="Beat[] 的 JSON，不含 id")
     setup_payoffs_json: str = dspy.OutputField(desc="SetupPayoff[] 的 JSON，不含 id")
+    facts_json: str = dspy.OutputField(
+        desc="Fact[] 的 JSON（content/type/status/resolves/episode_no/narrative_weight），"
+        "可省略（ADR-0012，缺省即空表）"
+    )
+    state_changes_json: str = dspy.OutputField(
+        desc="本集状态变更 [{key, delta, reason}] 的 JSON，key 须为已声明状态变量/暗线，"
+        "可省略（ADR-0012，缺省即空表）"
+    )
 
 
 class SceneCards(dspy.Signature):
@@ -91,6 +124,9 @@ class SceneCards(dspy.Signature):
     - entry 必须是"最晚可以进入的时刻"，exit 必须是"最早可以离开的时刻"。
     - present_character_ids 必须覆盖该场景所有 Beat 涉及的角色。
     - 不得引入 Bible 之外的地点或角色。
+    - 每个场景可附带节奏与知识状态字段（ADR-0012，可省略，省略即默认空）：
+      opening_attractor（开场 3 秒吸引点）、escalation_beats（逐拍升级）、
+      ending_hook（切出钩子）、knowledge_state（audience_knows/characters_know/hidden/new_evidence）。
     """
 
     beats_json: str = dspy.InputField()

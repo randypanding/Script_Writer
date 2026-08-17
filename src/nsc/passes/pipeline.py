@@ -149,6 +149,11 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
         "chapters": [],
         "brand_moments": [],
         "setup_payoffs": [],
+        # --- ADR-0012 运行时叙事状态层（p2 规划三张表；facts 由 p3 逐集积累） ---
+        "facts": [],
+        "threads": [],
+        "state_variables": [],
+        "dark_threads": [],
         "voice": None,
     }
 
@@ -200,6 +205,9 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     track()
     st["seasons"] = [r2["season"]]
     st["episodes"] = r2["episodes"]
+    st["threads"] = r2.get("threads", [])
+    st["state_variables"] = r2.get("state_variables", [])
+    st["dark_threads"] = r2.get("dark_threads", [])
     check_stage(ctx, cur(), "after_p1")
     check_stage(ctx, cur(), "after_p2", "after_p2")
 
@@ -208,7 +216,10 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     # 带诊断整体重试（D13 反馈驱动再生成，诊断累积）；重试前恢复相位前的状态。
     diag = ""
     for attempt in range(3):
-        snapshot = {k: list(st[k]) for k in ("beats", "setup_payoffs", "brand_moments", "scenes")}
+        snapshot = {
+            k: list(st[k]) for k in ("beats", "setup_payoffs", "brand_moments", "scenes", "facts")
+        }
+        ep_state_snap = {e["id"]: list(e.get("state_changes", [])) for e in episodes}
         try:
             prev_summary = ""
             for i, ep in enumerate(episodes):
@@ -224,6 +235,9 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                     "next_episode_promise": episodes[i + 1]["hook_promise"]
                     if i + 1 < len(episodes)
                     else "",
+                    # ADR-0012：跨集回收上下文 + 状态变更声明域（facts/threads 等表见上）
+                    "known_facts": _known_facts(st["facts"]),
+                    "declared_state": _declared_state(st),
                     "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
                 }
                 if diag:
@@ -234,6 +248,8 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 st["beats"] += r3["beats"]
                 st["setup_payoffs"] += r3["setup_payoffs"]
                 st["brand_moments"] += r3["brand_moments"]
+                st["facts"] += r3.get("facts", [])
+                ep["state_changes"] = r3.get("state_changes", [])
 
             for ep in episodes:
                 ep_beats = [b for b in st["beats"] if b["_episode_id"] == ep["id"]]
@@ -244,12 +260,15 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 st["scenes"] += r4["scenes"]
                 st["beats"] = [b for b in st["beats"] if b["_episode_id"] != ep["id"]] + r4["beats"]
             st["setup_payoffs"] = p3_beatsheet.resolve_pending(st["setup_payoffs"])
+            st["facts"] = p3_beatsheet.apply_fact_cascade(st["facts"])
             check_stage(ctx, cur(), "after_p3", "after_p4")
             _dbg("p3/p4-phase check passed")
             break
         except PassFailure as e:
             _dbg(f"p3/p4-phase caught: {str(e)[:160]!r}")
             st.update(snapshot)
+            for e_ in episodes:
+                e_["state_changes"] = ep_state_snap[e_["id"]]
             diag = _accum(diag, str(e))
             if attempt == 2:
                 raise
@@ -347,6 +366,11 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
             "next_episode_promise": ordered[idx + 1]["hook_promise"]
             if idx + 1 < len(ordered)
             else "",
+            # ADR-0012：其他集已成立的 facts 可被本集回收；状态声明域来自 IR 表
+            "known_facts": _known_facts(
+                [f for f in raw.get("facts", []) if f.get("episode_no") != ep["no"]]
+            ),
+            "declared_state": _declared_state(raw),
             "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
         },
     )
@@ -362,8 +386,16 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
         track()
         lines += r5["lines"]
 
+    ep["state_changes"] = r3.get("state_changes", [])
     new_raw = _splice_episode(
-        raw, ep["id"], r4["scenes"], r4["beats"], lines, r3["brand_moments"], r3["setup_payoffs"]
+        raw,
+        ep["id"],
+        r4["scenes"],
+        r4["beats"],
+        lines,
+        r3["brand_moments"],
+        r3["setup_payoffs"],
+        new_facts=r3.get("facts", []),
     )
     new_ir = NarrativeIR.model_validate(_strip_private(new_raw))
 
@@ -418,6 +450,11 @@ def _assemble(ctx: PassContext, st: dict[str, Any], provenance: list[Provenance]
         "constraints": st.get("constraints", []),
         "tone": st.get("tone") or None,
         "voice": st.get("voice"),
+        # --- ADR-0012 运行时叙事状态层（缺省→空表，1.0 IR 无损迁移） ---
+        "facts": st.get("facts", []),
+        "threads": st.get("threads", []),
+        "state_variables": st.get("state_variables", []),
+        "dark_threads": st.get("dark_threads", []),
         "chapters": st["chapters"],
         "provenance": [p.model_dump() for p in provenance],
     }
@@ -459,6 +496,35 @@ def _voice(ctx: PassContext, bible: dict[str, Any]) -> dict[str, Any]:
 def _episode_digest(raw: dict[str, Any], ep_id: str) -> str:
     scene_ids = {s["id"] for s in raw["scenes"] if s["parent_id"] == ep_id}
     return "；".join(b["summary"] for b in raw["beats"] if b["parent_id"] in scene_ids)
+
+
+def _known_facts(facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """p3 的跨集回收上下文（ADR-0012）：已成立 Fact 的最小可见面，供模型引用 id 做回收。"""
+    return [
+        {
+            "id": f["id"],
+            "content": f["content"],
+            "episode_no": f.get("episode_no", 1),
+            "status": f.get("status", "active"),
+            "type": f.get("type", "plot_event"),
+        }
+        for f in facts
+        if isinstance(f, dict)
+    ]
+
+
+def _declared_state(st: dict[str, Any]) -> dict[str, Any]:
+    """p3 的状态变更声明域（ADR-0012）：只允许对已声明的 StateVariable/DarkThread key 变更。"""
+    return {
+        "state_variables": [
+            {"key": v["key"], "type": v.get("type", "number")}
+            for v in st.get("state_variables", [])
+            if isinstance(v, dict)
+        ],
+        "dark_threads": [
+            {"key": d["key"]} for d in st.get("dark_threads", []) if isinstance(d, dict)
+        ],
+    }
 
 
 def _placement_of(raw: dict[str, Any], ep: dict[str, Any]) -> list[dict[str, Any]]:
@@ -573,6 +639,8 @@ def _splice_episode(
     new_lines: list[dict[str, Any]],
     new_bms: list[dict[str, Any]],
     new_sps: list[dict[str, Any]],
+    *,
+    new_facts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     old_scene_ids = {s["id"] for s in raw["scenes"] if s["parent_id"] == ep_id}
     old_beat_ids = {b["id"] for b in raw["beats"] if b["parent_id"] in old_scene_ids}
@@ -589,6 +657,11 @@ def _splice_episode(
         if sp["setup_beat_id"] not in old_beat_ids and sp["payoff_beat_id"] not in old_beat_ids
     ]
     out["setup_payoffs"] = kept_sps + p3_beatsheet.resolve_pending(new_sps)
+    # ADR-0012：本集 facts 整体替换（p3 的声明粒度是集），其余集保留；级联在全季上重放
+    if new_facts is not None:
+        ep_no = next(e["no"] for e in raw["episodes"] if e["id"] == ep_id)
+        kept_facts = [f for f in raw.get("facts", []) if f.get("episode_no") != ep_no]
+        out["facts"] = p3_beatsheet.apply_fact_cascade(kept_facts + new_facts)
     out["chapters"] = [c for c in raw.get("chapters", []) if c["episode_id"] != ep_id]
     return out
 

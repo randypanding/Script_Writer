@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.1",
+  "project": {
+    "id": "01JT37STR01700000000000P1",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea"
+  },
+  "seasons": [
+    {
+      "id": "01JT37STR01700000000000S1",
+      "kind": "season",
+      "parent_id": "01JT37STR01700000000000P1",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚"
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01JT37STR017000000000E001",
+      "kind": "episode",
+      "parent_id": "01JT37STR01700000000000S1",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    }
+  ],
+  "scenes": [
+    {
+      "id": "01JT37STR017000000000SC01",
+      "kind": "scene",
+      "parent_id": "01JT37STR017000000000E001",
+      "order": 0,
+      "location_id": "01JT37STR017000000000L001",
+      "time_of_day": "day",
+      "interior": true,
+      "present_character_ids": ["01JT37STR017000000000C001"],
+      "goal": "林晚要确认报告读数",
+      "conflict": "陈经理催着要她签字",
+      "turn": "她发现同一杯茶两种说法",
+      "entry": "林晚刚坐下",
+      "exit": "她抓起杯子出门",
+      "opening_attractor": "镜头怼近：她的名字贴在别人的工牌上",
+      "escalation_beats": [],
+      "ending_hook": ""
+    },
+    {
+      "id": "01JT37STR017000000000SC02",
+      "kind": "scene",
+      "parent_id": "01JT37STR017000000000E001",
+      "order": 1,
+      "location_id": "01JT37STR017000000000L002",
+      "time_of_day": "night",
+      "interior": true,
+      "present_character_ids": ["01JT37STR017000000000C001", "01JT37STR017000000000C002"],
+      "goal": "林晚要问出标签来历",
+      "conflict": "对方把杯子收走了",
+      "turn": "第二条短信亮起",
+      "entry": "两人在仓库门口对峙",
+      "exit": "黑屏",
+      "opening_attractor": "",
+      "escalation_beats": [],
+      "ending_hook": "黑屏前第二条短信亮起：你也知道了？"
+    }
+  ],
+  "beats": [],
+  "lines": [],
+  "characters": [
+    {
+      "id": "01JT37STR017000000000C001",
+      "name": "林晚",
+      "role": "protagonist",
+      "voice_tics": []
+    },
+    {
+      "id": "01JT37STR017000000000C002",
+      "name": "小满",
+      "role": "customer_proxy",
+      "voice_tics": []
+    }
+  ],
+  "locations": [
+    {
+      "id": "01JT37STR017000000000L001",
+      "name": "办公室工位",
+      "cost_tier": "free"
+    },
+    {
+      "id": "01JT37STR017000000000L002",
+      "name": "仓库门口",
+      "cost_tier": "cheap"
+    }
+  ],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "chapters": [],
+  "facts": [],
+  "threads": [],
+  "state_variables": [],
+  "dark_threads": []
+}

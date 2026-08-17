@@ -1,0 +1,132 @@
+{
+  "schema_version": "1.1",
+  "project": {
+    "id": "01JT37FCT300000000000000P1",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea"
+  },
+  "seasons": [
+    {
+      "id": "01JT37FCT300000000000000S1",
+      "kind": "season",
+      "parent_id": "01JT37FCT300000000000000P1",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚"
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01JT37FCT30000000000000E01",
+      "kind": "episode",
+      "parent_id": "01JT37FCT300000000000000S1",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    },
+    {
+      "id": "01JT37FCT30000000000000E02",
+      "kind": "episode",
+      "parent_id": "01JT37FCT300000000000000S1",
+      "order": 1,
+      "no": 2,
+      "title": "第2集 工牌上的名字",
+      "logline": "小满开始怀疑林晚",
+      "duration_target_s": 90,
+      "hook_promise": "工牌是谁换的？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    },
+    {
+      "id": "01JT37FCT30000000000000E03",
+      "kind": "episode",
+      "parent_id": "01JT37FCT300000000000000S1",
+      "order": 2,
+      "no": 3,
+      "title": "第3集 仓库的钥匙",
+      "logline": "钥匙少了一把",
+      "duration_target_s": 90,
+      "hook_promise": "钥匙去哪了？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    },
+    {
+      "id": "01JT37FCT30000000000000E04",
+      "kind": "episode",
+      "parent_id": "01JT37FCT300000000000000S1",
+      "order": 3,
+      "no": 4,
+      "title": "第4集 陈经理的账",
+      "logline": "账对不上",
+      "duration_target_s": 90,
+      "hook_promise": "账差在哪？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    },
+    {
+      "id": "01JT37FCT30000000000000E05",
+      "kind": "episode",
+      "parent_id": "01JT37FCT300000000000000S1",
+      "order": 4,
+      "no": 5,
+      "title": "第5集 第二杯茶",
+      "logline": "有人先到了",
+      "duration_target_s": 90,
+      "hook_promise": "先到的人是谁？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    }
+  ],
+  "scenes": [],
+  "beats": [],
+  "lines": [],
+  "characters": [],
+  "locations": [],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "chapters": [],
+  "facts": [
+    {
+      "id": "01JT37FCT300000000000F001",
+      "content": "茶杯上的手写标签到底是谁留的",
+      "character_ids": [],
+      "episode_no": 4,
+      "status": "unresolved",
+      "type": "mystery",
+      "resolves": null,
+      "caused_by": [],
+      "suspense_type": "curiosity",
+      "narrative_weight": "high",
+      "thread_ids": ["01JT37FCT300000000000T001"]
+    }
+  ],
+  "threads": [
+    {
+      "id": "01JT37FCT300000000000T001",
+      "title": "手写标签之谜",
+      "state": "open",
+      "status": "active"
+    }
+  ],
+  "state_variables": [],
+  "dark_threads": []
+}

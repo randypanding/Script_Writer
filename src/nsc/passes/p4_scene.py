@@ -1,11 +1,11 @@
-"""p4_scene：单集 Beat[] → Scene[] + Beat→Scene 归属。"""
+"""p4_scene：单集 Beat[] → Scene[] + Beat→Scene 归属（含场级节奏/知识状态字段）。"""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from spec.ir.nodes import Scene
+from spec.ir.nodes import KnowledgeState, Scene
 from spec.passes import signatures
 
 from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
@@ -89,6 +89,11 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                 "entry": str(sc.get("entry", "")).strip(),
                 "exit": str(sc.get("exit", "")).strip(),
                 "summary": str(sc.get("summary", "")),
+                # --- ADR-0012 场级节奏与知识状态（可缺省→默认空） ---
+                "opening_attractor": str(sc.get("opening_attractor", "") or ""),
+                "escalation_beats": _escalation(sc.get("escalation_beats")),
+                "ending_hook": str(sc.get("ending_hook", "") or ""),
+                "knowledge_state": _knowledge_state(sc.get("knowledge_state")),
                 "provenance_id": ctx.run_id,
                 "locked": False,
             }
@@ -108,6 +113,20 @@ def _public_beats(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for i, b in enumerate(beats)
     ]
+
+
+def _escalation(raw: Any) -> list[str]:
+    """escalation_beats 机械归一（ADR-0012，省略→空表）：非 list/空串条目丢弃。"""
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def _knowledge_state(raw: Any) -> dict[str, str] | None:
+    """knowledge_state 机械归一（ADR-0012，省略→None）：extra 键过滤防 ValidationError。"""
+    if not isinstance(raw, dict):
+        return None
+    return {k: str(v) for k, v in raw.items() if k in KnowledgeState.model_fields} or None
 
 
 def _assign(

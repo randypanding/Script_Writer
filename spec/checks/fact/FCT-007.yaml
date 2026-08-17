@@ -1,0 +1,12 @@
+id: FCT-007
+title: 状态变化必须写明原因
+domain: fact
+severity: warn
+stage: after_p3
+select: episodes[*]
+assert: all_of(item.state_changes, "chars(x.reason) >= 2")
+message: 第 {item.no} 集 state_changes 里存在无因果的跳变条目（reason 为 {[(x.reason or '(空)') for x in item.state_changes if chars(x.reason) < 2]}），状态凭空变化。没有原因的推进无法在后续集自洽回放（derive_state 只认 key/delta），读者也会把暗线进度当成 bug。请为每条变化写清"谁在本集做了什么导致它变化"，reason 不少于 2 个汉字。
+fix_hint: 把 reason 写成具体事件，如"她替小满挡下投诉，信任 +1"，而不是留空或只写一个字。
+tags:
+- state
+- causality

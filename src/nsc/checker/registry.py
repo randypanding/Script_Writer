@@ -164,6 +164,14 @@ def pct(a: float, b: float) -> float:
     return (a / b) if b else 0.0
 
 
+def covered_by_responds(episodes: list[dict] | None, no: int, window: int) -> bool:
+    """悬念闭环机制（STR-016）：存在 ep 使 no < ep.no <= no+window 且 no ∈ ep.responds_to。"""
+    return any(
+        no < (ep.get("no") or 0) <= no + window and no in (ep.get("responds_to") or [])
+        for ep in (episodes or [])
+    )
+
+
 #: evaluate() 注入的全局闭包（order_of / exists 等需要视图上下文）
 _RUNTIME: dict[str, Any] = {}
 
@@ -277,6 +285,7 @@ FUNCS: dict[str, Any] = {
     "monotone_runs": monotone_runs,
     "sum_of": sum_of,
     "pct": pct,
+    "covered_by_responds": covered_by_responds,
     "all_of": all_of,
     "any_of": any_of,
     "order_of": order_of,

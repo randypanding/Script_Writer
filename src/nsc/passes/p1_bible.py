@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from spec.ir.nodes import ExpressionDNA, MentalModel
 from spec.ir.overlays import Character, Location, Motif, Prop, ToneSpec
 from spec.passes import signatures
 
@@ -50,6 +51,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     characters = _assign_ids(
         filter_extra(inner_json(out["characters_json"], "p1_bible", "characters_json"), Character)
     )
+    characters = _sanitize_mind(characters)
     locations = _assign_ids(
         filter_extra(inner_json(out["locations_json"], "p1_bible", "locations_json"), Location)
     )
@@ -71,6 +73,46 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         "tone": tone,
         "_usage": out["_usage"],
     }
+
+
+def _sanitize_mind(characters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """角色心智 OS（ADR-0012）机械归一：省略 → 默认空；嵌套 extra 键过滤、畸形条目丢弃。
+
+    IR 模型全部 extra="forbid"，模型发明的嵌套键会炸校验——与 filter_extra 同一哲学，
+    在 Pass 边界把四个可选字段清洗成一定能通过 Character 校验的形态。
+    """
+    for c in characters:
+        models = []
+        for m in c.get("mental_models") or []:
+            if not isinstance(m, dict):
+                continue
+            m = {k: str(v) for k, v in m.items() if k in MentalModel.model_fields and v is not None}
+            if str(m.get("name", "")).strip():
+                models.append(m)
+        c["mental_models"] = models[:5]  # Character 契约 max_length=5
+        c["decision_heuristics"] = _str_list(c.get("decision_heuristics"))[:7]  # max_length=7
+        c["honest_boundaries"] = _str_list(c.get("honest_boundaries"))
+        c["expression_dna"] = _sanitize_dna(c.get("expression_dna"))
+    return characters
+
+
+def _sanitize_dna(dna: Any) -> dict[str, Any] | None:
+    if not isinstance(dna, dict):
+        return None
+    out: dict[str, Any] = {
+        k: str(v)
+        for k, v in dna.items()
+        if k in ExpressionDNA.model_fields and k != "signature_lines" and v is not None
+    }
+    lines = dna.get("signature_lines")
+    out["signature_lines"] = [str(x) for x in lines] if isinstance(lines, list) else []
+    return out
+
+
+def _str_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip() for x in raw if str(x).strip()]
 
 
 def _assign_ids(items: Any) -> list[dict[str, Any]]:

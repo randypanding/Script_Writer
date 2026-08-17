@@ -1,0 +1,12 @@
+id: STR-016
+title: 悬念闭环（集末钩子须在 3 集内被回应）
+domain: structure
+severity: warn
+stage: after_p3
+select: episodes[*]
+assert: chars(item.cliffhanger) == 0 or covered_by_responds(ctx.episodes, item.no, 3)
+message: 第 {item.no} 集的集末钩子「{item.cliffhanger}」在之后 3 集内没有任何集的 responds_to 回应它（cliffhanger 为空的集豁免）。悬念开而不收会持续透支观众信任，钩子埋得越密、失信越快。请在第 {item.no}+1 到 {item.no}+3 集中选一集，在其 responds_to 登记本集集号并安排对应的回应节拍。
+fix_hint: 短剧观众耐心窗口最短，优先在下一集开场 30 秒内回应，并在该集 responds_to 里加入本集 no。
+tags:
+- suspense
+- cliffhanger

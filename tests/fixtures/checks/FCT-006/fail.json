@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.1",
+  "project": {
+    "id": "01JT37FCT600000000000000P1",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea"
+  },
+  "seasons": [
+    {
+      "id": "01JT37FCT600000000000000S1",
+      "kind": "season",
+      "parent_id": "01JT37FCT600000000000000P1",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚"
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01JT37FCT60000000000000E02",
+      "kind": "episode",
+      "parent_id": "01JT37FCT600000000000000S1",
+      "order": 1,
+      "no": 2,
+      "title": "第2集 工牌上的名字",
+      "logline": "小满开始怀疑林晚",
+      "duration_target_s": 90,
+      "hook_promise": "工牌是谁换的？",
+      "cliffhanger": "",
+      "responds_to": [1],
+      "state_changes": []
+    }
+  ],
+  "scenes": [],
+  "beats": [],
+  "lines": [],
+  "characters": [],
+  "locations": [],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "chapters": [],
+  "facts": [],
+  "threads": [],
+  "state_variables": [
+    {
+      "key": "trust",
+      "name": "小满对林晚的信任",
+      "type": "number",
+      "initial": 0,
+      "description": "每次林晚替小满说话 +1"
+    }
+  ],
+  "dark_threads": []
+}

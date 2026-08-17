@@ -1,0 +1,12 @@
+id: FCT-003
+title: 高权重伏笔逾期未回收
+domain: fact
+severity: warn
+stage: after_p3
+select: facts[?status=='unresolved' && narrative_weight=='high']
+assert: not item.is_overdue
+message: 第 {item.episode_no} 集埋设的高权重伏笔「{item.content}」已超过 3 集未回收且状态仍是 unresolved，悬念链在此断裂：观众早忘了这个承诺，硬收没有爆点、不收则透支信任。请在接下来 1-2 集内安排该伏笔的回应节拍（在回应集的 responds_to 登记第 {item.episode_no} 集），或明确把它降级为低权重背景线。
+fix_hint: 找到与本伏笔 thread_ids 相同的最近一集，在该集 ending_hook 前插入回应节拍，并把本条 fact 的 status 改为 resolved、resolves 指向回应事实。
+tags:
+- suspense
+- payoff

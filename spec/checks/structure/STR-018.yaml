@@ -1,0 +1,12 @@
+id: STR-018
+title: 每集至少一个升级/阻碍/反转节拍
+domain: structure
+severity: info
+stage: after_p3
+select: episodes[*]
+assert: any_of(item.beats, "x.beat_kind == 'reversal' or x.beat_kind == 'complication' or x.beat_kind == 'escalation'")
+message: 第 {item.no} 集的 {count(item.beats)} 个节拍里没有任何 escalation/complication/reversal，全部是铺垫与收束。缺少"变得更糟或更复杂"的一拍，本集冲突强度与上一集持平，观众没有"必须点开下一集"的理由。请把中间一拍改成升级，或新增一个阻碍/反转，让局势明确恶化一步。
+fix_hint: 找到本集冲突最高点的那一拍，把 beat_kind 改为 escalation；或在解决前插入一个 complication（新阻碍登场）。
+tags:
+- beats
+- tension

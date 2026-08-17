@@ -20,12 +20,13 @@ GEPA 契约（已核实 dspy 3.x）：
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 import dspy
 
 from nsc.optimize.structure_match import structure_match
+from nsc.revise.revision_brief import BriefSources, brief_sections
 
 #: 对预测产物跑 L0 checker，返回 (findings, pass_rate)。可注入（测试用合成 findings）。
 CheckRunner = Callable[[dict[str, Any]], tuple[list[Any], float]]
@@ -227,15 +228,30 @@ def build_feedback(
     blocks = [f for f in parts.findings if getattr(f, "severity", "") == "block" and _want(f)]
     warns = [f for f in parts.findings if getattr(f, "severity", "") == "warn" and _want(f)]
 
+    # T-31：问题清单改由 revision_brief 合成——【必须修正】= brief 的 PROBLEM（block 全文
+    # + 判官最弱维度），【建议】= brief 的 WHAT TO CHANGE（warn 的 message+fix_hint 编号清单）。
+    # 只把经过路由过滤的 block+warn 喂给 brief，保持 per-predictor 路由语义不变。
+    judge_src: dict[str, Any] | None = None
+    if parts.rubric_detail:
+        scored = {
+            k: v for k, v in parts.rubric_detail.items() if not rubric_dims or k in rubric_dims
+        }
+        if scored:
+            judge_src = {
+                "weakest_dimension": min(scored, key=lambda k: scored[k]),
+                "score": parts.rubric,
+                "note": "",
+            }
+    brief = brief_sections(
+        BriefSources(checker_findings=[asdict(f) for f in [*blocks, *warns]], judge=judge_src),
+        max_chars=budget,
+    )
+
     sections: list[tuple[int, str]] = []  # (优先级, 文本)；按优先级拼接，预算内截断
 
-    # 1. block 级 checker findings（最确定、最可操作，永远第一节）
-    if blocks:
-        lines = [
-            f"- [{f.rule_id}] {f.message}" + (f"（{f.fix_hint}）" if f.fix_hint else "")
-            for f in blocks
-        ]
-        sections.append((0, "【必须修正】\n" + "\n".join(lines)))
+    # 1. block 级 checker findings + 判官最弱维度（brief PROBLEM，永远第一节）
+    if brief["PROBLEM"]:
+        sections.append((0, "【必须修正】\n" + brief["PROBLEM"]))
 
     # 2. 人类修订对（最高价值，仅 trainset）：原文 → 改后 → 理由
     if reveal_human_edits and parts.human_edits:
@@ -258,16 +274,9 @@ def build_feedback(
             worst = min(scored, key=lambda k: scored[k])
             sections.append((2, f"【判官打分最低的维度】\n- {worst} {scored[worst]:.2f}（满分 1）"))
 
-    # 4. warn 级 findings（同域最多 2 条）
-    if warns:
-        by_dom: dict[str, list[Any]] = {}
-        for f in warns:
-            by_dom.setdefault(getattr(f, "domain", ""), []).append(f)
-        lines = []
-        for dom in sorted(by_dom):
-            for f in by_dom[dom][:2]:
-                lines.append(f"- [{f.rule_id}] {f.message}")
-        sections.append((3, "【建议】\n" + "\n".join(lines)))
+    # 4. warn 级 findings（brief 的 WHAT TO CHANGE：message+fix_hint 编号清单）
+    if brief["WHAT TO CHANGE"]:
+        sections.append((3, "【建议】\n" + brief["WHAT TO CHANGE"]))
 
     # 5. 一条正面确认（防止优化器把做对的也改掉）
     positive = next(iter(parts.notes), None)

@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.1",
+  "project": {
+    "id": "01JT37DLG00080000000000P1",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea"
+  },
+  "seasons": [
+    {
+      "id": "01JT37DLG00080000000000S1",
+      "kind": "season",
+      "parent_id": "01JT37DLG00080000000000P1",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚"
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01JT37DLG00080000000E001",
+      "kind": "episode",
+      "parent_id": "01JT37DLG00080000000000S1",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    }
+  ],
+  "scenes": [
+    {
+      "id": "01JT37DLG0008000000SC001",
+      "kind": "scene",
+      "parent_id": "01JT37DLG00080000000E001",
+      "order": 0,
+      "location_id": "01JT37DLG0008000000L0001",
+      "time_of_day": "day",
+      "interior": true,
+      "present_character_ids": [
+        "01JT37DLG0008000000C0001",
+        "01JT37DLG0008000000C0002"
+      ],
+      "goal": "小满要林晚承认换标签",
+      "conflict": "林晚不接招",
+      "turn": "两人各自撂话",
+      "entry": "茶水间门口撞上",
+      "exit": "小满摔门"
+    }
+  ],
+  "beats": [
+    {
+      "id": "01JT37DLG0008000000BT001",
+      "kind": "beat",
+      "parent_id": "01JT37DLG0008000000SC001",
+      "order": 0,
+      "beat_kind": "conflict",
+      "summary": "茶水间对峙",
+      "function": "推动",
+      "emotion": {"valence": -0.2, "arousal": 0.6},
+      "est_duration_s": 18,
+      "brand_moment_id": null
+    }
+  ],
+  "lines": [
+    {
+      "id": "01JT37DLG0008000000LN001",
+      "kind": "line",
+      "parent_id": "01JT37DLG0008000000BT001",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01JT37DLG0008000000C0002",
+      "text": "就是运气。怎么了？",
+      "subtext": "",
+      "delivery": "下巴一抬",
+      "is_brand_line": false
+    },
+    {
+      "id": "01JT37DLG0008000000LN002",
+      "kind": "line",
+      "parent_id": "01JT37DLG0008000000BT001",
+      "order": 1,
+      "line_type": "dialogue",
+      "character_id": "01JT37DLG0008000000C0001",
+      "text": "那你再来一次。监控我调好了。",
+      "subtext": "",
+      "delivery": "声音很平",
+      "is_brand_line": false
+    }
+  ],
+  "characters": [
+    {
+      "id": "01JT37DLG0008000000C0001",
+      "name": "林晚",
+      "role": "protagonist",
+      "voice_tics": []
+    },
+    {
+      "id": "01JT37DLG0008000000C0002",
+      "name": "小满",
+      "role": "customer_proxy",
+      "voice_tics": []
+    }
+  ],
+  "locations": [
+    {
+      "id": "01JT37DLG0008000000L0001",
+      "name": "茶水间",
+      "cost_tier": "free"
+    }
+  ],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "chapters": [],
+  "facts": [],
+  "threads": [],
+  "state_variables": [],
+  "dark_threads": []
+}

@@ -31,6 +31,12 @@ def allowed_values(model: type[BaseModel], field_name: str) -> tuple[str, ...]:
     return tuple(vals.split("|")) if vals else ()
 
 
+def coerce_enum(v: Any, allowed: tuple[str, ...], default: str) -> str:
+    """值域机械归一：合法（小写）原样，非法落默认。值域真相在 spec/ir。"""
+    s = str(v).strip().lower()
+    return s if s in allowed else default
+
+
 def schema_hint(model: type[BaseModel], *, skip: tuple[str, ...] = ("id",)) -> str:
     """IR 模型 → 一行字段清单：name(类型[, 取值][, 必填])。供 prompt 注入。"""
     parts: list[str] = []

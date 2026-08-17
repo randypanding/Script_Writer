@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -260,6 +261,9 @@ def judge_units(
                     "unit_id": u["id"],
                     "score": sc.score,
                     "invalid": int(sc.invalid),
+                    # 三视角注记（ADR-0014）：仅透传持久化，aggregate_l1 不读它们。
+                    "perspectives": getattr(sc, "perspectives", {}),
+                    "perspective_disagreement": getattr(sc, "perspective_disagreement", False),
                 }
             )
             if len(results) >= max_calls:
@@ -386,3 +390,75 @@ def run_l1_judge(
     gate = gate_enabled()
     blocked = gate and agg_all < aggregate_min
     return _render_l1_report(rows, agg_all, blocked, gate, Path(out_dir) / "l1.md")
+
+
+# ------------------------------------------------------------------ Elo 锦标赛（T-40 / ADR-0014）
+def collect_chapters(raw: dict[str, Any]) -> list[dict[str, str]]:
+    """把编译产物拍平成锦标赛参赛章节：episode 优先，无则退回 scene。"""
+    units = raw.get("episodes") or raw.get("scenes") or []
+    chapters: list[dict[str, str]] = []
+    for u in units:
+        title = " ".join(
+            x
+            for x in (str(u.get("title", "")), str(u.get("logline", "")), str(u.get("summary", "")))
+            if x
+        ).strip()
+        if title:
+            chapters.append({"id": str(u.get("id", "")), "text": title})
+    return chapters
+
+
+def make_judge_fn(
+    judge: Any, dimension: str, context: str, *, seed: int = 1
+) -> Callable[[str, str], float]:
+    """把成对判官包成 judge_fn(a_text, b_text) -> float（1.0/0.0，无平局）。
+
+    生产走 RubricJudge（判官路由）；swap 归并成 tie 时退回正向调用的结论，
+    仍 tie 则记 b 胜——锦标赛要求必须选出胜方（协议 §7）。
+    """
+
+    def judge_fn(a_text: str, b_text: str) -> float:
+        call1, _call2, resolved = judge.judge_pair(dimension, context, a_text, b_text, seed=seed)
+        winner = resolved.winner if resolved.winner in ("a", "b") else call1.winner
+        return 1.0 if winner == "a" else 0.0
+
+    return judge_fn
+
+
+def run_l1_tournament(
+    *,
+    sample: int = 12,
+    out_dir: Path = Path("out/eval"),
+    briefs: list[Path] | None = None,
+    compile_runner: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    judge: Any | None = None,
+    dimension: str = "hook_strength",
+    rounds: int = 4,
+    k: int = 32,
+    seed: int = 0,
+) -> Path:
+    """`nsc eval l1 --tournament`：样本章节跑 Swiss Elo 锦标赛，rankings 写入 JSON。
+
+    compile_runner / judge 可注入（测试桩）；默认真实编译 + RubricJudge。
+    仅作分析报告（ADR-0014），不进门禁。
+    """
+    from nsc.eval.elo import run_tournament
+    from nsc.judge.rubric_judge import RubricJudge
+
+    if judge is None:
+        judge = RubricJudge()
+    briefs = briefs if briefs is not None else _default_briefs(sample)
+    compile_runner = compile_runner or _compile_for_judge
+    chapters: list[dict[str, str]] = []
+    for b in briefs:
+        raw = compile_runner(yaml.safe_load(b.read_text("utf-8")))
+        if isinstance(raw, dict) and "error" not in raw:
+            chapters.extend(collect_chapters(raw))
+    if len(chapters) < 2:
+        raise ValueError(f"锦标赛至少需要 2 个章节，实得 {len(chapters)}")
+    judge_fn = make_judge_fn(judge, dimension, f"elo-tournament:{dimension}", seed=seed + 1)
+    result = run_tournament(chapters, judge_fn, rounds=rounds, k=k, seed=seed)
+    out = Path(out_dir) / "l1_tournament.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2), "utf-8")
+    return out

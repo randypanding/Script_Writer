@@ -116,8 +116,13 @@ def compute_metrics(
     outcomes: list[PairwiseOutcome],
     scores_pairs: list[tuple[int, int]],
     judge_ver: str,
+    perspective_flags: list[bool] | None = None,
 ) -> dict[str, Any]:
-    """纯计算：逐维一致率 + 总体 + κ（评分 + 判定） + 位置偏置 + invalid 率。"""
+    """纯计算：逐维一致率 + 总体 + κ（评分 + 判定） + 位置偏置 + invalid 率。
+
+    perspective_flags（ADR-0014）：带三视角注记的判官结果各自是否自报分歧；
+    仅统计"有 perspectives 的样本中 disagreement 占比"，不作门禁。
+    """
     n = len(outcomes)
     by_dim: dict[str, dict[str, int]] = {}
     for o in outcomes:
@@ -130,6 +135,8 @@ def compute_metrics(
     }
     overall = sum(1 for o in outcomes if o.judge_verdict == o.human_verdict) / n if n else 0.0
     a_wins = sum(1 for o in outcomes if o.a_position_wins)
+    flags = perspective_flags or []
+    n_persp = len(flags)
     return {
         "n_items": n,
         "judge_ver": judge_ver,
@@ -142,6 +149,11 @@ def compute_metrics(
         "invalid_rate": (round(sum(1 for o in outcomes if o.invalid) / n, 3) if n else 0.0),
         "position_bias": round(abs(a_wins / n - 0.5), 3) if n else 0.0,
         "by_dimension": by_dimension,
+        "n_perspectives": n_persp,
+        "perspective_disagreements": sum(1 for f in flags if f),
+        "perspective_disagreement_rate": (
+            round(sum(1 for f in flags if f) / n_persp, 3) if n_persp else 0.0
+        ),
     }
 
 
@@ -149,6 +161,12 @@ def render_report(metrics: dict[str, Any], ev: dict[str, Any], out: Path) -> Pat
     lines = ["# 判官校准报告（T-08b / D8）", ""]
     lines.append(f"- 校准样本：{metrics['n_items']} 条")
     lines.append(f"- 判官版本：{metrics['judge_ver']}")
+    n_persp = int(metrics.get("n_perspectives", 0))
+    if n_persp:
+        lines.append(
+            f"- 视角分歧（ADR-0014，仅报告）：{metrics['perspective_disagreements']}/{n_persp}"
+            f"（disagreement 占比 {metrics['perspective_disagreement_rate']}）"
+        )
     lines.append("")
     lines.append("| 指标 | 值 | 门槛 | 通过 |")
     lines.append("|---|---|---|---|")
@@ -190,6 +208,7 @@ def run_calibration(
     items = build_calibration_items(db, limit=limit)
     outcomes: list[PairwiseOutcome] = []
     scores_pairs: list[tuple[int, int]] = []
+    perspective_flags: list[bool] = []  # 带 perspectives 的判官结果是否自报分歧（ADR-0014）
     try:
         for it in items:
             res = run_pairwise(
@@ -213,11 +232,15 @@ def run_calibration(
                     int(resolved.invalid),
                 )
             )
+            if getattr(resolved, "perspectives", None):
+                perspective_flags.append(bool(resolved.perspective_disagreement))
             if it.human_score is not None:
                 chosen = it.b_text if it.human_verdict == "b" else it.a_text
                 sc = active.judge_absolute(it.dimension, it.context, chosen, seed=seed)
                 if not sc.invalid:
                     scores_pairs.append((int(it.human_score), round(sc.score)))
+                if getattr(sc, "perspectives", None):
+                    perspective_flags.append(bool(sc.perspective_disagreement))
         for row in conn.execute(
             "SELECT pair_id, dimension, human_score FROM judge_calibration WHERE human_score IS NOT NULL"
         ):
@@ -232,9 +255,13 @@ def run_calibration(
             sc = active.judge_absolute(dim, ctx or "", b_text, seed=seed)
             if not sc.invalid:
                 scores_pairs.append((int(human_score), round(sc.score)))
+            if getattr(sc, "perspectives", None):
+                perspective_flags.append(bool(sc.perspective_disagreement))
     finally:
         conn.close()
-    metrics = compute_metrics(outcomes, scores_pairs, str(getattr(active, "judge_ver", "stub")))
+    metrics = compute_metrics(
+        outcomes, scores_pairs, str(getattr(active, "judge_ver", "stub")), perspective_flags
+    )
     ev = evaluate_calibration(metrics)
     report_path = render_report(metrics, ev, Path(out))
     gate_path = write_gate_state(metrics, gate_state)

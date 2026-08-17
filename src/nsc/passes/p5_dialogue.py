@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, cast
 
+from nsc.revise.gate import Counts, decide
+from nsc.revise.revision_brief import BriefSources, build_brief
 from spec.ir.nodes import Line
 from spec.passes import signatures
 
@@ -65,49 +69,61 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     scene_secs = sum(float(b.get("est_duration_s", 0.0)) for b in beats)
     chars_lo = int(scene_secs * cps * 0.8)
     chars_hi = int(scene_secs * cps * 1.3)
-    out = Module()(
-        ctx,
-        with_diag(
-            {
-                "scene_json": json.dumps(_public_scene(scene), ensure_ascii=False),
-                "beats_json": json.dumps(
-                    [
-                        {"index": i, "beat_kind": b["beat_kind"], "summary": b["summary"]}
-                        for i, b in enumerate(beats)
-                    ],
-                    ensure_ascii=False,
-                ),
-                "characters_json": json.dumps(fragment["characters"], ensure_ascii=False),
-                "brand_constraints": json.dumps(fragment["brand_constraints"], ensure_ascii=False),
-                # 必提台词/必现视觉真相在 BrandBrief（BM-007/BM-007b）：台词逐字进对白，
-                # 视觉符号写进动作行（line_type=action），整部剧本各至少一处
-                "must_include_lines": json.dumps(
-                    fragment.get("must_include_lines") or ctx.brand.get("must_include_lines", []),
-                    ensure_ascii=False,
-                ),
-                "must_include_visuals": json.dumps(visuals, ensure_ascii=False),
-                "brand_must_contract": _visual_contract(visuals),
-                "product_naming_contract": _naming_contract(ctx.brand),
-                "dialogue_length_target": (
-                    f"本场对白（dialogue）总字数目标 {chars_lo}-{chars_hi} 字"
-                    f"（按本场 Beat 时长 {scene_secs:.0f}s × {cps} 字/秒推算）；"
-                    "对白太少会导致成片时长不足（DLG-006）。"
-                ),
-                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-                "retrieved_cases": fragment.get("retrieved_cases", ""),
-                "line_schema_hint": _LINE_HINT + "；另需 beat_index: int（归属第几个 Beat，从 0）",
-            },
-            fragment,
-        ),
+    inputs = with_diag(
+        {
+            "scene_json": json.dumps(_public_scene(scene), ensure_ascii=False),
+            "beats_json": json.dumps(
+                [
+                    {"index": i, "beat_kind": b["beat_kind"], "summary": b["summary"]}
+                    for i, b in enumerate(beats)
+                ],
+                ensure_ascii=False,
+            ),
+            "characters_json": json.dumps(fragment["characters"], ensure_ascii=False),
+            "brand_constraints": json.dumps(fragment["brand_constraints"], ensure_ascii=False),
+            # 必提台词/必现视觉真相在 BrandBrief（BM-007/BM-007b）：台词逐字进对白，
+            # 视觉符号写进动作行（line_type=action），整部剧本各至少一处
+            "must_include_lines": json.dumps(
+                fragment.get("must_include_lines") or ctx.brand.get("must_include_lines", []),
+                ensure_ascii=False,
+            ),
+            "must_include_visuals": json.dumps(visuals, ensure_ascii=False),
+            "brand_must_contract": _visual_contract(visuals),
+            "product_naming_contract": _naming_contract(ctx.brand),
+            "dialogue_length_target": (
+                f"本场对白（dialogue）总字数目标 {chars_lo}-{chars_hi} 字"
+                f"（按本场 Beat 时长 {scene_secs:.0f}s × {cps} 字/秒推算）；"
+                "对白太少会导致成片时长不足（DLG-006）。"
+            ),
+            "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
+            "retrieved_cases": fragment.get("retrieved_cases", ""),
+            "line_schema_hint": _LINE_HINT + "；另需 beat_index: int（归属第几个 Beat，从 0）",
+        },
+        fragment,
     )
+    out = cast(dict[str, Any], Module()(ctx, inputs))
+    lines = _parse_lines(ctx, scene, beats, out, fragment["characters"])
+    # T-31 自检子步（默认开）：本场 L0 findings → revision_brief 五节 → 一次自我修订
+    lines, out = _self_check(ctx, inputs, scene, beats, lines, fragment["characters"], out)
+    return {"scene_id": scene["id"], "lines": lines, "_usage": out["_usage"]}
+
+
+def _parse_lines(
+    ctx: PassContext,
+    scene: dict[str, Any],
+    beats: list[dict[str, Any]],
+    out: dict[str, Any],
+    characters: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """解析并装配 lines：beat 归属、角色引用校验、字段规范化。失败即 PassFailure。"""
     raw_lines = inner_json(out["lines_json"], "p5_dialogue", "lines_json")
     if not isinstance(raw_lines, list) or not raw_lines:
         raise PassFailure(scene["id"], "p5_dialogue 输出的 lines 为空")
 
     per_beat: dict[int, int] = {}
     lines: list[dict[str, Any]] = []
-    char_ids = {str(c.get("id")) for c in fragment["characters"]}
-    char_by_name = {str(c.get("name", "")): str(c.get("id")) for c in fragment["characters"]}
+    char_ids = {str(c.get("id")) for c in characters}
+    char_by_name = {str(c.get("name", "")): str(c.get("id")) for c in characters}
     for ln in raw_lines:
         bi = int(ln.get("beat_index", -1))
         if not (0 <= bi < len(beats)):
@@ -146,7 +162,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     empties = [ln["id"] for ln in lines if not ln["text"]]
     if empties:
         raise PassFailure(scene["id"], f"存在空文本台词：{empties}")
-    return {"scene_id": scene["id"], "lines": lines, "_usage": out["_usage"]}
+    return lines
 
 
 def _public_scene(scene: dict[str, Any]) -> dict[str, Any]:
@@ -166,3 +182,94 @@ def _public_scene(scene: dict[str, Any]) -> dict[str, Any]:
         )
         if k in scene
     }
+
+
+# ---------------------------------------------------------------- T-31 自检子步
+
+
+def _scene_findings(
+    ctx: PassContext,
+    scene: dict[str, Any],
+    beats: list[dict[str, Any]],
+    lines: list[dict[str, Any]],
+    characters: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """本场 L0：只跑台词阶段（stage==after_p5）的规则，且只留 node_id 归属本场节点的 findings。
+
+    集级/全剧级规则（BM-007 必提台词、DLG-006 时长预算等）在单场残缺视图上必然误报，
+    由 node_id 归属过滤掉——它们的真相仍由 pipeline 的 check_stage(after_p5) 全量把关。
+    """
+    from nsc.checker.interpreter import RuleSet, evaluate
+    from nsc.runtime.ir_io import build_view
+
+    view = build_view(
+        {
+            "episodes": [{"id": scene.get("parent_id")}],
+            "scenes": [scene],
+            "beats": list(beats),
+            "lines": list(lines),
+            "characters": list(characters),
+        },
+        ctx.profile,
+        ctx.brand,
+    )
+    rs = RuleSet.load(
+        Path("spec/checks"),
+        profile_id=str(ctx.profile.get("id", "")),
+        industry=str(ctx.brand.get("industry", "")),
+        brand_id=str(ctx.brand.get("brand_id", "")),
+        stage="after_p5",
+        enabled_domains=list(ctx.profile.get("enabled_check_domains", [])),
+    )
+    rs.rules = [r for r in rs.rules if r.get("stage") == "after_p5"]
+    rep = evaluate(rs, view, ctx={"profile": ctx.profile, "brand": ctx.brand})
+    local = {scene["id"]} | {b["id"] for b in beats} | {ln["id"] for ln in lines}
+    return [asdict(f) for f in rep.findings if f.node_id in local]
+
+
+def _counts(findings: list[dict[str, Any]]) -> Counts:
+    return Counts(
+        block=sum(1 for f in findings if f.get("severity") == "block"),
+        warn=sum(1 for f in findings if f.get("severity") == "warn"),
+        info=sum(1 for f in findings if f.get("severity") == "info"),
+    )
+
+
+def _self_check(
+    ctx: PassContext,
+    inputs: dict[str, Any],
+    scene: dict[str, Any],
+    beats: list[dict[str, Any]],
+    lines: list[dict[str, Any]],
+    characters: list[dict[str, Any]],
+    out: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """自我修订（默认开，profile.revise.self_check=False 关闭）。
+
+    干净路径零 findings → 不调 LLM。有问题时把 revision_brief 五节文本注入重生成；
+    修订经 revisionGate(lenient) 判定采纳，未达标或解析失败则回退原稿——
+    残留 findings 由 pipeline 的 check_stage(after_p5) 兜底拦截，不会静默丢失。
+    """
+    if not ctx.profile.get("revise", {}).get("self_check", True):
+        return lines, out
+    findings = _scene_findings(ctx, scene, beats, lines, characters)
+    if not findings:
+        return lines, out
+    chars = sum(len(ln["text"]) for ln in lines if ln["line_type"] == "dialogue")
+    brief = build_brief(
+        BriefSources(
+            checker_findings=findings,
+            judge=None,
+            target_kind="scene",
+            target_text_chars=chars,
+        )
+    )
+    try:
+        out2 = cast(dict[str, Any], Module()(ctx, {**inputs, "revision_brief": brief}))
+        lines2 = _parse_lines(ctx, scene, beats, out2, characters)
+    except PassFailure:
+        return lines, out
+    findings2 = _scene_findings(ctx, scene, beats, lines2, characters)
+    if decide(_counts(findings), _counts(findings2), "lenient"):
+        return lines2, out2
+    return lines, out

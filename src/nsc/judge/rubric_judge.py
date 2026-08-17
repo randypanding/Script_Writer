@@ -29,9 +29,12 @@ _SEED_PAIRWISE = """你是短视频营销短剧的剧本评审。成对比较 A�
 - 必须引用 A 或 B 的具体原文作为证据，否则该次判定无效（invalid=true）。
 - winner 只能是 "a" 或 "b"（按本对话给的顺序）；margin=1|2|3（1=略好，3=明显更好）。
 - 若两段在同一水平，winner="tie"，margin=0。
+- 另从三个视角对你更偏好的那一版各写一句注记（不打分，不影响上面的判定）：
+  编辑（prose 工艺、声音一致性）、类型读者（节奏、钩子、翻页欲）、普通读者（情绪是否诚实、像不像真人反应，不用行话术语）。
+- 若三视角注记对同一文本出现方向相反的判断（一处明显好、另一处明显差），perspective_disagreement=true。
 - 只输出一个 JSON 对象，不要多余文字。
 
-JSON 格式：{{"winner": "a|b|tie", "margin": 0|1|2|3, "rationale": "…", "cited_spans": ["原文片段"], "invalid": false}}
+JSON 格式：{{"winner": "a|b|tie", "margin": 0|1|2|3, "rationale": "…", "cited_spans": ["原文片段"], "invalid": false, "perspectives": {{"editor": {{"note": "…"}}, "genre_reader": {{"note": "…"}}, "lay_reader": {{"note": "…"}}}}, "perspective_disagreement": false}}
 """
 
 _SEED_ABSOLUTE = """你是短视频营销短剧的剧本评审。按维度「{dimension}」给下面文本打 1–5 分（1=最差，5=最好，允许 0.5）。
@@ -45,9 +48,12 @@ _SEED_ABSOLUTE = """你是短视频营销短剧的剧本评审。按维度「{di
 
 规则：
 - 必须引用具体原文作为证据，否则该次判定无效（invalid=true）。
+- 另从三个视角对文本各写一句注记（不打分，不影响上面的打分）：
+  编辑（prose 工艺、声音一致性）、类型读者（节奏、钩子、翻页欲）、普通读者（情绪是否诚实、像不像真人反应，不用行话术语）。
+- 若三视角注记对同一文本出现方向相反的判断（一处明显好、另一处明显差），perspective_disagreement=true。
 - 只输出一个 JSON 对象，不要多余文字。
 
-JSON 格式：{{"score": 3.0, "rationale": "…", "cited_spans": ["原文片段"], "invalid": false}}
+JSON 格式：{{"score": 3.0, "rationale": "…", "cited_spans": ["原文片段"], "invalid": false, "perspectives": {{"editor": {{"note": "…"}}, "genre_reader": {{"note": "…"}}, "lay_reader": {{"note": "…"}}}}, "perspective_disagreement": false}}
 """
 
 
@@ -58,6 +64,9 @@ class JudgeDecision:
     rationale: str = ""
     cited_spans: list[str] = field(default_factory=list)
     invalid: bool = False
+    # 三视角注记（ADR-0014）：仅随结果透传持久化，不参与归并/聚合。
+    perspectives: dict[str, Any] = field(default_factory=dict)
+    perspective_disagreement: bool = False
 
 
 @dataclass(slots=True)
@@ -66,6 +75,9 @@ class JudgeScore:
     rationale: str = ""
     cited_spans: list[str] = field(default_factory=list)
     invalid: bool = False
+    # 三视角注记（ADR-0014）：仅随结果透传持久化，不影响分数聚合。
+    perspectives: dict[str, Any] = field(default_factory=dict)
+    perspective_disagreement: bool = False
 
 
 def load_rubric(path: str | Path = "spec/rubrics/rubric_v1.yaml") -> dict[str, Any]:
@@ -94,6 +106,25 @@ def _extract_json(raw: str) -> Any:
     return extract_json(raw)
 
 
+def _parse_perspectives(obj: dict[str, Any]) -> dict[str, Any]:
+    """防御式解析三视角注记（ADR-0014）：缺省/类型异常 → 空 dict，不判 invalid。"""
+    raw = obj.get("perspectives")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("editor", "genre_reader", "lay_reader"):
+        v = raw.get(key)
+        if isinstance(v, dict):
+            note = str(v.get("note", "")).strip()
+        elif isinstance(v, str):
+            note = v.strip()  # 兼容 LLM 直接给字符串
+        else:
+            continue
+        if note:
+            out[key] = {"note": note}
+    return out
+
+
 def parse_pairwise(raw: str) -> JudgeDecision:
     obj = _extract_json(raw)
     if not isinstance(obj, dict):
@@ -114,6 +145,8 @@ def parse_pairwise(raw: str) -> JudgeDecision:
         rationale=str(obj.get("rationale", "")),
         cited_spans=spans,
         invalid=bool(obj.get("invalid")) or not spans,
+        perspectives=_parse_perspectives(obj),
+        perspective_disagreement=bool(obj.get("perspective_disagreement", False)),
     )
 
 
@@ -131,6 +164,8 @@ def parse_absolute(raw: str) -> JudgeScore:
         rationale=str(obj.get("rationale", "")),
         cited_spans=spans,
         invalid=bool(obj.get("invalid")) or not spans,
+        perspectives=_parse_perspectives(obj),
+        perspective_disagreement=bool(obj.get("perspective_disagreement", False)),
     )
 
 
@@ -144,7 +179,20 @@ def _orig_winner(d: JudgeDecision, first_is_orig_a: bool) -> str:
 
 
 def merge_pairwise(call1: JudgeDecision, call2: JudgeDecision) -> JudgeDecision:
-    """成对协议 §3：两次结论相反 → tie；仅一次 invalid → 退回有效那次；全 invalid → invalid。"""
+    """成对协议 §3：两次结论相反 → tie；仅一次 invalid → 退回有效那次；全 invalid → invalid。
+
+    三视角注记（ADR-0014）不参与归并：仅透传（取首个非空一侧），聚合逻辑不变。
+    """
+    merged = _merge_verdict(call1, call2)
+    merged.perspectives = call1.perspectives or call2.perspectives
+    merged.perspective_disagreement = call1.perspective_disagreement or (
+        call2.perspective_disagreement
+    )
+    return merged
+
+
+def _merge_verdict(call1: JudgeDecision, call2: JudgeDecision) -> JudgeDecision:
+    """归并主体：winner/margin/invalid 的既有确定性逻辑（不动）。"""
     if call1.invalid and call2.invalid:
         return JudgeDecision(winner="tie", invalid=True, rationale="两次调用均无效")
     w1 = _orig_winner(call1, True)

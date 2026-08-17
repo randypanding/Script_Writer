@@ -17,7 +17,15 @@ from ulid import ULID
 from nsc.runtime.cache import cached_pass
 from nsc.runtime.provenance import RunRecord, RunsStore
 
-__all__ = ["PassContext", "PassFailure", "cached_pass", "generate_json", "new_id", "with_diag"]
+__all__ = [
+    "PassContext",
+    "PassFailure",
+    "cached_pass",
+    "generate_json",
+    "new_id",
+    "optional_json",
+    "with_diag",
+]
 
 
 def with_diag(inputs: dict[str, Any], fragment: dict[str, Any]) -> dict[str, Any]:
@@ -119,9 +127,11 @@ class DSPyPass(dspy.Module):
 
     signature: type[dspy.Signature]
     pass_name: str = ""
+    #: IR 1.1（ADR-0012）可缺省输出字段：旧 prompt/桩未返回时不判缺失，由 Pass 落默认空。
+    optional_outputs: tuple[str, ...] = ()
 
     def forward(self, ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
-        return generate_json(ctx, self.pass_name, self.signature, fragment)
+        return generate_json(ctx, self.pass_name, self.signature, fragment, self.optional_outputs)
 
 
 def _load_prompt(pass_name: str) -> str:
@@ -147,8 +157,13 @@ def generate_json(
     pass_name: str,
     signature: type[dspy.Signature],
     inputs: dict[str, Any],
+    optional: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    """经路由调用 LLM，按 signature 的输出字段解析 JSON。结构性失败抛 PassFailure。"""
+    """经路由调用 LLM，按 signature 的输出字段解析 JSON。结构性失败抛 PassFailure。
+
+    `optional` 里的输出字段可缺省（ADR-0012）：旧 prompt/桩不返回时不判失败，
+    由调用方用 optional_json 读取并落默认空。
+    """
     instructions = _load_prompt(pass_name) or (signature.__doc__ or "").strip()
     out_fields: dict[str, str] = {}
     for name, f in signature.output_fields.items():
@@ -170,7 +185,7 @@ def generate_json(
         seed=ctx.seed,
     )
     data = parse_json_loose(res.text, pass_name)
-    missing = [k for k in out_fields if k not in data]
+    missing = [k for k in out_fields if k not in data and k not in optional]
     if missing:
         raise PassFailure(None, f"{pass_name} 输出缺少字段 {missing}")
     data["_usage"] = {
@@ -200,3 +215,13 @@ def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
             f"{pass_name}.{field_name} 不是合法 JSON：{e}；原始开头：{text[:100]!r}。"
             f"请重新输出完整且转义正确的 {field_name}。",
         ) from e
+
+
+def optional_json(out: Any, key: str, pass_name: str) -> Any:
+    """可缺省输出字段的安全读取（ADR-0012）：缺省/空串 → None，其余按 inner_json 解析。
+
+    `out` 是 Module 调用产物（dspy Prediction，鸭子类型 dict）；返回 None 时调用方落
+    默认空表，这样旧 prompt/桩的省略路径不会被判失败。
+    """
+    v = out.get(key)
+    return inner_json(v, pass_name, key) if v else None

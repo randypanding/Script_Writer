@@ -1,0 +1,12 @@
+id: DLG-008
+title: 对白禁对仗平衡句式
+domain: dialogue
+severity: warn
+stage: after_p5
+select: episodes[*].scenes[*].beats[*].lines[?line_type=='dialogue']
+assert: not regex_any(item.text, @.__ctx.prose.banned_sentence_patterns)
+message: 一条对白（{chars(item.text)} 字）命中"不是X，而是Y"的对仗句式。两个角色共用同一套修辞骨架等于角色声音没有区分度，这也是 AI 生成台词最高频的句式指纹，观众一眼出戏。请改成一方的口语直陈，让两个角色用完全不同的句式表达各自立场。
+fix_hint: 「这不是运气，而是实力」→ 主角说「就是运气。怎么了？」，对手回「那你再来一次。」
+tags:
+- dialogue
+- anti_ai

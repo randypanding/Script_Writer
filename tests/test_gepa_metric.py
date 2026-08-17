@@ -180,6 +180,48 @@ def test_feedback_five_sections_and_block_first():
     assert fb.index("【必须修正】") < fb.index("【人类是怎么改的】")
 
 
+# ---------------------------------------------------------------- T-31 revision_brief 接入
+def test_feedback_problem_list_sourced_from_brief() -> None:
+    """问题清单来源换成 build_brief：【必须修正】= PROBLEM（block+判官弱维度）、
+    【建议】= WHAT TO CHANGE（warn 的 message+fix_hint 编号清单）。"""
+    findings = [
+        FakeFinding(
+            "BM-001",
+            "block",
+            "植入超预算",
+            fix_hint="合并第2、3处",
+            domain="brand",
+            tags=("density",),
+        ),
+        FakeFinding(
+            "DLG-007",
+            "warn",
+            "对白墙：6 条对白没有任何动作行",
+            fix_hint="插入动作节拍",
+            domain="dialogue",
+        ),
+    ]
+    parts = _mk_parts(findings=findings, rubric_detail={"naturalness": 0.3})
+    fb = build_feedback(parts, pred_name="p5_dialogue", reveal_human_edits=False)
+    # block 进 PROBLEM 首位；warn 进 WHAT TO CHANGE（带编号与 fix_hint）
+    assert fb.startswith("【必须修正】\n- [BM-001] 植入超预算")
+    assert "1. [DLG-007] 对白墙：6 条对白没有任何动作行（插入动作节拍）" in fb
+    assert "合并第2、3处" not in fb.split("【建议】")[0], (
+        "block 的 fix_hint 不再进 PROBLEM（brief 语义）"
+    )
+    # 判官最弱维度进第一节
+    assert "判官最弱维度：naturalness" in fb.split("\n\n")[0]
+
+
+def test_feedback_no_problem_sections_when_clean() -> None:
+    """零 findings + 无判官 → 不出现【必须修正】/【建议】（原五节结构语义不变）。"""
+    parts = _mk_parts(notes=["L0 结构约束全部通过。"])
+    fb = build_feedback(parts, pred_name="p5_dialogue", reveal_human_edits=False)
+    assert "【必须修正】" not in fb
+    assert "【建议】" not in fb
+    assert fb.startswith("【做对了的地方（保持）】")
+
+
 # ---------------------------------------------------------------- structure_match
 def test_structure_match_p3_identical_is_one():
     g = {

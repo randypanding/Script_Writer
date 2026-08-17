@@ -1,0 +1,12 @@
+id: STR-017
+title: 首末场节奏字段在场
+domain: structure
+severity: warn
+stage: after_p4
+select: episodes[*]
+assert: chars(item.scenes[0].opening_attractor) >= 4 and chars(item.scenes[len(item.scenes)-1].ending_hook) >= 4
+message: 第 {item.no} 集首场的 opening_attractor 与末场的 ending_hook 缺失或过短（首场 {chars(item.scenes[0].opening_attractor)} 字、末场 {chars(item.scenes[len(item.scenes)-1].ending_hook)} 字，要求各 ≥4 字）。首场抓人、末场留钩是短剧单集留存的两个受力点，字段空着等于把开场 3 秒和最后一帧交给运气。请补齐这两处可执行的画面描述。
+fix_hint: opening_attractor 写成可拍的开场画面（如"镜头怼近：她的名字贴在别人的工牌上"），ending_hook 写成黑屏前一帧的悬念画面。
+tags:
+- pacing
+- scene

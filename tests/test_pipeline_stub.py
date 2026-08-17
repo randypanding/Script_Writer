@@ -127,6 +127,8 @@ class FullStubRouter:
                         "hook_promise": e["hook_promise"],
                         "cliffhanger": e["cliffhanger"],
                         "duration_target_s": e["duration_target_s"],
+                        # ADR-0012：每集回收上一集悬念（STR-016 闭环）
+                        "responds_to": [e["no"] - 1] if e["no"] >= 2 else [],
                     }
                     for e in GOLDEN["episodes"]
                 ],
@@ -134,23 +136,49 @@ class FullStubRouter:
             ),
             "placement_plan_json": json.dumps(plan, ensure_ascii=False),
             "season_arc": GOLDEN["seasons"][0]["arc_summary"],
+            # ADR-0012：叙事状态三张表（FCT-006/007 要求每集有状态推进）
+            "threads_json": json.dumps(
+                [{"title": "无糖真相", "state": "推进中", "status": "active"}], ensure_ascii=False
+            ),
+            "state_variables_json": json.dumps(
+                [{"key": "trust_level", "name": "信任度", "type": "number", "initial": 0}],
+                ensure_ascii=False,
+            ),
+            "dark_threads_json": json.dumps(
+                [
+                    {
+                        "key": "sugar_free_truth",
+                        "name": "无糖真相暗线",
+                        "stages": ["起疑", "半揭", "全揭"],
+                    }
+                ],
+                ensure_ascii=False,
+            ),
         }
 
     def _p3(self, inputs):
         ep_in = json.loads(inputs["episode_json"])
         _ep, _scenes, beats, _lines, sps = _golden_ep(ep_in["no"])
         idx = {b["id"]: i for i, b in enumerate(beats)}
+        # 黄金节拍没有 escalation（STR-018 要求每集至少一个升级/阻碍/反转拍）：
+        # 机械把一个 setup/payoff 拍标成 escalation，数量与顺序不变。
+        kinds = [b["beat_kind"] for b in beats]
+        if not any(k in ("escalation", "complication", "reversal") for k in kinds):
+            for i, k in enumerate(kinds):
+                if k in ("setup", "payoff"):
+                    kinds[i] = "escalation"
+                    break
         return {
             "beats_json": json.dumps(
                 [
                     {
-                        "beat_kind": b["beat_kind"],
+                        "beat_kind": kinds[i],
                         "summary": b["summary"],
                         "function": b["function"],
                         "emotion": b["emotion"],
                         "est_duration_s": b["est_duration_s"],
                     }
-                    for b in beats
+                    for i, b in enumerate(beats)
                 ],
                 ensure_ascii=False,
             ),
@@ -165,6 +193,11 @@ class FullStubRouter:
                     }
                     for sp in sps
                 ],
+                ensure_ascii=False,
+            ),
+            # ADR-0012：每集状态推进（FCT-006/007）；暗线只在首末各推一步（界内）
+            "state_changes_json": json.dumps(
+                [{"key": "trust_level", "delta": 1, "reason": "本集信任推进一格"}],
                 ensure_ascii=False,
             ),
         }
@@ -201,6 +234,16 @@ class FullStubRouter:
                     "entry": g_sc["entry"],
                     "exit": g_sc["exit"],
                     "summary": g_sc["summary"],
+                    # ADR-0012：场级节奏与知识状态（STR-017 要求首场开场点/末场切出钩 ≥4 字）
+                    "opening_attractor": "特写：体检报告上的空腹血糖读数",
+                    "escalation_beats": ["签字催促", "两种说法对质"],
+                    "ending_hook": "黑屏前一帧：报告背面还有一行字",
+                    "knowledge_state": {
+                        "audience_knows": "报告读数异常",
+                        "characters_know": "林晚知道异常",
+                        "hidden": "陈经理改过备注",
+                        "new_evidence": "配料表照片",
+                    },
                 }
             )
         mapping = [

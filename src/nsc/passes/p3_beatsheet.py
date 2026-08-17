@@ -1,9 +1,15 @@
-"""p3_beatsheet：单集 Beat 序列 + SetupPayoff 声明 + BrandMoment 落成。
+"""p3_beatsheet：单集 Beat 序列 + SetupPayoff 声明 + BrandMoment 落成 + 叙事状态声明。
 
 输出契约（对 setup_payoffs_json 的每个条目）：
   {"slug": str, "setup": int | "PENDING:<slug>", "payoff": int | "PENDING:<slug>",
    "kind": "prop|line|promise|secret|skill", "description": str}
 跨集回收用 "PENDING:<slug>"，由 pipeline 的全季后处理解引用；解不出即 PassFailure。
+
+ADR-0012 可缺省输出（省略即空表）：
+  facts_json：resolves 填同集下标、已知前集 fact 的 id（known_facts）或 null；
+  跨集回收状态级联不做 PENDING 解引用（SetupPayoff 的 slug 机制与 Fact 的 id 语义不同），
+  由 apply_fact_cascade 全季统一翻转（等价于 resolve_pending 的后处理角色）。
+  state_changes_json：key 只能用 declared_state 里已声明的状态变量/暗线 key。
 """
 
 from __future__ import annotations
@@ -12,10 +18,19 @@ import json
 from typing import Any
 
 from spec.ir.nodes import Beat
-from spec.ir.overlays import BrandMoment
+from spec.ir.overlays import BrandMoment, Fact
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
+from . import (
+    DSPyPass,
+    PassContext,
+    PassFailure,
+    cached_pass,
+    inner_json,
+    new_id,
+    optional_json,
+    with_diag,
+)
 from .schema_bridge import allowed_values, schema_hint
 
 #: Beat 字段真相在 spec/ir；Pass 自动分配的字段不给模型看。
@@ -31,10 +46,27 @@ _SP_CONTRACT = (
     "绝不能填情节描述文字。"
 )
 
+#: facts_json 的格式契约（ADR-0012；同集引用用下标，跨集引用用 known_facts 里的 id）。
+_FACT_CONTRACT = (
+    'facts_json 每个条目形如 {"content":"一句话事实",'
+    '"type":"character_detail|relationship|backstory|plot_event|foreshadowing|world_rule",'
+    '"status":"active|unresolved|resolved|deprecated",'
+    '"resolves":null 或同集 facts_json 下标 int 或 known_facts 里 fact 的 id 字符串,'
+    '"episode_no":int,"narrative_weight":"low|medium|high"}。'
+    "尚未回收的伏笔 resolves 填 null；被回收后的状态翻转由系统统一完成，无需自己改前集状态。"
+)
+
+#: state_changes_json 的格式契约（ADR-0012；key 必须来自 declared_state）。
+_SC_CONTRACT = (
+    'state_changes_json 每个条目形如 {"key":"declared_state 里已声明的状态变量/暗线 key",'
+    '"delta":number 型变量用数值/string 型用字符串/暗线推进用 int 步数,"reason":"一句话原因"}。'
+)
+
 
 class Module(DSPyPass):
     signature = signatures.BeatSheet
     pass_name = "p3_beatsheet"
+    optional_outputs = ("facts_json", "state_changes_json")
 
 
 @cached_pass("p3_beatsheet")
@@ -53,6 +85,12 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                 "retrieved_cases": fragment.get("retrieved_cases", ""),
                 "beat_schema_hint": _BEAT_HINT,
                 "setup_payoffs_contract": _SP_CONTRACT,
+                "facts_contract": _FACT_CONTRACT,
+                "state_changes_contract": _SC_CONTRACT,
+                "known_facts": json.dumps(fragment.get("known_facts", []), ensure_ascii=False),
+                "declared_state": json.dumps(
+                    fragment.get("declared_state", {}), ensure_ascii=False
+                ),
                 "required_brand_moment_beats": fragment.get("required_brand_moment_beats", 0),
                 # 品牌植入预算真相（brand.placement）：间隔/密度/禁用 Beat 类型，排布时必须遵守
                 "brand_placement_budget": json.dumps(
@@ -96,13 +134,176 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
 
     brand_moments = _attach_brand_moments(beats, fragment["placement"], ep)
     setup_payoffs = _attach_setup_payoffs(raw_sps, beats, ep)
+    facts = _attach_facts(
+        optional_json(out, "facts_json", "p3_beatsheet"), ep, fragment.get("known_facts", [])
+    )
+    state_changes = _attach_state_changes(
+        optional_json(out, "state_changes_json", "p3_beatsheet"),
+        ep,
+        fragment.get("declared_state", {}),
+    )
     return {
         "episode_id": ep["id"],
         "beats": beats,
         "brand_moments": brand_moments,
         "setup_payoffs": setup_payoffs,
+        "facts": facts,
+        "state_changes": state_changes,
         "_usage": out["_usage"],
     }
+
+
+def _attach_facts(
+    raw: Any, ep: dict[str, Any], known_facts: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Fact[] 机械归一（ADR-0012，可缺省→空表）。
+
+    resolves：int=同集 facts_json 下标（两遍解析，允许前向引用），str=已知前集 fact 的 id；
+    伪造引用即 PassFailure（诊断可喂重试）。id 由 Pass 分配，模型永远写不出新 fact 的 id。
+    """
+    known_ids = {str(f.get("id")) for f in known_facts if isinstance(f, dict)}
+    entries: list[dict[str, Any]] = []
+    for f in raw if isinstance(raw, list) else []:
+        if not isinstance(f, dict):
+            continue
+        content = str(f.get("content", "")).strip()
+        if not content:
+            continue
+        try:
+            episode_no = max(1, int(f.get("episode_no") or ep["no"]))
+        except (TypeError, ValueError):
+            episode_no = int(ep["no"])
+        entries.append(
+            {
+                "id": new_id(),
+                "content": content,
+                "type": _coerce_enum(
+                    f.get("type", "plot_event"), allowed_values(Fact, "type"), "plot_event"
+                ),
+                "status": _coerce_enum(
+                    f.get("status", "active"), allowed_values(Fact, "status"), "active"
+                ),
+                "_resolves_raw": f.get("resolves"),
+                "episode_no": episode_no,
+                "narrative_weight": _coerce_enum(
+                    f.get("narrative_weight", "medium"),
+                    allowed_values(Fact, "narrative_weight"),
+                    "medium",
+                ),
+            }
+        )
+    for i, e in enumerate(entries):
+        e["resolves"] = _coerce_resolves(e.pop("_resolves_raw"), i, entries, known_ids, ep)
+    return entries
+
+
+def _coerce_resolves(
+    ref: Any, self_idx: int, entries: list[dict[str, Any]], known_ids: set[str], ep: dict[str, Any]
+) -> str | None:
+    if ref is None:
+        return None
+    if isinstance(ref, bool):
+        raise PassFailure(
+            ep["id"], f"第 {ep['no']} 集的 Fact resolves={ref!r} 非法（应为下标/已知 id/null）。"
+        )
+    if isinstance(ref, int):
+        if not 0 <= ref < len(entries):
+            raise PassFailure(
+                ep["id"],
+                f"第 {ep['no']} 集的 Fact resolves 下标 {ref} 越界（本集共 {len(entries)} 条 Fact）。",
+            )
+        if ref == self_idx:
+            raise PassFailure(
+                ep["id"], f"第 {ep['no']} 集的 Fact resolves 指向自身，伏笔不得自我回收（INV-17）。"
+            )
+        return entries[ref]["id"]
+    if isinstance(ref, str) and ref.strip():
+        ref = ref.strip()
+        if ref in known_ids:
+            return ref
+        raise PassFailure(
+            ep["id"],
+            f"第 {ep['no']} 集的 Fact resolves={ref!r} 不是已知 fact id。"
+            f"跨集回收只能引用 known_facts 里的 id（如 {sorted(known_ids)[:3]}），"
+            "尚未回收请填 null。",
+        )
+    raise PassFailure(
+        ep["id"],
+        f"第 {ep['no']} 集的 Fact resolves={ref!r} 非法（应为下标 int/已知 id 字符串/null）。",
+    )
+
+
+def _attach_state_changes(
+    raw: Any, ep: dict[str, Any], declared: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """StateChange[] 机械归一（ADR-0012，可缺省→空表）。
+
+    只保留已声明 key 的条目；delta 按声明类型转换（暗线→int 步进，number→数值，
+    string→字符串），转不动的丢弃——这是 INV-19 的机械前置，语义仍由 final 不变量把关。
+    """
+    if not isinstance(declared, dict):
+        declared = {}
+    var_type = {
+        str(v.get("key")): str(v.get("type", "number"))
+        for v in declared.get("state_variables", [])
+        if isinstance(v, dict)
+    }
+    dark_keys = {str(d.get("key")) for d in declared.get("dark_threads", []) if isinstance(d, dict)}
+    out: list[dict[str, Any]] = []
+    for ch in raw if isinstance(raw, list) else []:
+        if not isinstance(ch, dict):
+            continue
+        key = str(ch.get("key", "")).strip()
+        reason = str(ch.get("reason", "")).strip()
+        if not key or not reason or "delta" not in ch:
+            continue
+        delta = _coerce_delta(key, ch["delta"], var_type, dark_keys)
+        if delta is None:
+            continue
+        out.append({"key": key, "delta": delta, "reason": reason})
+    return out
+
+
+def _coerce_delta(
+    key: str, raw: Any, var_type: dict[str, str], dark_keys: set[str]
+) -> float | int | str | None:
+    if isinstance(raw, bool):
+        return None
+    if key in dark_keys:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+    if var_type.get(key) == "string":
+        return str(raw)
+    if key in var_type:
+        try:
+            d = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return int(d) if d.is_integer() else d
+    return None  # 未声明的 key：丢弃（状态表以 p2 声明为真相）
+
+
+def apply_fact_cascade(facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """全季后处理（INV-17 级联的机械执行，pipeline 在收集完各集 facts 后调用）：
+
+    - 被任何非 deprecated Fact.resolves 指向的目标 → status=resolved；
+    - 自称 resolved 却无人回收 → 降回 unresolved。
+
+    跨集回收时，前集 Fact 无法被后集模型重写（id 已定、不再输出），
+    状态翻转只能在这里统一完成——角色等价于 SetupPayoff 的 resolve_pending。
+    幂等：重复执行结果不变。
+    """
+    resolved_ids = {
+        f["resolves"] for f in facts if f.get("resolves") and f.get("status") != "deprecated"
+    }
+    for f in facts:
+        if f["id"] in resolved_ids:
+            f["status"] = "resolved"
+        elif f["status"] == "resolved":
+            f["status"] = "unresolved"
+    return facts
 
 
 def _coerce_intensity(v: Any) -> int:

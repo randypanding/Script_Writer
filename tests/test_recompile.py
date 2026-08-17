@@ -33,6 +33,21 @@ def test_episode_logline_invalidates_self_episode_chain():
     assert passes == ["p3_beatsheet", "p4_scene", "p5_dialogue", "p6_prose", "p7_render"]
 
 
+def test_narrative_state_change_invalidates_p3_to_p7():
+    """ADR-0012：facts/threads/state_variables/dark_threads 任一变更 → 全部集 p3..p7 失效。"""
+    for field_name in (
+        "facts.resolves",
+        "threads.status",
+        "state_variables.initial",
+        "dark_threads.stages",
+    ):
+        closure = invalidation_closure([field_name])
+        passes = sorted(p for p, _gran in closure)
+        assert passes == ["p3_beatsheet", "p4_scene", "p5_dialogue", "p6_prose", "p7_render"], (
+            f"{field_name} 的失效闭包应为 p3..p7，实际 {closure}"
+        )
+
+
 # ---------------------------------------------------------------- 桩路由
 class StubRouter:
     """按调用顺序回放预置响应；p6 的 anchor_map 从输入里的真实 beat/line id 现算。"""

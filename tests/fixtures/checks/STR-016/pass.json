@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.1",
+  "project": {
+    "id": "01JT37STR01600000000000P1",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea"
+  },
+  "seasons": [
+    {
+      "id": "01JT37STR01600000000000S1",
+      "kind": "season",
+      "parent_id": "01JT37STR01600000000000P1",
+      "order": 0,
+      "title": "",
+      "arc_summary": "从怀疑到信任",
+      "theme": "真诚"
+    }
+  ],
+  "episodes": [
+    {
+      "id": "01JT37STR016000000000E001",
+      "kind": "episode",
+      "parent_id": "01JT37STR01600000000000S1",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "她推开仓库门，坐在阴影里的竟是三年前消失的师兄",
+      "responds_to": [],
+      "state_changes": []
+    },
+    {
+      "id": "01JT37STR016000000000E002",
+      "kind": "episode",
+      "parent_id": "01JT37STR01600000000000S1",
+      "order": 1,
+      "no": 2,
+      "title": "第2集 师兄回来了",
+      "logline": "师兄带回半张标签",
+      "duration_target_s": 90,
+      "hook_promise": "师兄为什么回来？",
+      "cliffhanger": "",
+      "responds_to": [1],
+      "state_changes": []
+    },
+    {
+      "id": "01JT37STR016000000000E003",
+      "kind": "episode",
+      "parent_id": "01JT37STR01600000000000S1",
+      "order": 2,
+      "no": 3,
+      "title": "第3集 半张标签",
+      "logline": "标签另一半在陈经理手里",
+      "duration_target_s": 90,
+      "hook_promise": "另一半标签在哪？",
+      "cliffhanger": "",
+      "responds_to": [],
+      "state_changes": []
+    }
+  ],
+  "scenes": [],
+  "beats": [],
+  "lines": [],
+  "characters": [],
+  "locations": [],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "chapters": [],
+  "facts": [],
+  "threads": [],
+  "state_variables": [],
+  "dark_threads": []
+}

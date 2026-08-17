@@ -1,0 +1,12 @@
+id: FCT-006
+title: 每集至少一条状态推进
+domain: fact
+severity: warn
+stage: after_p3
+select: episodes[*]
+assert: count(item.state_changes) >= 1
+message: 第 {item.no} 集的 state_changes 为空（计数 {count(item.state_changes)}），暗线阶段与数值状态在本集全部停滞。连载读者靠"每集世界都往前走一点"维持追踪线索，整集零推进会让人感觉剧情原地踏步、弃剧风险显著上升。请给本集至少安排一条状态变化（暗线 stage 前进或某个数值变量变化）。
+fix_hint: 优先推进与本集冲突最相关的 dark_thread，在 state_changes 里加一条含 key/delta/reason 的记录。
+tags:
+- state
+- pacing
