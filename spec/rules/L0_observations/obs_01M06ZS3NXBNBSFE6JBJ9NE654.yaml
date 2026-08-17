@@ -1,0 +1,12 @@
+# 借入观察：story-craft 技能吸收（来源见 adr/0010）。不参与门禁。
+id: obs_01M06ZS3NXBNBSFE6JBJ9NE654
+level: L0
+statement: "客户在修订中用'把杯子推过去（不加糖的）'替换'这款茶用的是进口茶基，热量只有三分之一'，说明念参数/念形容词会出戏，情绪和卖点要落到动作与感官。"
+scope: {kind: client, value: demo_tea}
+form: non-normative
+dimension: placement
+evidence_ids: [case:0142]
+created_at: "2026-08-17T00:00:00Z"
+extra:
+  verdict: absorb
+  rationale_nl: "story-craft 技能 §7.1 show-don't-tell 与 §8 反AI指纹的借入样例"

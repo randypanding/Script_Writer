@@ -166,6 +166,13 @@
 ### #25 广告合规词表（法规来源，需人工核对）
 - 见 `spec/checks/compliance/_legal_sources.md`。**未经人工核对的合规规则自动降级为 warn**（`eval/thresholds.yaml`）。
 
+### #29 小说文笔工艺 ← story-craft 技能 ✅（已吸收，见 ADR-0010）
+- 来源：内部创意写作技能 `story-craft-skill.md`（已删除并并入项目资产）。
+- **借**：show-don't-tell、感官锚点、对白动作节拍、反 AI 指纹、风格温度五档、3:1 节奏、角色 Soul Field（五维角色卡）。
+- **不借**：同人/CP/连载站运营/世界观设定书等模块——本项目为营销短剧（先小说确认物、再剧本执行物），不需要。
+- 落地：`spec/checks/novel/NOV-004…009`、`spec/checks/dialogue/DLG-007`、`spec/rubrics/rubric_v1.yaml#prose_craft`、`spec/rules/L3_canonical/R3-0002…0007`、`docs/SOP_PROSE_CRAFT.md`
+- 注意：canonical 规则按"借入知识"落库，`evidence_ids` 为占位；真实反馈管道（T-11/T-14）产出案例后需复核/替换。
+
 ## 五、工程与工具（直接用，别造）
 
 | # | 需求 | 用什么 | 借什么 / 注意 |

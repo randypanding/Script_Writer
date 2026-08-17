@@ -1,0 +1,17 @@
+id: R3-0005
+level: L3
+statement: >
+  主角与反派必须拥有具体的缺陷（flaw）和成长弧（arc），仅靠标签（"善良/勇敢"）无法立住角色。
+rationale: >
+  从 story-craft 技能（§3 角色系统·Soul Field）吸收的"角色约束驱动"规则。
+  无缺陷与弧线的角色会被读者视为"纸片人"，尤其影响营销短剧的情感代入效果。
+scope: {kind: global}
+form: check
+target: spec/checks/novel/NOV-009.yaml
+evidence_ids: [case:0142, case:0177, obs:01M06ZS3NXBNBSFE6JBJ9NE658]
+dimension: character
+hit_count: 0
+effect_size: null
+validation_report: adr/0010-story-craft-absorption.md
+created_at: "2026-08-17T00:00:00Z"
+last_fired_at: null

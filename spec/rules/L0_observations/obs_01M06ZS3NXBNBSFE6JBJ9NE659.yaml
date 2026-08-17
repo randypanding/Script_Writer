@@ -1,0 +1,12 @@
+# 借入观察：story-craft 技能吸收（来源见 adr/0010）。不参与门禁。
+id: obs_01M06ZS3NXBNBSFE6JBJ9NE659
+level: L0
+statement: "场景级连续对白 4 条以上而无动作行的'对白墙'会让人物像在念台词，必须用动作节拍打断。"
+scope: {kind: global}
+form: non-normative
+dimension: dialogue
+evidence_ids: [case:0142]
+created_at: "2026-08-17T00:00:00Z"
+extra:
+  verdict: absorb
+  rationale_nl: "story-craft 技能 §7.2.2 动作节拍"

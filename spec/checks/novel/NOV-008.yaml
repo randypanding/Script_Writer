@@ -1,0 +1,12 @@
+id: NOV-008
+title: 禁止等距时间线开头（流水账）
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: "not regex_any(item, ['^第[一二三四五六七八九十0-9]+天', '^[一二三四五六七八九十0-9]+天后', '^转天', '^次日'])"
+message: 段落（{chars(item)} 字）以"第X天/X天后"等距时间开头。流水账式的时间罗列是小说大忌：读者会失去戏剧重心。
+  请把平段压缩成一句过渡，把篇幅让给有冲突的爆发段（3:1 节奏）。
+tags:
+- pacing
+- anti_ai

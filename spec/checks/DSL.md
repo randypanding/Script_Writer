@@ -43,6 +43,7 @@ tags: [density, budget]
 | `chars(s)` | 中文字符数（去空白与标点，实现见 registry） |
 | `regex_any(s, patterns)` | 任一命中 |
 | `contains_any(s, words)` | 任一子串命中 |
+| `count_any(s, words)` | words 在 s 中的出现次数之和（堆叠检测，NOV-006/007） |
 | `contains_name_variant(s, bad, canon)` | bad 变体出现且不被任何 canon 规范名的出现区间覆盖（ADR-0009，产品名判定专用） |
 | `lcs_len(a, b)` | 最长公共子串长度（FCT-002 用） |
 | `sim(a, b)` | rapidfuzz 归一化相似度 0–1 |

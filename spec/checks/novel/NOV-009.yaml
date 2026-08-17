@@ -1,0 +1,13 @@
+id: NOV-009
+title: 主要角色必须带缺陷与成长弧（Soul Field）
+domain: novel
+severity: warn
+stage: after_p2
+select: "characters[?role=='protagonist' || role=='antagonist']"
+assert: chars(item.flaw) >= 2 and chars(item.arc) >= 4
+message: 角色「{item.name}」（{item.role}）缺缺陷（flaw={chars(item.flaw)}字）或成长弧（arc={chars(item.arc)}字）。
+  主角/反派由"不能做什么 + 要成为什么"定义，只有标签（"善良/勇敢"）没有约束与变化的角色立不住（Soul Field）。
+  请补上具体的缺陷，并把 arc 写成"从 X 到 Y"的弧线。
+tags:
+- character
+- soul_field

@@ -1,0 +1,16 @@
+id: DLG-007
+title: 对白墙限制（场景级连续对白须有动作节拍）
+domain: dialogue
+severity: warn
+stage: after_p5
+select: episodes[*].scenes[*]
+bind:
+  dlg: 'beats[].lines[] | [?line_type==''dialogue'']'
+  act: 'beats[].lines[] | [?line_type==''action'']'
+assert: count(dlg) < 4 or count(act) >= 1
+message: "场景 {item.id} 有 {count(dlg)} 条对白却没有任何动作行。整个场景都是纯对白来回（只有'他说/你说'）就是'对白墙'，
+  人物会像在念台词，画面完全缺失。请在对白之间插入动作节拍（表情/手势/环境变化）打断节奏、补足画面。"
+fix_hint: "把其中一条'他说'改写成动作节拍：'他把杯子往桌上一顿。「我不去。」'"
+tags:
+- dialogue
+- craft

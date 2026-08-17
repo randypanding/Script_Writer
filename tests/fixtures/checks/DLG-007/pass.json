@@ -1,0 +1,159 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "01M04TVA68W81RK6RKZW2FTAMS",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea",
+    "client_note": "",
+    "provenance_id": "run-minimal-000001",
+    "locked": false
+  },
+  "episodes": [
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN2",
+      "kind": "episode",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAMT",
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "",
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "scenes": [
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN3",
+      "kind": "scene",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN2",
+      "order": 0,
+      "location_id": "01M04TVA68W81RK6RKZW2FTAMZ",
+      "time_of_day": "day",
+      "interior": true,
+      "present_character_ids": [
+        "01M04TVA68W81RK6RKZW2FTAMV",
+        "01M04TVA68W81RK6RKZW2FTAMW"
+      ],
+      "goal": "林晚要确认报告读数",
+      "conflict": "陈经理催着要她签字",
+      "turn": "她发现同一杯茶两种说法",
+      "entry": "林晚刚坐下",
+      "exit": "她抓起杯子出门",
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "beats": [
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "kind": "beat",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN3",
+      "order": 0,
+      "beat_kind": "escalation",
+      "summary": "第1集第0拍：escalation",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.3,
+        "arousal": 0.4
+      },
+      "est_duration_s": 14,
+      "brand_moment_id": null,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ],
+  "lines": [
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN5",
+      "kind": "line",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "order": 0,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA68W81RK6RKZW2FTAMV",
+      "text": "你不去看看？",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN6",
+      "kind": "line",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "order": 1,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA68W81RK6RKZW2FTAMW",
+      "text": "人家门口都排到电梯口了。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN7",
+      "kind": "line",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "order": 2,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA68W81RK6RKZW2FTAMV",
+      "text": "排队就说明好喝？",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN8",
+      "kind": "line",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "order": 3,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA68W81RK6RKZW2FTAMW",
+      "text": "财务姐姐都在排。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN9",
+      "kind": "line",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "order": 4,
+      "line_type": "dialogue",
+      "character_id": "01M04TVA68W81RK6RKZW2FTAMV",
+      "text": "那我也去排。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTANA",
+      "kind": "line",
+      "parent_id": "01M04TVA68W81RK6RKZW2FTAN4",
+      "order": 5,
+      "line_type": "action",
+      "character_id": null,
+      "text": "她把杯子往桌上一顿，站了起来。",
+      "subtext": "",
+      "delivery": "",
+      "is_brand_line": false,
+      "provenance_id": "run-minimal-000001",
+      "locked": false
+    }
+  ]
+}

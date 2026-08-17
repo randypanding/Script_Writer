@@ -1,0 +1,12 @@
+# 借入观察：story-craft 技能吸收（来源见 adr/0010）。不参与门禁。
+id: obs_01M06ZS3NXBNBSFE6JBJ9NE657
+level: L0
+statement: "以'第X天/X天后/次日'等距时间开头的章节读起来像日记/流水账，戏剧时间应有压缩与展开。"
+scope: {kind: global}
+form: non-normative
+dimension: structural
+evidence_ids: [case:0177]
+created_at: "2026-08-17T00:00:00Z"
+extra:
+  verdict: absorb
+  rationale_nl: "story-craft 技能 §4.6 连续流 3:1 与 §8 第10条"

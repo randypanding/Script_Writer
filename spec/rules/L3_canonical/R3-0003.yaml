@@ -1,0 +1,17 @@
+id: R3-0003
+level: L3
+statement: >
+  小说叙述中"仿佛/似乎/宛如/好像"类弱化拟态词每段不得超过 1 个，堆叠使用会使描写含糊。
+rationale: >
+  从 story-craft 技能（§8 反AI指纹）吸收的"弱化词堆叠"规则。堆叠 2+ 个是
+  机器味最明显的指纹之一，读者一眼出戏。
+scope: {kind: global}
+form: check
+target: spec/checks/novel/NOV-006.yaml
+evidence_ids: [case:0142, case:0177, obs:01M06ZS3NXBNBSFE6JBJ9NE656]
+dimension: structural
+hit_count: 0
+effect_size: null
+validation_report: adr/0010-story-craft-absorption.md
+created_at: "2026-08-17T00:00:00Z"
+last_fired_at: null

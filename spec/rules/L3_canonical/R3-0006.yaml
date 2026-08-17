@@ -1,0 +1,18 @@
+id: R3-0006
+level: L3
+statement: >
+  场景级连续对白（dialogue）达到 4 条以上时必须有至少 1 条动作行（action line）打断，
+  否则形成"对白墙"——人物像在念台词，画面完全缺失。
+rationale: >
+  从 story-craft 技能（§7.2.2 动作节拍）吸收的"对白墙"规则。
+  纯对白来回是 AI 剧本最容易被识破的特征之一；动作节拍既标记说话人又提供画面。
+scope: {kind: global}
+form: check
+target: spec/checks/dialogue/DLG-007.yaml
+evidence_ids: [case:0142, case:0177, obs:01M06ZS3NXBNBSFE6JBJ9NE659]
+dimension: dialogue
+hit_count: 0
+effect_size: null
+validation_report: adr/0010-story-craft-absorption.md
+created_at: "2026-08-17T00:00:00Z"
+last_fired_at: null

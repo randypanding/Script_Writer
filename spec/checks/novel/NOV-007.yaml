@@ -1,0 +1,13 @@
+id: NOV-007
+title: 空泛强调词堆叠限制
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: "count_any(item, ['非常', '极其', '十分', '显然', '当然']) <= 1"
+message: 段落（{chars(item)} 字）用了 {count_any(item, ['非常', '极其', '十分', '显然', '当然'])} 个空泛强调词。
+  "非常/极其/显然"这类词不传达信息，反而稀释语气（NOV-006 同源：机器味指纹）。请删掉或替换为具体描写。
+fix_hint: "'他非常生气' → '他手背上的青筋鼓了起来'。"
+tags:
+- anti_ai
+- style

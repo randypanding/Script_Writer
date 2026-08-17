@@ -1,0 +1,12 @@
+# 借入观察：story-craft 技能吸收（来源见 adr/0010）。不参与门禁。
+id: obs_01M06ZS3NXBNBSFE6JBJ9NE658
+level: L0
+statement: "主角/反派仅靠标签（善良/勇敢）立不住，必须由缺陷（不能做什么）与成长弧（从X到Y）定义。"
+scope: {kind: global}
+form: non-normative
+dimension: character
+evidence_ids: [case:0142]
+created_at: "2026-08-17T00:00:00Z"
+extra:
+  verdict: absorb
+  rationale_nl: "story-craft 技能 §3 角色系统·Soul Field"

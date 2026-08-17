@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "01M04TVA68W81RK6RKZW2FTAMS",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea",
+    "client_note": "",
+    "provenance_id": "run-minimal-000001",
+    "locked": false
+  },
+  "characters": [
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAMV",
+      "name": "林晚",
+      "role": "protagonist",
+      "want": "想在不靠节食的前提下控糖",
+      "need": "接受自己的不完美",
+      "flaw": "容易自己吓自己",
+      "arc": "从把喝一杯茶当罪恶，到把它当成照顾自己的方式",
+      "voice_notes": "短句、爱反问",
+      "voice_tics": [
+        "完了",
+        "真的假的"
+      ],
+      "forbidden_words": [],
+      "persona_ref": "office_woman_28"
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAMY",
+      "name": "陈经理",
+      "role": "antagonist",
+      "want": "压预算",
+      "need": "被看见价值",
+      "flaw": "只认数字",
+      "arc": "从只认数字，到愿意听人把话说完",
+      "voice_notes": "公事公办",
+      "voice_tics": [],
+      "forbidden_words": [],
+      "persona_ref": ""
+    }
+  ]
+}

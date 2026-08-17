@@ -1,0 +1,17 @@
+id: R3-0004
+level: L3
+statement: >
+  小说章节不得以"第X天/X天后/次日"等距时间标签开头，戏剧时间应有压缩与展开的 3:1 节奏。
+rationale: >
+  从 story-craft 技能（§4.6 连续流 + §8 反AI指纹第10条）吸收的"流水账时间"规则。
+  等距时间罗列是日记式写作的失败模式，读者会失去戏剧重心。
+scope: {kind: global}
+form: check
+target: spec/checks/novel/NOV-008.yaml
+evidence_ids: [case:0142, case:0177, obs:01M06ZS3NXBNBSFE6JBJ9NE657]
+dimension: structural
+hit_count: 0
+effect_size: null
+validation_report: adr/0010-story-craft-absorption.md
+created_at: "2026-08-17T00:00:00Z"
+last_fired_at: null

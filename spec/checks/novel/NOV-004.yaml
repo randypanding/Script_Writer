@@ -1,0 +1,13 @@
+id: NOV-004
+title: 抽象情绪标签句限制（Show-don't-tell）
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: "not regex_any(item, ['很(?:害怕|难过|伤心|开心|高兴|生气|愤怒|紧张|焦虑|失望|惊喜|恐惧|委屈|激动|痛苦|内疚)', '十分(?:生气|愤怒|难过|紧张|焦虑|委屈|失望|内疚)', '无比(?:愤怒|激动|难过|失望|内疚)'])"
+message: 段落（{chars(item)} 字）出现抽象情绪标签句（"他很难过/她十分生气"这类给情绪直接命名）。直接命名是"告诉"读者
+  而非"展示"，是 AI 味最重的句式之一。请改写为身体/感官/行为细节（"喉咙发紧""指尖发凉"），让读者自己感到。
+fix_hint: "把'她很害怕'换成'她手心攥出汗，后背贴着墙没敢动'。"
+tags:
+- show_dont_tell
+- anti_ai

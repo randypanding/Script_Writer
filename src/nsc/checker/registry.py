@@ -50,6 +50,12 @@ def contains_any(s: str | list[str] | None, words: list[str] | None) -> bool:
     return any(w and w in s for w in (words or []))
 
 
+def count_any(s: str | None, words: list[str] | None) -> int:
+    """s 中所有 words 的出现次数之和（NOV-006/007 的弱化词/空泛词堆叠检测）。"""
+    s = s or ""
+    return sum(s.count(w) for w in (words or []) if w)
+
+
 def contains_name_variant(s: str | None, bad: list[str] | None, canon: list[str] | None) -> bool:
     """产品名违规判定（BM-009）：bad 变体出现、且该出现不被任何规范名覆盖才算违规。
 
@@ -240,6 +246,7 @@ FUNCS: dict[str, Any] = {
     "positions": positions,
     "distinct": distinct,
     "contains_any": contains_any,
+    "count_any": count_any,
     "contains_name_variant": contains_name_variant,
     "regex_any": regex_any,
     "lcs_len": lcs_len,

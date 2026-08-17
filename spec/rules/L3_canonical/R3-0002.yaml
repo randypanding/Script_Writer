@@ -1,0 +1,17 @@
+id: R3-0002
+level: L3
+statement: >
+  小说叙述中不得出现"很害怕/非常生气/无比愤怒"等抽象情绪标签句，情绪必须用身体动作与感官细节呈现。
+rationale: >
+  从 story-craft 技能（§8 反AI指纹）吸收的"show-don't-tell"核心规则。逆向标注数据显示，
+  含抽象情绪标签（"他很害怕"）的段落，在人类评审中"像机器写的"比例达 68%。
+scope: {kind: global}
+form: check
+target: spec/checks/novel/NOV-004.yaml
+evidence_ids: [case:0142, case:0177, obs:01M06ZS3NXBNBSFE6JBJ9NE654, obs:01M06ZS3NXBNBSFE6JBJ9NE655]
+dimension: structural
+hit_count: 0
+effect_size: null
+validation_report: adr/0010-story-craft-absorption.md
+created_at: "2026-08-17T00:00:00Z"
+last_fired_at: null

@@ -1,0 +1,13 @@
+id: NOV-005
+title: AI 高频套话词限制
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: "not regex_any(item, ['无与伦比', '令人叹为观止', '叹为观止', '深深地', '缓缓地', '微微地', '展现出', '彰显出', '体现出', '独一无二', '意义非凡', '在这个[^，。]{0,12}的时代', '随着[^，。]{0,12}的发展'])"
+message: 段落（{chars(item)} 字）命中 AI 高频套话（"无与伦比/令人叹为观止/深深地/展现出/在这个…的时代"）。这类词是
+  机器味最明显的指纹，读者一眼出戏，商家在手机上一扫而过不会当作真故事。请换成具体的动作、数字或感官细节。
+fix_hint: "'他缓缓地推开门' → '他把门推开一条缝'。"
+tags:
+- anti_ai
+- cliche

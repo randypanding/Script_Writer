@@ -1,0 +1,12 @@
+id: NOV-006
+title: 弱化拟态词堆叠限制
+domain: novel
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: "count_any(item, ['仿佛', '似乎', '宛如', '好像']) <= 1"
+message: 段落（{chars(item)} 字）用了 {count_any(item, ['仿佛', '似乎', '宛如', '好像'])} 个弱化拟态词（仿佛/似乎/宛如/好像）。
+  这类词每段最多 1 个；堆叠会让描写含糊、读起来像在凑字数。请只保留最有力的一个，其余换成具体画面。
+tags:
+- anti_ai
+- style

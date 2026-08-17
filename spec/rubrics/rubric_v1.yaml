@@ -27,7 +27,7 @@ dimensions:
 
   - id: transportation
     name: 代入与情感迁移
-    weight: 0.20
+    weight: 0.15
     applies_to: [episode, chapter]
     question: "读者/观众会被带进故事、并把这种情绪迁移到品牌上吗？"
     construct_ref: "叙事传输（narrative transportation）；见 docs/BORROW_MAP.md #16"
@@ -37,7 +37,7 @@ dimensions:
 
   - id: placement_integration
     name: 植入自然度与信息达成
-    weight: 0.25
+    weight: 0.20
     applies_to: [beat, scene, episode]
     question: "产品是长在剧情里的，还是贴上去的？商家要的卖点信息真的传达到了吗？"
     construct_ref: "modality × plot-connection congruence；见 docs/BORROW_MAP.md #15"
@@ -53,6 +53,16 @@ dimensions:
     positive_signals: [场景可复用, 无群演, 无特效, 道具易得, 动作简单]
     negative_signals: [户外大场面, 需要儿童或动物, 需要车辆改装, 需要多机位调度, 时间跨度需要换装]
     anchors_file: anchors/producibility.yaml
+
+  - id: prose_craft
+    name: 文笔与反AI味
+    weight: 0.10
+    applies_to: [chapter]
+    question: "小说叙述文笔像'写出来的人话'吗？还是露出机器味（抽象情绪标签、空话套话、弱化词堆叠、流水账时间）？"
+    construct_ref: "show-don't-tell + 反AI语言指纹；吸收自 story-craft 技能，见 adr/0010-story-craft-absorption.md"
+    positive_signals: [情绪用身体与感官呈现, 具体动作与数字, 长短句交错, 留白与潜台词, 感官锚点绑定抽象概念]
+    negative_signals: [直接给情绪命名, 空话套话, 仿佛/似乎堆叠, 第X天…等距时间罗列, 对白墙]
+    anchors_file: anchors/prose_craft.yaml
 
 aggregate:
   formula: "weighted_mean"
