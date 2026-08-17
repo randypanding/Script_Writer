@@ -1,0 +1,22 @@
+source: webnovel-chinese(qqceqqq, apache-2.0) 抽样
+evidence:
+  chapters: 3267
+opening:
+  first_line_is_dialogue_ratio: 0.315
+  ending_line_is_dialogue_ratio: 0.674
+  ending_question_ratio: 0.064
+  median_first_utterance_offset_chars: 125
+dialogue:
+  chars_ratio: 0.226
+  utterance_len_chars:
+    p25: 6
+    p50: 16
+    p85: 48
+    p98: 116
+narration:
+  sentence_len_chars:
+    p25: 12
+    p50: 28
+    p90: 81
+chapter:
+  median_chars: 3019

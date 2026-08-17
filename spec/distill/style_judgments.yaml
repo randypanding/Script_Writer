@@ -1,0 +1,73 @@
+# spec/distill/style_judgments.yaml
+# 网文"平均风格"定性蒸馏（子代理通读 6 本 × 前几章 sample 产出）。
+# 性质：研究产物，用于把"平均风格"烘进生成；是否落地为 规则/阈值/profile 参数
+#       走正常 ADR 路径（AGENTS §5）。provenance: evidence 为章节数，source 为语料库。
+schema_version: "1.0"
+provenance:
+  source: webnovel-chinese(qqceqqq, apache-2.0) 抽样 6 本
+  sample: 每种前 5 章 / 约 1 万字
+  method: 子代理通读 + 两路正交（对白人物 / 叙事结构）
+  date: "2026-08-17"
+
+# 每个 judgment 映射到产出的 Pass 与对应旋钮（dialogue→p5, prose/chapter→p6, arc→p2）
+average_style:
+  narrative_heat:
+    text: 热开场主导：多数章节开头即对白/冲突/行动中的人，2~4 句内抛出具体抓点；纯环境描写起手是少数。
+    target_pass: p3_beatsheet
+    knob_proposal:
+      - beat[0]==hook 或 opening_line 冲突化；首句禁用环境铺陈
+      - ">90% 首拍应为 hook/conflict（stat: first_line_dialogue≈0.32，但热开场占比更高）"
+  dialogue_shape:
+    text: 对白短促、口语化、直来直去（"你/我/他"直接碰撞），不用解释性长句交代信息；干货切给旁白。
+    target_pass: p5_dialogue
+    evidence: utterance_len p50=16 / p85=48 / p98=116
+    knob_proposal:
+      - 台词单句 ≥98% 封顶 116 字；p85 处约 48 字
+      - 禁止一句台词承载 3 层信息（时长/动机/后果/关系叠加=工具化台词）
+  persona_tag:
+    text: 台词前普遍挂一个动作/神态标签（冷笑/垂眼/撇嘴角），"动作引语+台词"固定节拍；对白极少裸奔。
+    target_pass: p5_dialogue
+    knob_proposal: 台词≥60% 应配动作/微表情标签，避免长时间纯文字对白
+  voice_distinct:
+    text: 人物声音中低区分——靠口癖/方言/身份称谓维持，去掉标签后大多趋同。
+    target_pass: p1_bible / p5_dialogue
+    knob_proposal: 每个常驻角色赋 1 个专属开口词或句式；反派人声避免模板化
+  show_vs_tell:
+    text: 强 tell 主导（内心独白 + 作者直接点明判断），内心戏与对白"双声部"并行；动作对白是承载工具。
+    target_pass: p6_prose
+    knob_proposal: 小说稿允许心理直给 + 作者评价性旁白（带体温），不做冷静冷叙事
+  addressing:
+    text: 称呼随亲疏/地位在同一场景内切换，充当关系温度计。
+    target_pass: p5_dialogue
+    knob_proposal: 冲突升级/关系破裂时主动用称呼降格制造张力（如"叫我萧族长就好"）
+  pace_reversal:
+    text: 金手指/偶遇/打脸/反转是默认节奏引擎，几乎每段平淡后都来一次意外馈赠"重新点火"。
+    target_pass: p2_arc / p3_beatsheet
+    knob_proposal: 每集至少 1 次反转/意外馈赠节拍，间距受 pacing 规则约束
+  narration_temperature:
+    text: 旁白带体温（感叹、内心吐槽、价值评价），少有冷静客观叙事。
+    target_pass: p6_prose
+    knob_proposal: 小说叙述允许评价性与代入性用词（本系统目标是营销短剧，恰好需要强代入）
+  paragraph_density:
+    text: 句子长短混搭总体绵长（逗号串多层修饰）；段落"一段一大段"、留白少。
+    target_pass: p6_prose
+    evidence: narration sentence p50=28 / p90=81
+    knob_proposal: 小说句子以 25~85 字为主区间，避免过度断行留白
+  chapter_close:
+    text: 章末惯用钩子不收束（新情况 / 意味深长一句 / 未解疑问），把惯性拖进下一节。
+    target_pass: p2_arc / p3_beatsheet
+    evidence: ending_line_dialogue_ratio≈0.67
+    knob_proposal: 每集收尾拍应落在对白或悬念句（cliffhanger），而非把事讲完
+  side_character:
+    text: 配角/反派工具人化、话术模板化，服务剧情多，立人设少。
+    target_pass: p5_dialogue
+    knob_proposal: 用途标注为工具人的角色允许模板发声（本系统"平均风格"可接受），但主产物仍应保证主角声音区分
+  multi_line_pov:
+    text: 单线顺叙、紧贴主角；罕见真正的镜头式多线跳切。
+    target_pass: p2_arc / p4_scene
+    knob_proposal: 场景切换以"跟主角物理移动"为主，不硬凹多线并置
+
+# 离群档位（可选，避免被"平均"带偏）
+outliers:
+  - note: 翻译类科幻（天渊）偏冷静/信息密集/场景起手，明显离群，炼平均风格时应降权或剔除。
+    weight_implication: 若目标广告短剧强调强代入，翻译科幻类不应作为风格锚。
