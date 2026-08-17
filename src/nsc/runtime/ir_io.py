@@ -27,6 +27,30 @@ def _cost_weight(tier: str | None) -> float:
     return float(_COST_WEIGHT.get(tier or "", 1))
 
 
+def _load_domain_extras() -> dict[str, dict[str, Any]]:
+    """按域加载 spec/checks/<domain>/_*.yaml 词表资产（ADR-0011，机制非业务）。
+
+    同域多个 `_` 文件的同名 list 键做拼接，其余键后者覆盖。
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for p in sorted(Path("spec/checks").glob("*/_*.yaml")):
+        import yaml
+
+        try:
+            data = yaml.safe_load(p.read_text("utf-8"))
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            continue
+        slot = out.setdefault(p.parent.name, {})
+        for k, v in data.items():
+            if isinstance(v, list) and isinstance(slot.get(k), list):
+                slot[k] = slot[k] + v
+            else:
+                slot[k] = v
+    return out
+
+
 def _load_compliance() -> dict[str, Any]:
     src = Path("spec/checks/compliance/_absolute_terms.yaml")
     if src.exists():
@@ -40,7 +64,10 @@ def _load_compliance() -> dict[str, Any]:
     regulated = [
         r"治疗|治愈|根治|抗癌|降血糖|降血压|减肥|瘦身|排毒|提高免疫|防癌",
     ]
-    return {"absolute_terms": terms, "regulated_claim_patterns": regulated}
+    base = {"absolute_terms": terms, "regulated_claim_patterns": regulated}
+    # `_platform_terms.yaml` 等合规域附加词表并入 compliance（ADR-0011 泛化加载）。
+    extra = _load_domain_extras().get("compliance", {})
+    return {**extra, **base}
 
 
 def _brand_view(brand: dict[str, Any]) -> dict[str, Any]:
@@ -81,7 +108,9 @@ def build_view(
     `item` 语义：`select` 的每个结果。`__` 前缀字段是计算量，供规则使用。
     """
     bv = _brand_view(brand)
+    extras = _load_domain_extras()
     compliance = compliance or _load_compliance()
+    prose_ctx = extras.get("prose", {})
 
     # linear_index：按 episode->scene->beat->line 深度优先连续编号
     linear: dict[str, int] = {}
@@ -360,6 +389,7 @@ def build_view(
         "profile": profile,
         "brand": bv,
         "compliance": compliance,
+        "prose": prose_ctx,
         "voice": ir.get("voice"),
         # `__` 全剧计算量
         "__all_line_text": [t for t in all_line_text if t],

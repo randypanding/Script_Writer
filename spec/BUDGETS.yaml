@@ -1,15 +1,21 @@
 # 预算即架构纪律（D21 / PROMOTION.md）。改这里需要 ADR。
 schema_version: "1.0"
 
+# 行数口径（ADR-0013 注）：guards/budgets.py 统计的是"非空非注释行"，
+# 与 `wc -l` 不同；只有 "src/nsc/runtime,src/nsc/checker" 一条被 guard 硬执行，
+# 其余条目为规划参考。新模块预算见 ADR-0013。
 lines:
-  "src/nsc/runtime,src/nsc/checker": 1500      # D21 硬预算
+  "src/nsc/runtime,src/nsc/checker": 1600      # D21 硬预算（ADR-0013：1500→1600，textstats 注册 + IR1.1 视图派生）
   "src/nsc/passes": 1200
   "src/nsc/render": 900
   "src/nsc/feedback": 900
   "src/nsc/mining": 700
   "src/nsc/optimize": 700
   "src/nsc/judge": 500
-  "src/nsc": 6500                              # 总量警戒线
+  "src/nsc/textstats": 300                     # ADR-0011/0013：确定性文本统计（纯机制）
+  "src/nsc/revise": 500                        # ADR-0013：patch/gate/snapshot/idea_bank/brief
+  "src/nsc/context": 500                       # ADR-0013：上下文预算竞争 + 历史压缩
+  "src/nsc": 7800                              # 总量警戒线（ADR-0013：6500→7800）
 
 max_canonical_rules: 120
 max_active_check_rules: 90

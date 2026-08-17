@@ -7,7 +7,7 @@ required: [id, title, domain, severity, stage, select, assert, message]
 properties:
   id: {type: string, pattern: "^[A-Z]{3,4}-[0-9]{3}[a-z]?$"}
   title: {type: string, minLength: 4}
-  domain: {enum: [structure, brand, dialogue, novel, compliance, producibility, fact]}
+  domain: {enum: [structure, brand, dialogue, novel, prose, compliance, producibility, fact]}
   severity: {enum: [block, warn, info]}
   status: {enum: [active, deprecated], default: active}
   stage: {enum: [after_p2, after_p3, after_p4, after_p5, after_p6, final]}
