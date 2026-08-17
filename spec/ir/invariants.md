@@ -1,4 +1,4 @@
-# IR 结构不变量（15 条，全部 `[[form:schema]]` 或 `[[form:check]]`）
+# IR 结构不变量（19 条，全部 `[[form:schema]]` 或 `[[form:check]]`）
 
 所有不变量由 `spec/ir/invariants.py` 实现，`tests/test_invariants.py` 用 Hypothesis 做 property-based 验证。
 违反 = `severity: block`，无例外。
@@ -20,6 +20,10 @@
 | INV-13 | Profile 层级启用一致：`profile.layers.season == false` ⇒ `len(seasons) == 1` 且 `Season.title == ""` | `[[form:check]]` → `inv_13` |
 | INV-14 | 每个主干节点与 NovelChapter 的 `provenance_id` 存在于 `provenance[*].run_id` | `[[form:check]]` → `inv_14` |
 | INV-15 | `sum(beat.est_duration_s)` 落在 `episode.duration_target_s × (1 ± profile.duration_tolerance)` 内 | `[[form:check]]` → `inv_15` |
+| INV-17 | 所有 `Fact.resolves` 指向存在且≠自身的 Fact id；且 `status==resolved ⇔ 存在另一条非 deprecated 的 Fact.resolves==该 id` | `[[form:check]]` → `inv_17`（ADR-0012） |
+| INV-18 | `Fact.caused_by` 的每个 id 存在，且目标 Fact 的 `episode_no <= 本 Fact.episode_no`（因果不得倒置） | `[[form:check]]` → `inv_18`（ADR-0012） |
+| INV-19 | DarkThread 按 `episode_no` 升序累加 key 匹配的 int delta 得 `current_stage ∈ [0, len(stages)-1]`；`type=="number"` 的 StateVariable 匹配 delta 必须是 int/float | `[[form:check]]` → `inv_19`（派生纯函数 `nsc.runtime.ir_io::derive_state / derive_stage`，ADR-0012） |
+| INV-20 | `Episode.responds_to` 每个元素是存在 Episode 的 `no` 且严格小于本集 `no` | `[[form:check]]` → `inv_20`（ADR-0012） |
 
 ## 局部重编译的 ID 稳定性契约 `[[form:check]]` → `inv_16_id_stability`
 重编译一个子树时，**未被 LLM 改动的节点必须保留原 ID**。

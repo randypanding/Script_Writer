@@ -9,6 +9,18 @@ from typing import Any
 from rapidfuzz import fuzz
 from simpleeval import EvalWithCompoundTypes, FeatureNotAvailable
 
+from nsc.textstats import (
+    chapter_ngram_repeats,
+    density_exceeds,
+    join_text,
+    long_paras,
+    max_consecutive_char_lines,
+    max_word_count,
+    para_cv,
+    same_prefix_runs,
+    sent_cv,
+)
+
 _CTX_RE = re.compile(r"@\.__ctx\.([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)")
 
 _PUNCT = re.compile(r"[\s，。、；：？！“”‘’（）《》…—·,.;:?!\"'()\[\]<>~-]+")
@@ -245,6 +257,16 @@ FUNCS: dict[str, Any] = {
     "min_gap": min_gap,
     "positions": positions,
     "distinct": distinct,
+    # textstats 薄注册（T-27 / ADR-0011：实现零业务参数，阈值在 spec/checks/prose/）
+    "para_cv": para_cv,
+    "sent_cv": sent_cv,
+    "max_consecutive_char_lines": max_consecutive_char_lines,
+    "long_paras": long_paras,
+    "density_exceeds": density_exceeds,
+    "max_word_count": max_word_count,
+    "same_prefix_runs": same_prefix_runs,
+    "join_text": join_text,
+    "chapter_ngram_repeats": chapter_ngram_repeats,
     "contains_any": contains_any,
     "count_any": count_any,
     "contains_name_variant": contains_name_variant,

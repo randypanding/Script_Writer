@@ -1,0 +1,10 @@
+id: PRS-011
+title: 连续"了"字句上限
+domain: prose
+severity: info
+stage: after_p6
+select: chapters[*]
+assert: max_consecutive_char_lines(join_text(item.paragraphs), '了') < 6
+message: 章节 {item.id} 有连续 {max_consecutive_char_lines(join_text(item.paragraphs), '了')} 个句子都以"了"收尾（上限 5）。完成态助词连续堆叠是节奏单一的信号，读起来像流水账。请把其中几句改写成进行中或未完成的动作，打断"做了什么了"的循环。
+fix_hint: 「茶凉了」可改成「茶正一点点凉下去」。
+tags: [rhythm]

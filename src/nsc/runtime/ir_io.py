@@ -142,6 +142,9 @@ def build_view(
             "duration_target_s": ep.get("duration_target_s"),
             "hook_promise": ep.get("hook_promise"),
             "cliffhanger": ep.get("cliffhanger", ""),
+            # --- ADR-0012 运行时叙事状态透传 ---
+            "responds_to": ep.get("responds_to", []),
+            "state_changes": ep.get("state_changes", []),
             "scenes": [rec_scene(s, ep) for s in scenes],
         }
         # 扁平 beats（无嵌套 lines），供 STR/DLG-006 等用
@@ -192,6 +195,11 @@ def build_view(
             "interior": sc.get("interior"),
             "present_character_ids": sc.get("present_character_ids", []),
             "summary": sc.get("summary", ""),
+            # --- ADR-0012 场级节奏与知识状态透传 ---
+            "opening_attractor": sc.get("opening_attractor", ""),
+            "escalation_beats": sc.get("escalation_beats", []),
+            "ending_hook": sc.get("ending_hook", ""),
+            "knowledge_state": sc.get("knowledge_state"),
             "__location_cost_tier": loc.get("cost_tier", "cheap"),
             "beats": beats,
         }
@@ -259,6 +267,11 @@ def build_view(
                 "need": c.get("need", ""),
                 "flaw": c.get("flaw", ""),
                 "arc": c.get("arc", ""),
+                # --- ADR-0012 角色心智 OS 透传 ---
+                "mental_models": c.get("mental_models", []),
+                "decision_heuristics": c.get("decision_heuristics", []),
+                "honest_boundaries": c.get("honest_boundaries", []),
+                "expression_dna": c.get("expression_dna"),
                 "__appearance_count": appearance,
                 "__tic_hit_count": tic_hit,
                 "__line_count": line_count,
@@ -303,6 +316,63 @@ def build_view(
                 ),
             }
         )
+
+    # --- ADR-0012 运行时叙事状态层视图（声明式存储 + 确定性派生量） ---
+    max_ep_no = max((e.get("no", 0) for e in ir.get("episodes", [])), default=0)
+    facts = [
+        {
+            "id": f.get("id"),
+            "content": f.get("content"),
+            "character_ids": f.get("character_ids", []),
+            "episode_no": f.get("episode_no", 1),
+            "status": f.get("status", "active"),
+            "type": f.get("type", "plot_event"),
+            "resolves": f.get("resolves"),
+            "caused_by": f.get("caused_by", []),
+            "known_to": f.get("known_to"),
+            "hidden_from": f.get("hidden_from", []),
+            "suspense_type": f.get("suspense_type"),
+            "narrative_weight": f.get("narrative_weight", "medium"),
+            "thread_ids": f.get("thread_ids", []),
+            # 派生：高权重伏笔逾期检测（FCT-003 用；>3 集未回收且仍悬置）
+            "is_overdue": max_ep_no - f.get("episode_no", 1) > 3
+            and f.get("status") == "unresolved",
+        }
+        for f in ir.get("facts", [])
+    ]
+    threads = [
+        {
+            "id": t.get("id"),
+            "title": t.get("title"),
+            "state": t.get("state", ""),
+            "status": t.get("status", "active"),
+        }
+        for t in ir.get("threads", [])
+    ]
+    derived = derive_state(ir)
+    state_variables = [
+        {
+            "key": v.get("key"),
+            "name": v.get("name"),
+            "type": v.get("type", "number"),
+            "initial": v.get("initial", 0),
+            "description": v.get("description", ""),
+            # 派生：按集号序重放 state_changes 得当前值
+            "current": derived.get(v.get("key", ""), v.get("initial", 0)),
+        }
+        for v in ir.get("state_variables", [])
+    ]
+    dark_threads = [
+        {
+            "key": d.get("key"),
+            "name": d.get("name"),
+            "stages": d.get("stages", []),
+            "description": d.get("description", ""),
+            # 派生：按集号序累加 int delta 得当前阶段
+            "current_stage": derive_stage(ir, d.get("key", "")),
+        }
+        for d in ir.get("dark_threads", [])
+    ]
 
     # 全文本集合
     all_line_text = [ln.get("text", "") for ln in ir.get("lines", [])]
@@ -384,6 +454,11 @@ def build_view(
         "brand_moments": brand_moments,
         "setup_payoffs": setup_payoffs,
         "motifs": ir.get("motifs", []),
+        # ADR-0012 运行时叙事状态层（含派生 is_overdue/current/current_stage）
+        "facts": facts,
+        "threads": threads,
+        "state_variables": state_variables,
+        "dark_threads": dark_threads,
         "chapters": chapters,
         # 全局上下文
         "profile": profile,
@@ -458,7 +533,60 @@ def save(ir: NarrativeIR, path: str | Path) -> None:
 
 
 def load(path: str | Path) -> NarrativeIR:
-    return NarrativeIR.model_validate(json.loads(Path(path).read_text("utf-8")))
+    data = json.loads(Path(path).read_text("utf-8"))
+    if isinstance(data, dict) and data.get("schema_version") == "1.0":
+        # ADR-0012：1.0→1.1 无损迁移。新字段全部可选默认空，
+        # 迁移 = 纯字段默认 + 版本号提升（回滚 = 忽略新字段重序列化）。
+        data["schema_version"] = "1.1"
+    return NarrativeIR.model_validate(data)
+
+
+def _is_num(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _episodes_by_no(ir_dict: dict[str, Any]) -> list[dict[str, Any]]:
+    """按人类可见集号升序返回集列表（重放 state_changes 的确定性顺序）。"""
+    return sorted(ir_dict.get("episodes", []), key=lambda e: e.get("no", 0))
+
+
+def derive_state(ir_dict: dict[str, Any]) -> dict[str, float | str | int]:
+    """ADR-0012：StateVariable 当前值（确定性重放，纯函数）。
+
+    从 initial 出发，按 episode_no 升序重放各集 state_changes：
+    number 型且 delta 为数值 → 累加；否则（string 型 / 非数值 delta）→ 覆盖。
+    IR 本体永不被改写，current 只进计算视图。
+    """
+    out: dict[str, float | str | int] = {}
+    for v in ir_dict.get("state_variables", []):
+        k = v.get("key")
+        if k:
+            out[k] = v.get("initial", 0)
+    for ep in _episodes_by_no(ir_dict):
+        for ch in ep.get("state_changes", []):
+            k = ch.get("key")
+            if k not in out:
+                continue
+            cur, d = out[k], ch.get("delta")
+            out[k] = cur + d if _is_num(cur) and _is_num(d) else d
+    return out
+
+
+def derive_stage(ir_dict: dict[str, Any], key: str) -> int:
+    """ADR-0012：DarkThread 当前阶段（确定性重放，纯函数）。
+
+    按 episode_no 升序累加各集 state_changes 里 key 匹配的 int delta，
+    从 0 起步；合法范围 [0, len(stages)-1] 由 INV-19 把关。
+    """
+    stage = 0
+    for ep in _episodes_by_no(ir_dict):
+        for ch in ep.get("state_changes", []):
+            if ch.get("key") != key:
+                continue
+            d = ch.get("delta")
+            if isinstance(d, int) and not isinstance(d, bool):
+                stage += d
+    return stage
 
 
 def _chars(s: str) -> int:

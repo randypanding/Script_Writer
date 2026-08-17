@@ -1,0 +1,10 @@
+id: PRS-006
+title: 惊讶标记词密度上限
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: not density_exceeds(join_text(item.paragraphs), @.__ctx.prose.surprise_markers, 3000)
+message: 章节 {item.id} 的惊讶标记词（忽然/猛地/竟然/仿佛/宛如等）密度超标：{count_any(join_text(item.paragraphs), @.__ctx.prose.surprise_markers)} 次 / {chars(join_text(item.paragraphs))} 字（每 3000 字最多 1 次）。靠副词制造惊讶是廉价的写法，堆叠后读者会麻木。请改为用事前铺垫与细节落差让转折自己产生冲击。
+fix_hint: 删掉"忽然/猛地"，把惊讶感放进前后画面的对比里。
+tags: [anti_ai, wordlist]

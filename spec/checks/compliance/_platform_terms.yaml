@@ -1,0 +1,7 @@
+# 平台合规词表（ADR-0011 / T-29）。来源：novel-distiller platform.py TOMATO_RULES must_avoid。
+# 由 _load_domain_extras 自动并入 ctx.compliance（机制见 src/nsc/runtime/ir_io.py）。
+violent_terms: [碎尸, 酷刑, 分尸, 凌迟, 活剥, 制毒, 冰毒, 爆炸装置, 制作炸弹, 自制炸药]
+explicit_terms: [性爱过程, 露骨描写, 性行为描写, 性虐待]
+political_terms: [影射领导人, 攻击体制, 颠覆政权, 煽动颠覆]
+superstition_terms: [做法事消灾, 开光转运, 符咒治病, 风水改命大师]
+bullying_terms: [校园霸凌过程, 教室围殴, 拍裸照威胁]

@@ -75,6 +75,57 @@ class Emotion(BaseModel):
     arousal: float = Field(ge=0.0, le=1.0, description="唤醒度：0 平静，1 强烈")
 
 
+class StateChange(BaseModel):
+    """ADR-0012 运行时叙事状态：状态变更是声明，不是对 IR 的运行时改写。
+
+    挂在 Episode 上，由 p3 声明；重放规则（`nsc.runtime.ir_io::derive_state`）：
+    number 型 StateVariable 累加 delta、string 型覆盖、DarkThread 按 int delta 步进。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    key: Slug
+    delta: float | int | str = Field(description="number 累加 / string 覆盖 / 暗线 int 步进")
+    reason: NonEmpty
+
+
+class MentalModel(BaseModel):
+    """角色心智 OS（novel-distiller 结构化子集，ADR-0012）。
+
+    name/description/trigger/action_tendency/failure_mode 五件套，
+    驱动"角色在压力下如何错误地行动"的可校验一致性。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    name: NonEmpty
+    description: str = ""
+    trigger: str = ""
+    action_tendency: str = ""
+    failure_mode: str = ""
+
+
+class ExpressionDNA(BaseModel):
+    """角色表达基因：句法/修辞/情绪温度/签名台词（ADR-0012）。"""
+
+    model_config = ConfigDict(extra="forbid")
+    syntax: str = ""
+    rhetoric: str = ""
+    emotion_temperature: str = ""
+    signature_lines: list[str] = Field(default_factory=list)
+
+
+class KnowledgeState(BaseModel):
+    """场级知识状态线（One-Sentence/StoryWriter 验证，ADR-0012）。
+
+    谁知道什么、观众知道什么、本场新增了什么证据——悬念管理的最小闭环。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    audience_knows: str = ""
+    characters_know: str = ""
+    hidden: str = ""
+    new_evidence: str = ""
+
+
 class _Node(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=False)
     id: ULID
@@ -111,6 +162,13 @@ class Episode(_Node):
     duration_target_s: int = Field(gt=0)
     hook_promise: NonEmpty = Field(description="本集开场承诺给观众的问题（用于 STR-011）")
     cliffhanger: str = Field(default="", description="集末悬念；末集可为空")
+    # --- ADR-0012 运行时叙事状态（全部可选默认空，1.0 IR 无损迁移） ---
+    # 注：default_factory 用类型化 list[int]/list[StateChange] 而非裸 list，
+    # 否则 pyright strict 把字段解成 list[Unknown]。
+    responds_to: list[int] = Field(
+        default_factory=list[int], description="本集回收哪些集的悬念/伏笔（INV-20）"
+    )
+    state_changes: list[StateChange] = Field(default_factory=list[StateChange])
 
 
 class Scene(_Node):
@@ -125,6 +183,11 @@ class Scene(_Node):
     entry: NonEmpty = Field(description="切入点：最晚进入的时刻")
     exit: NonEmpty = Field(description="切出点：最早离开的时刻")
     summary: str = ""
+    # --- ADR-0012 场级节奏与知识状态（全部可选默认空，1.0 IR 无损迁移） ---
+    opening_attractor: str = Field(default="", description="开场 3 秒吸引点（STR-017）")
+    escalation_beats: list[str] = Field(default_factory=list, description="逐拍升级描述")
+    ending_hook: str = Field(default="", description="切出钩子")
+    knowledge_state: KnowledgeState | None = None
 
 
 class Beat(_Node):

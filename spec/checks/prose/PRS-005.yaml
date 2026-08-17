@@ -1,0 +1,10 @@
+id: PRS-005
+title: 单章同一逻辑连接词上限
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: max_word_count(join_text(item.paragraphs), @.__ctx.prose.transition_words) < 3
+message: 章节 {item.id} 里同一个逻辑连接词（然而/不过/与此同时/另一方面等）出现了 {max_word_count(join_text(item.paragraphs), @.__ctx.prose.transition_words)} 次（上限 2）。转折全靠同一个词承担，说明因果是被"接"上去的而不是"长"出来的。请删掉多余连接词，让转折由事件本身完成，或换用不同的衔接方式。
+fix_hint: 「然而她没说话」可改成「她没说话」，用下一句的动作直接完成转折。
+tags: [anti_ai, wordlist]

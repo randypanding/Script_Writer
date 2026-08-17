@@ -1,0 +1,10 @@
+id: PRS-003
+title: 单章疲劳修辞词上限
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: max_word_count(join_text(item.paragraphs), @.__ctx.prose.fatigue_words) <= 1
+message: 章节 {item.id} 里同一个疲劳修辞词（冷笑/震惊/深吸一口气/眼中闪过一丝/仿佛等）出现了 {max_word_count(join_text(item.paragraphs), @.__ctx.prose.fatigue_words)} 次（上限 1）。这类网文腔高频词重复使用会立刻暴露 AI 痕迹并拉低质感。请只保留一处，其余改写成具体的动作或感官细节。
+fix_hint: 用"指节敲了敲桌面"替代"深吸一口气"，用具体反应替代"震惊/难以置信"。
+tags: [anti_ai, wordlist]

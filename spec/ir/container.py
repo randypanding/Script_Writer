@@ -5,18 +5,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .nodes import ULID, Beat, Episode, Line, Project, Scene, Season
 from .overlays import (
     BrandMoment,
     Character,
     Constraint,
+    DarkThread,
+    Fact,
     Location,
     Motif,
     NarrativeVoice,
     Prop,
     SetupPayoff,
+    StateVariable,
+    Thread,
     ToneSpec,
 )
 
@@ -61,7 +65,15 @@ class NovelChapter(BaseModel):
 
 class NarrativeIR(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _migrate_1_0(cls, v: object) -> object:
+        """ADR-0012：1.0→1.1 无损迁移。新字段全部可选默认空，
+        迁移 = 纯字段默认 + 版本号提升，故 1.0 dict 在校验入口原地升级。"""
+        return "1.1" if v == "1.0" else v
+
     project: Project
     seasons: list[Season] = Field(default_factory=list)
     episodes: list[Episode] = Field(default_factory=list)
@@ -78,6 +90,12 @@ class NarrativeIR(BaseModel):
     constraints: list[Constraint] = Field(default_factory=list)
     tone: ToneSpec | None = None
     voice: NarrativeVoice | None = None
+
+    # --- ADR-0012 运行时叙事状态层（IR 1.1，全部默认空表） ---
+    facts: list[Fact] = Field(default_factory=list)
+    threads: list[Thread] = Field(default_factory=list)
+    state_variables: list[StateVariable] = Field(default_factory=list)
+    dark_threads: list[DarkThread] = Field(default_factory=list)
 
     chapters: list[NovelChapter] = Field(default_factory=list)
     provenance: list[Provenance] = Field(default_factory=list)

@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "01M04TVA68W81RK6RKZW2FTAMS",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 六集短剧",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea",
+    "client_note": "",
+    "provenance_id": "run-minimal-000001",
+    "locked": false
+  },
+  "chapters": [
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN5",
+      "episode_id": "01M04TVA68W81RK6RKZW2FTAN2",
+      "order": 0,
+      "title": "",
+      "paragraphs": [
+        "她把那杯冷掉的茶端起来又放下。",
+        "他把伞收起来靠在门边等着。",
+        "窗外的雨下了一整个下午。"
+      ],
+      "anchor_map": [],
+      "provenance_id": "run-minimal-000001"
+    },
+    {
+      "id": "01M04TVA68W81RK6RKZW2FTAN6",
+      "episode_id": "01M04TVA68W81RK6RKZW2FTAN2",
+      "order": 1,
+      "title": "",
+      "paragraphs": [
+        "她把那杯冷掉的茶端起来又放下。",
+        "她把那杯冷掉的茶端起来又放下。",
+        "他把伞收起来靠在门边等着。",
+        "他把伞收起来靠在门边等着。",
+        "窗外的雨下了一整个下午。",
+        "窗外的雨下了一整个下午。",
+        "新的一句。"
+      ],
+      "anchor_map": [],
+      "provenance_id": "run-minimal-000001"
+    }
+  ]
+}

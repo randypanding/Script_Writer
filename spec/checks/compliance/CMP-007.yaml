@@ -1,0 +1,15 @@
+id: CMP-007
+title: 校园霸凌细节描写警示
+domain: compliance
+severity: warn
+stage: final
+select: project
+bind:
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, @.__ctx.compliance.bullying_terms)
+message: 交付文本命中校园霸凌类词条：{[x for x in @.__ctx.compliance.bullying_terms if contains_any(all_text,
+  [x])]}。霸凌过程的详细描写或美化会被平台判定为不良价值导向内容而限流。如剧情确需霸凌背景，请只保留受害者后果与反抗视角，删去围殴过程、拍裸照威胁等细节描写。
+legal_ref: spec/checks/compliance/_legal_sources.md#platform-rules
+tags:
+- platform
+- value

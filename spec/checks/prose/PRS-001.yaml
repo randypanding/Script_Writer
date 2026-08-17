@@ -1,0 +1,10 @@
+id: PRS-001
+title: 章节段落长度变异系数下限（反模板感）
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: para_cv(join_text(item.paragraphs)) >= 0.15
+message: 章节 {item.id} 的段落长度变异系数只有 {para_cv(join_text(item.paragraphs))}（下限 0.15），段落长短过于整齐，读起来像模板批量生成。请把信息最密的长段按"动作/反应"拆成两段，并把连续的短段合并或改写扩容，让段落节奏出现起伏。
+fix_hint: 优先拆最长段、并最短段，目标让最短段与最长段的字数差超过 2 倍。
+tags: [anti_ai, rhythm]

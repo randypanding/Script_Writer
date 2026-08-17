@@ -1,0 +1,10 @@
+id: PRS-004
+title: 模糊限定词密度上限
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: not density_exceeds(join_text(item.paragraphs), @.__ctx.prose.hedge_words, 333)
+message: 章节 {item.id} 的模糊限定词（似乎/可能/或许/某种程度上等）密度超标：{count_any(join_text(item.paragraphs), @.__ctx.prose.hedge_words)} 次 / {chars(join_text(item.paragraphs))} 字（每 333 字最多 1 次）。叙事视角频繁自我保留会让读者不信任叙述。请删掉大部分限定词，把判断落成确定的具体描写。
+fix_hint: 「她似乎有些犹豫」改成「她捏着杯沿，没有立刻接话」。
+tags: [anti_ai, wordlist]

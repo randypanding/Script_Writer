@@ -1,0 +1,10 @@
+id: PRS-002
+title: 章节句长变异系数下限（反机器节奏）
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: sent_cv(join_text(item.paragraphs)) >= 0.3
+message: 章节 {item.id} 的句长变异系数只有 {sent_cv(join_text(item.paragraphs))}（下限 0.3），句子长度过于一致，是典型的机器生成节奏，读者会很快疲劳。请把部分长句拆成短促的短句，部分短句合并成带从属结构的长句，制造长短交替。
+fix_hint: 每三句里至少留一句 10 字以内的短句和一句 25 字以上的长句。
+tags: [anti_ai, rhythm]

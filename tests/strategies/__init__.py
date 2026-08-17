@@ -54,6 +54,9 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
     loc_office = _ulid()
     loc_store = _ulid()
     prop_cup = _ulid()
+    thread_id = _ulid()
+    fact_a = _ulid()  # 伏笔（第 1 集埋，后被 B 回收）
+    fact_b = _ulid()  # 回收 A 的情节事件
 
     characters = [
         {
@@ -65,6 +68,23 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
             "voice_notes": "短句、爱反问",
             "voice_tics": ["完了", "真的假的"],
             "persona_ref": "office_woman_28",
+            "mental_models": [
+                {
+                    "name": "热量守恒",
+                    "description": "把一切快乐折算成热量负债",
+                    "trigger": "看到配料表",
+                    "action_tendency": "先放下再说",
+                    "failure_mode": "错过眼前这杯",
+                }
+            ],
+            "decision_heuristics": ["先看配料表再开口"],
+            "honest_boundaries": ["不当面对小满说教"],
+            "expression_dna": {
+                "syntax": "短句",
+                "rhetoric": "反问",
+                "emotion_temperature": "低温",
+                "signature_lines": ["这杯茶，不额外加蔗糖。"],
+            },
         },
         {
             "id": char_ids["customer_proxy"],
@@ -117,6 +137,12 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
     for ep_no in range(1, n_episodes + 1):
         ep_id = _ulid()
         order = ep_no - 1
+        # ADR-0012：状态变更声明（暗线首末各 +1 步，信任度每集 +1）+ 悬念回收声明
+        state_changes = [{"key": "trust_level", "delta": 1, "reason": "本集信任推进一格"}]
+        if ep_no == 1 or ep_no == n_episodes:
+            state_changes.append(
+                {"key": "sugar_free_truth", "delta": 1, "reason": "暗线揭示推进一步"}
+            )
         episodes_list.append(
             {
                 "id": ep_id,
@@ -129,6 +155,8 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
                 "duration_target_s": 90,
                 "hook_promise": "林晚的体检报告到底藏了什么？",
                 "cliffhanger": "" if ep_no == n_episodes else "报告背面还有一行字",
+                "responds_to": [ep_no - 1] if ep_no >= 2 else [],
+                "state_changes": state_changes,
                 "provenance_id": RUN_ID,
                 "locked": False,
             }
@@ -149,6 +177,15 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
                 "turn": "她发现同一杯茶两种说法",
                 "entry": "林晚刚坐下",
                 "exit": "她抓起杯子出门",
+                "opening_attractor": "体检报告特写：空腹血糖临界",
+                "escalation_beats": ["签字催促", "两种说法对质"],
+                "ending_hook": "报告背面还有一行字",
+                "knowledge_state": {
+                    "audience_knows": "报告读数异常",
+                    "characters_know": "林晚知道异常，小满不知道",
+                    "hidden": "陈经理改过备注",
+                    "new_evidence": "配料表照片",
+                },
                 "provenance_id": RUN_ID,
                 "locked": False,
             }
@@ -229,7 +266,7 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
         )
 
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "project": {
             "id": project_id,
             "kind": "project",
@@ -269,6 +306,64 @@ def build_minimal_ir(*, n_episodes: int = 1, beats_per_ep: int = 5) -> dict[str,
         "constraints": [],
         "tone": None,
         "voice": None,
+        # --- ADR-0012 运行时叙事状态层（合法样例，INV-17..20 全绿） ---
+        "facts": [
+            {
+                "id": fact_a,
+                "content": "茶杯标签背面写着代糖来源",
+                "character_ids": [char_ids["protagonist"]],
+                "episode_no": 1,
+                "status": "resolved",
+                "type": "foreshadowing",
+                "resolves": None,
+                "caused_by": [],
+                "known_to": "reader_only",
+                "hidden_from": [],
+                "suspense_type": "foreshadow",
+                "narrative_weight": "high",
+                "thread_ids": [thread_id],
+            },
+            {
+                "id": fact_b,
+                "content": "标签被当众看清，伏笔回收",
+                "character_ids": [char_ids["protagonist"], char_ids["customer_proxy"]],
+                "episode_no": 2 if n_episodes >= 2 else 1,
+                "status": "active",
+                "type": "plot_event",
+                "resolves": fact_a,
+                "caused_by": [fact_a],
+                "known_to": "all",
+                "hidden_from": [],
+                "suspense_type": None,
+                "narrative_weight": "medium",
+                "thread_ids": [thread_id],
+            },
+        ],
+        "threads": [
+            {
+                "id": thread_id,
+                "title": "这杯茶到底加没加糖",
+                "state": "已揭底",
+                "status": "resolved" if n_episodes >= 2 else "active",
+            }
+        ],
+        "state_variables": [
+            {
+                "key": "trust_level",
+                "name": "林晚对小满的信任度",
+                "type": "number",
+                "initial": 0,
+                "description": "每集 +1，重放派生 current",
+            }
+        ],
+        "dark_threads": [
+            {
+                "key": "sugar_free_truth",
+                "name": "无糖真相暗线",
+                "stages": ["只看表面", "起疑半揭", "当面全揭"],
+                "description": "首末集各推进一步",
+            }
+        ],
         "chapters": [],
         "provenance": [_run()],
     }

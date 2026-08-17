@@ -1,0 +1,10 @@
+id: PRS-014
+title: 段落禁用布道式断言词
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: not contains_any(item, @.__ctx.prose.sermon_words)
+message: 段落（{chars(item)} 字）出现了布道式断言词（显然/毋庸置疑/不言而喻/众所周知/不难看出）。替读者下结论是在说教，会激发逆反心理。请删掉断言词，只呈现证据，让结论由读者自己得出。
+fix_hint: 「显然他早有准备」改成「门没锁，茶是新泡的」。
+tags: [anti_ai, preachy]

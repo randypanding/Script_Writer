@@ -1,0 +1,15 @@
+id: CMP-005
+title: 现实政治影射词零出现
+domain: compliance
+severity: block
+stage: final
+select: project
+bind:
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, @.__ctx.compliance.political_terms)
+message: 交付文本命中现实政治红线词：{[x for x in @.__ctx.compliance.political_terms if contains_any(all_text,
+  [x])]}。现实政治影射属于平台最高压线，违规即下架且可能追责账号。商业交付必须与政治议题完全隔离，请整句删除，或把冲突改写为纯粹的商业/人际矛盾。
+legal_ref: spec/checks/compliance/_legal_sources.md#platform-rules
+tags:
+- platform
+- safety

@@ -1,0 +1,15 @@
+id: CMP-003
+title: 暴恐血腥与毒品词零出现
+domain: compliance
+severity: block
+stage: final
+select: project
+bind:
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, @.__ctx.compliance.violent_terms)
+message: 交付文本命中平台暴恐/血腥/毒品红线词：{[x for x in @.__ctx.compliance.violent_terms if contains_any(all_text,
+  [x])]}。此类词属于番茄小说等平台的一级审核红线，轻则限流屏蔽、重则下架封号。请把相关段落整段改写为不含血腥细节与制毒制爆过程的冲突表达。
+legal_ref: spec/checks/compliance/_legal_sources.md#platform-rules
+tags:
+- platform
+- safety

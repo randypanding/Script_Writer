@@ -1,0 +1,13 @@
+id: STR-014
+title: 每集必须有引爆与高潮承重节拍
+domain: structure
+severity: block
+stage: after_p3
+select: episodes[*]
+assert: 'any_of(item.beats, "x.beat_kind == ''inciting''") and any_of(item.beats, "x.beat_kind == ''climax''")'
+message: 第 {item.no} 集缺少承重节拍：引爆事件(inciting)或高潮(climax)未出现（本集 beat_kind 序列为 {[b.beat_kind
+  for b in item.beats]}）。inciting 负责把冲突推上桌面、climax 负责给出本集情绪峰值与可转述的记忆点，缺任何一个，这一集就只是事件的平铺，观众没有非看不可的理由。请把中段某个 escalation/complication Beat 改写为 inciting，并让本集情绪最高的 Beat 落位 climax。
+fix_hint: 优先把 order 居中、冲突最激烈的一拍改为 inciting；climax 应紧邻集末终态 Beat 之前。
+tags:
+- structure
+- beat

@@ -1,0 +1,10 @@
+id: PRS-007
+title: 段落禁用"不是…而是…"对仗句式
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: not regex_any(item, @.__ctx.prose.banned_sentence_patterns)
+message: 段落（{chars(item)} 字）出现了"不是……而是……"的对仗句式，这是 AI 生成文本最高频的句式指纹之一，密集出现会让整章读起来像演讲稿。请改为直陈事实，或把对比拆进两句动作里，让读者自己得出反差。
+fix_hint: 「这不是拒绝，而是疲惫」改成「她不是在拒绝。她只是撑不住了」。
+tags: [anti_ai, pattern]

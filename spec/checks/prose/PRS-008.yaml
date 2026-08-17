@@ -1,0 +1,10 @@
+id: PRS-008
+title: 段落禁用元叙述（跳出故事说话）
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: not regex_any(item, @.__ctx.prose.meta_narration_patterns)
+message: 段落（{chars(item)} 字）出现了元叙述（"到这里算是…/接下来就是…/读者可能…/我们来看…"），叙述者跳出了故事向读者喊话，会瞬间打断沉浸感。请删掉这句旁白，把同样的信息变成人物的行动或对话。
+fix_hint: 「到这里，算是告一段落」直接删除，或改成人物收尾动作「她把门带上了」。
+tags: [anti_ai, pattern]

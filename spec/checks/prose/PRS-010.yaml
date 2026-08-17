@@ -1,0 +1,10 @@
+id: PRS-010
+title: 章节正文禁用章节编号自引用
+domain: prose
+severity: block
+stage: after_p6
+select: chapters[*]
+assert: not regex_any(join_text(item.paragraphs), @.__ctx.prose.chapter_ref_patterns)
+message: 章节 {item.id} 的正文里出现了章节编号自引用（"第 N 章/Chapter N"）。正文不是大纲，读者顺着读即可，自引用会暴露生成过程并破坏叙事连贯，属于交付前必须清除的错误。请删除该句或改为情节内的自然指代（"那天的事/上个月"）。
+fix_hint: 直接删掉"第 X 章"所在的半句，通常不影响语义。
+tags: [anti_ai, delivery]

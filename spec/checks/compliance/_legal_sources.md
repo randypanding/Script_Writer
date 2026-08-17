@@ -18,4 +18,16 @@
 ## 平台规则
 各短视频平台对商业内容的标注要求（如是否需标记"广告"）。
 - 出处：待登记
-- 影响规则：`CMP-003`（尚未启用）
+- 影响规则：内容标注类要求尚未建规则（建规则时在此登记）
+
+## platform-rules
+平台内容安全词表（暴恐血腥毒品 / 露骨性描写 / 现实政治影射 / 现实迷信宣扬 / 校园霸凌细节）。
+- 出处：开源项目 novel-distiller 的 `platform.py` `TOMATO_RULES must_avoid`（番茄小说平台公开审核口径的开源整理，ADR-0011 / T-29 引入）
+- 核对人 / 日期：（待人工复核平台最新审核口径后登记；`CMP-006`/`CMP-007` 在复核前保持 warn）
+- 词表文件：`spec/checks/compliance/_platform_terms.yaml`
+- 影响规则与词表对应：
+  - `CMP-003`（block）← `violent_terms` 暴恐/血腥/毒品
+  - `CMP-004`（block）← `explicit_terms` 露骨性描写
+  - `CMP-005`（block）← `political_terms` 现实政治影射
+  - `CMP-006`（warn）← `superstition_terms` 现实迷信宣扬（奇幻设定不禁）
+  - `CMP-007`（warn）← `bullying_terms` 校园霸凌细节描写

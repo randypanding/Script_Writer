@@ -80,46 +80,64 @@ src/nsc/optimize/       gepa_metric.py 接入 revision_brief；gepa_run.py + pla
 
 ```python
 class FactStatus(StrEnum):
-    active = "active"; unresolved = "unresolved"; resolved = "resolved"; deprecated = "deprecated"
+    active = "active"
+    unresolved = "unresolved"
+    resolved = "resolved"
+    deprecated = "deprecated"
+
 
 class FactType(StrEnum):
-    character_detail = "character_detail"; relationship = "relationship"
-    backstory = "backstory"; plot_event = "plot_event"
-    foreshadowing = "foreshadowing"; world_rule = "world_rule"
+    character_detail = "character_detail"
+    relationship = "relationship"
+    backstory = "backstory"
+    plot_event = "plot_event"
+    foreshadowing = "foreshadowing"
+    world_rule = "world_rule"
+
 
 class SuspenseType(StrEnum):
-    foreshadow = "foreshadow"; secret = "secret"
-    misunderstanding = "misunderstanding"; setup = "setup"
+    foreshadow = "foreshadow"
+    secret = "secret"
+    misunderstanding = "misunderstanding"
+    setup = "setup"
+
 
 class Fact(BaseModel):
     """叙事事实。声明式：p3 按集声明；resolves 级联由不变量校验，不由代码改写。"""
+
     model_config = ConfigDict(extra="forbid")
     id: ULID
-    content: NonEmpty                      # 纯叙事描述，注入 prompt 用
-    character_ids: list[ULID] = []         # 涉及角色（INV-09 同款跨引用校验）
-    episode_no: int = Field(ge=1)          # 声明于第几集
+    content: NonEmpty  # 纯叙事描述，注入 prompt 用
+    character_ids: list[ULID] = []  # 涉及角色（INV-09 同款跨引用校验）
+    episode_no: int = Field(ge=1)  # 声明于第几集
     status: FactStatus = FactStatus.active
     type: FactType = FactType.plot_event
-    resolves: ULID | None = None           # 本 fact 回收了哪条伏笔（INV-17）
-    caused_by: list[ULID] = []             # 直接因（INV-18：因必须在更早或同集）
+    resolves: ULID | None = None  # 本 fact 回收了哪条伏笔（INV-17）
+    caused_by: list[ULID] = []  # 直接因（INV-18：因必须在更早或同集）
     known_to: Literal["all", "reader_only"] | list[ULID] | None = None
     hidden_from: list[ULID] = []
     suspense_type: SuspenseType | None = None
     narrative_weight: Literal["low", "medium", "high"] = "medium"
-    thread_ids: list[ULID] = []            # 成员关系唯一真相源在 Fact 侧（Thread 不存 fact_ids）
+    thread_ids: list[ULID] = []  # 成员关系唯一真相源在 Fact 侧（Thread 不存 fact_ids）
+
 
 class ThreadStatus(StrEnum):
-    active = "active"; resolved = "resolved"; dormant = "dormant"
+    active = "active"
+    resolved = "resolved"
+    dormant = "dormant"
+
 
 class Thread(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: ULID
-    title: NonEmpty                        # 剧情线名
-    state: str = ""                        # 当前进展一句话（注入用）
+    title: NonEmpty  # 剧情线名
+    state: str = ""  # 当前进展一句话（注入用）
     status: ThreadStatus = ThreadStatus.active
+
 
 class StateVariable(BaseModel):
     """数值/字符串锚点（暗线数值状态）。initial 存储，current 由 build_view 派生。"""
+
     model_config = ConfigDict(extra="forbid")
     key: Slug
     name: NonEmpty
@@ -127,63 +145,73 @@ class StateVariable(BaseModel):
     initial: float | str = 0
     description: str = ""
 
+
 class DarkThread(BaseModel):
     """阶段机暗线。stages 为有序阶段名；current_stage 由 build_view 派生。"""
+
     model_config = ConfigDict(extra="forbid")
     key: Slug
     name: NonEmpty
     stages: list[NonEmpty] = Field(min_length=2)
     description: str = ""
 
+
 class StateChange(BaseModel):
     """p3 按集声明的状态增量。确定性应用规则（build_view 派生时执行）：
     number 变量 → 累加；string 变量 → 覆盖；dark_thread → current_stage 累加。"""
+
     model_config = ConfigDict(extra="forbid")
-    key: Slug                              # → StateVariable.key 或 DarkThread.key
-    delta: float | int | str               # number→数值增量；dark_thread→int 阶段步进；string→新值
-    reason: NonEmpty                       # 变化原因（FCT-007）
+    key: Slug  # → StateVariable.key 或 DarkThread.key
+    delta: float | int | str  # number→数值增量；dark_thread→int 阶段步进；string→新值
+    reason: NonEmpty  # 变化原因（FCT-007）
+
 
 class MentalModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: NonEmpty
     description: str = ""
-    trigger: str = ""                      # 触发条件
-    action_tendency: str = ""              # 行动倾向
-    failure_mode: str = ""                 # 局限·失败模式
+    trigger: str = ""  # 触发条件
+    action_tendency: str = ""  # 行动倾向
+    failure_mode: str = ""  # 局限·失败模式
+
 
 class ExpressionDNA(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    syntax: str = ""                       # 句法特征
-    rhetoric: str = ""                     # 修辞偏好
-    emotion_temperature: str = ""          # 情感温度（怒/悲/喜/惧的行为模式）
-    signature_lines: list[str] = []        # 典型句式示例
+    syntax: str = ""  # 句法特征
+    rhetoric: str = ""  # 修辞偏好
+    emotion_temperature: str = ""  # 情感温度（怒/悲/喜/惧的行为模式）
+    signature_lines: list[str] = []  # 典型句式示例
+
 
 class KnowledgeState(BaseModel):
     """场末知识状态线（悬念管理的结构基础）。"""
+
     model_config = ConfigDict(extra="forbid")
-    audience_knows: str = ""               # 观众知道
-    characters_know: str = ""              # 角色知道
-    hidden: str = ""                       # 仍隐藏
-    new_evidence: str = ""                 # 本场新证据
+    audience_knows: str = ""  # 观众知道
+    characters_know: str = ""  # 角色知道
+    hidden: str = ""  # 仍隐藏
+    new_evidence: str = ""  # 本场新证据
 ```
 
 ### 4.2 既有节点字段扩展（全部可选，默认空 → 1.0 IR 无损迁移）
 
 ```python
 class Scene(_Node):  # 追加
-    opening_attractor: str = ""            # 开场吸引子（首 Beat 如何 3 秒内抓人）
-    escalation_beats: list[str] = []       # 场内升级阶梯（2-4 个递进步）
-    ending_hook: str = ""                  # 切出钩子（与 Episode.cliffhanger 呼应）
+    opening_attractor: str = ""  # 开场吸引子（首 Beat 如何 3 秒内抓人）
+    escalation_beats: list[str] = []  # 场内升级阶梯（2-4 个递进步）
+    ending_hook: str = ""  # 切出钩子（与 Episode.cliffhanger 呼应）
     knowledge_state: KnowledgeState | None = None
 
+
 class Episode(_Node):  # 追加
-    responds_to: list[int] = []            # 本集回应了哪些前集的 cliffhanger（集号，STR-016）
+    responds_to: list[int] = []  # 本集回应了哪些前集的 cliffhanger（集号，STR-016）
     state_changes: list[StateChange] = []  # 本集状态增量（FCT-006/007）
+
 
 class Character:  # 追加（心智操作系统，novel-distiller SKILL.md 的结构化子集）
     mental_models: list[MentalModel] = Field(default_factory=list, max_length=5)
     decision_heuristics: list[str] = Field(default_factory=list, max_length=7)
-    honest_boundaries: list[str] = Field(default_factory=list)   # 该角色绝不做的判断/事
+    honest_boundaries: list[str] = Field(default_factory=list)  # 该角色绝不做的判断/事
     expression_dna: ExpressionDNA | None = None
 ```
 

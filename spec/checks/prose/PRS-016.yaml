@@ -1,0 +1,10 @@
+id: PRS-016
+title: 段落破折号使用限制
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: not contains_any(item, ['——'])
+message: 段落（{chars(item)} 字）使用了破折号"——"。破折号是 AI 生成文本的高频标点指纹，短剧向小说里几乎完全可以用句号、逗号或动作描写替代。请把破折号后的内容改成独立短句，或用具体动作承接前面的停顿。
+fix_hint: 「他停住了——杯子还在她手里」改成「他停住了。杯子还在她手里」。
+tags: [anti_ai, punctuation]

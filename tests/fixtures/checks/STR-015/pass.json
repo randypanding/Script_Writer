@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "01JFIX00000000000000000000P",
+    "kind": "project",
+    "parent_id": null,
+    "order": 0,
+    "title": "清野茶事 · 单集",
+    "logline": "一个怕胖的女生在办公室里找一杯能喝的茶",
+    "profile_id": "short_drama_v1",
+    "brand_id": "demo_tea",
+    "client_note": "",
+    "provenance_id": "run-fix-000001",
+    "locked": false
+  },
+  "seasons": [],
+  "episodes": [
+    {
+      "id": "01JFIX00000000000000000000E",
+      "kind": "episode",
+      "parent_id": null,
+      "order": 0,
+      "no": 1,
+      "title": "第1集 谁在偷喝我的茶",
+      "logline": "林晚发现体检报告异常",
+      "duration_target_s": 90,
+      "hook_promise": "林晚的体检报告到底藏了什么？",
+      "cliffhanger": "",
+      "provenance_id": "run-fix-000001",
+      "locked": false
+    }
+  ],
+  "scenes": [
+    {
+      "id": "01JFIX00000000000000000000S",
+      "kind": "scene",
+      "parent_id": "01JFIX00000000000000000000E",
+      "order": 0,
+      "location_id": "loc-office",
+      "time_of_day": "day",
+      "interior": true,
+      "present_character_ids": [
+        "01JFIX00000000000000000000C"
+      ],
+      "goal": "林晚要确认报告读数",
+      "conflict": "陈经理催着她签字",
+      "turn": "她发现同一杯茶两种说法",
+      "entry": "林晚刚坐下",
+      "exit": "她抓起杯子出门",
+      "provenance_id": "run-fix-000001",
+      "locked": false
+    }
+  ],
+  "beats": [
+    {
+      "id": "01JFIX0000000000000000000B0",
+      "kind": "beat",
+      "parent_id": "01JFIX00000000000000000000S",
+      "order": 0,
+      "beat_kind": "hook",
+      "summary": "第1集第0拍：hook",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.3,
+        "arousal": 0.5
+      },
+      "est_duration_s": 15,
+      "brand_moment_id": null,
+      "provenance_id": "run-fix-000001",
+      "locked": false
+    },
+    {
+      "id": "01JFIX0000000000000000000B1",
+      "kind": "beat",
+      "parent_id": "01JFIX00000000000000000000S",
+      "order": 1,
+      "beat_kind": "inciting",
+      "summary": "第1集第1拍：inciting",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.2,
+        "arousal": 0.5
+      },
+      "est_duration_s": 15,
+      "brand_moment_id": null,
+      "provenance_id": "run-fix-000001",
+      "locked": false
+    },
+    {
+      "id": "01JFIX0000000000000000000B2",
+      "kind": "beat",
+      "parent_id": "01JFIX00000000000000000000S",
+      "order": 2,
+      "beat_kind": "climax",
+      "summary": "第1集第2拍：climax",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.9,
+        "arousal": 0.5
+      },
+      "est_duration_s": 15,
+      "brand_moment_id": null,
+      "provenance_id": "run-fix-000001",
+      "locked": false
+    },
+    {
+      "id": "01JFIX0000000000000000000B3",
+      "kind": "beat",
+      "parent_id": "01JFIX00000000000000000000S",
+      "order": 3,
+      "beat_kind": "cta",
+      "summary": "第1集第3拍：cta",
+      "function": "推动",
+      "emotion": {
+        "valence": 0.8,
+        "arousal": 0.5
+      },
+      "est_duration_s": 15,
+      "brand_moment_id": null,
+      "provenance_id": "run-fix-000001",
+      "locked": false
+    }
+  ],
+  "lines": [],
+  "characters": [
+    {
+      "id": "01JFIX00000000000000000000C",
+      "name": "林晚",
+      "role": "protagonist",
+      "want": "想在不靠节食的前提下控糖",
+      "need": "接受自己的不完美",
+      "voice_notes": "短句、爱反问",
+      "voice_tics": [
+        "完了",
+        "真的假的"
+      ],
+      "persona_ref": "office_woman_28"
+    }
+  ],
+  "locations": [
+    {
+      "id": "loc-office",
+      "name": "办公室工位",
+      "cost_tier": "free"
+    }
+  ],
+  "props": [],
+  "brand_moments": [],
+  "setup_payoffs": [],
+  "motifs": [],
+  "constraints": [],
+  "tone": null,
+  "voice": null,
+  "chapters": [],
+  "provenance": []
+}

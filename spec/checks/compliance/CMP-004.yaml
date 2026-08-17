@@ -1,0 +1,15 @@
+id: CMP-004
+title: 露骨性描写词零出现
+domain: compliance
+severity: block
+stage: final
+select: project
+bind:
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, @.__ctx.compliance.explicit_terms)
+message: 交付文本命中平台色情内容红线词：{[x for x in @.__ctx.compliance.explicit_terms if contains_any(all_text,
+  [x])]}。露骨性描写属于平台零容忍内容，会被直接屏蔽或下架。营销短剧中的亲密关系应止步于情绪与关系推进，请删除身体细节描写，改为留白或转场。
+legal_ref: spec/checks/compliance/_legal_sources.md#platform-rules
+tags:
+- platform
+- safety

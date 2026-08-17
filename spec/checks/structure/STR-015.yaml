@@ -1,0 +1,12 @@
+id: STR-015
+title: 情感弧零振幅即失败
+domain: structure
+severity: block
+stage: after_p3
+select: episodes[*]
+assert: emotion_range(item.beats) > 0
+message: 第 {item.no} 集情感弧振幅为 0（emotion_range(item.beats)={emotion_range(item.beats)}），全部 Beat 的 valence 相同。零振幅意味着本集入口情绪等于出口情绪，没有任何落差，观众感受不到变化就没有追下去的张力。请至少压低一拍的 valence、抬高另一拍，让本集情绪曲线出现明确的波峰或波谷。
+fix_hint: 找到冲突最激烈的一拍抬高 valence，再挑一拍铺垫性 Beat 压低，形成至少一处落差。
+tags:
+- emotion
+- arc

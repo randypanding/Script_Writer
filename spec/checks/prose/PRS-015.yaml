@@ -1,0 +1,10 @@
+id: PRS-015
+title: 章节间 6-gram 自我复用上限
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*]
+assert: chapter_ngram_repeats(ctx.chapters, item.order, 6) < 3
+message: 章节 {item.id}（order={item.order}）有 {chapter_ngram_repeats(ctx.chapters, item.order, 6)} 个 6 字片段在更早章节出现过、且在本章重复出现至少 2 次（上限 2）。跨章复读同一批短语说明作者在用"复制粘贴+微调"凑字，读者会明显感到既视感。请改写这些短语，或在前文出现处就换掉。
+fix_hint: 优先改写本章第二次出现的短语，保留与情节强绑定的一次。
+tags: [anti_ai, repetition]

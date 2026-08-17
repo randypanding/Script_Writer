@@ -24,7 +24,7 @@ class Violation:
     severity: str = "block"
 
 
-ALL_INVARIANTS: tuple[str, ...] = tuple(f"INV-{i:02d}" for i in range(1, 17))
+ALL_INVARIANTS: tuple[str, ...] = tuple(f"INV-{i:02d}" for i in range(1, 21))
 
 #: 由 Pydantic 字段约束保证（正则在 ULID，bounds 在 Emotion），无需函数实现。
 _SCHEMA_GUARANTEED = {"INV-01", "INV-10"}
@@ -476,3 +476,147 @@ def inv_16_id_stability(old: NarrativeIR, new: NarrativeIR) -> list[Violation]:
 
 #: 命名别名：ALL_INVARIANTS 里的 INV-16 对应实现函数名（测试按 `inv_<nn>` 探测）。
 inv_16 = inv_16_id_stability
+
+
+# ------------------------------------------------------------------ ADR-0012
+# INV-17..20：运行时叙事状态层（Fact/Thread/StateVariable/DarkThread）。
+# 派生纯函数 derive_state/derive_stage 在 src/nsc/runtime/ir_io.py，
+# 此处惰性引用（ir_io 只 import spec.ir.container，无环）。
+
+
+def inv_17(ir: NarrativeIR) -> list[Violation]:
+    """Fact.resolves 引用合法 + resolved 状态与回收级联互为充要。"""
+    from .overlays import FactStatus
+
+    by_id = {f.id: f for f in ir.facts}
+    out: list[Violation] = []
+    for f in ir.facts:
+        if f.resolves is not None:
+            target = by_id.get(f.resolves)
+            if target is None:
+                out.append(
+                    Violation(
+                        "INV-17",
+                        f.id,
+                        f"Fact {f.id} 的 resolves={f.resolves} 指向不存在的 Fact。"
+                        "请修正引用或先补目标 Fact。",
+                    )
+                )
+            elif f.resolves == f.id:
+                out.append(
+                    Violation(
+                        "INV-17",
+                        f.id,
+                        f"Fact {f.id} 的 resolves 指向自身。伏笔不得自我回收，请另立回收 Fact。",
+                    )
+                )
+        resolvers = [
+            g.id
+            for g in ir.facts
+            if g.id != f.id and g.status != FactStatus.deprecated and g.resolves == f.id
+        ]
+        if f.status == FactStatus.resolved and not resolvers:
+            out.append(
+                Violation(
+                    "INV-17",
+                    f.id,
+                    f"Fact {f.id} status=resolved，但没有任何非 deprecated Fact.resolves 指向它。"
+                    "请补一条回收 Fact 或把状态改回 unresolved。",
+                )
+            )
+        elif f.status != FactStatus.resolved and resolvers:
+            out.append(
+                Violation(
+                    "INV-17",
+                    f.id,
+                    f"Fact {f.id} 已被 Fact {resolvers[0]} 回收，但 status 仍为 {f.status}。"
+                    "级联要求此时 status 必须为 resolved。",
+                )
+            )
+    return out
+
+
+def inv_18(ir: NarrativeIR) -> list[Violation]:
+    """Fact.caused_by 引用存在且成因不晚于结果（因果不得倒置）。"""
+    by_id = {f.id: f for f in ir.facts}
+    out: list[Violation] = []
+    for f in ir.facts:
+        for cid in f.caused_by:
+            cause = by_id.get(cid)
+            if cause is None:
+                out.append(
+                    Violation(
+                        "INV-18",
+                        f.id,
+                        f"Fact {f.id} 的 caused_by 引用不存在的 Fact {cid}。请修正引用。",
+                    )
+                )
+            elif cause.episode_no > f.episode_no:
+                out.append(
+                    Violation(
+                        "INV-18",
+                        f.id,
+                        f"Fact {f.id}（第 {f.episode_no} 集）的成因 Fact {cid} 发生在"
+                        f"第 {cause.episode_no} 集，晚于结果。因果不得倒置，请调整 episode_no。",
+                    )
+                )
+    return out
+
+
+def inv_19(ir: NarrativeIR) -> list[Violation]:
+    """DarkThread 阶段界内 + number 型 StateVariable 的 delta 必须数值型。"""
+    from nsc.runtime.ir_io import derive_stage
+
+    var_type = {v.key: v.type for v in ir.state_variables}
+    out: list[Violation] = []
+    for ep in sorted(ir.episodes, key=lambda e: e.no):
+        for ch in ep.state_changes:
+            if var_type.get(ch.key) == "number" and isinstance(ch.delta, str):
+                out.append(
+                    Violation(
+                        "INV-19",
+                        ep.id,
+                        f"第 {ep.no} 集对数值状态 {ch.key} 声明了字符串 delta"
+                        f"（{ch.delta!r}）。number 型变量的 delta 必须是 int/float。",
+                    )
+                )
+    ir_dict = ir.model_dump()
+    for dt in ir.dark_threads:
+        stage = derive_stage(ir_dict, dt.key)
+        hi = len(dt.stages) - 1
+        if not (0 <= stage <= hi):
+            out.append(
+                Violation(
+                    "INV-19",
+                    None,
+                    f"暗线 {dt.key}（{dt.name}）按集累加 int delta 得 current_stage={stage}，"
+                    f"超出 [0, {hi}]（stages 共 {len(dt.stages)} 段）。请修正 state_changes 步进。",
+                )
+            )
+    return out
+
+
+def inv_20(ir: NarrativeIR) -> list[Violation]:
+    """Episode.responds_to 引用存在的集号且严格早于本集。"""
+    nos = {ep.no for ep in ir.episodes}
+    out: list[Violation] = []
+    for ep in ir.episodes:
+        for r in ep.responds_to:
+            if r not in nos:
+                out.append(
+                    Violation(
+                        "INV-20",
+                        ep.id,
+                        f"第 {ep.no} 集 responds_to 引用不存在的集号 {r}。请修正为已有集号。",
+                    )
+                )
+            elif r >= ep.no:
+                out.append(
+                    Violation(
+                        "INV-20",
+                        ep.id,
+                        f"第 {ep.no} 集 responds_to={r}，必须严格小于本集集号"
+                        "（只能回收更早集的悬念）。",
+                    )
+                )
+    return out

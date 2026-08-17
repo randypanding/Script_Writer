@@ -1,0 +1,15 @@
+id: CMP-006
+title: 现实迷信宣扬词警示
+domain: compliance
+severity: warn
+stage: final
+select: project
+bind:
+  all_text: '@.__ctx.ir.__all_text'
+assert: not contains_any(all_text, @.__ctx.compliance.superstition_terms)
+message: 交付文本命中现实迷信宣扬词：{[x for x in @.__ctx.compliance.superstition_terms if contains_any(all_text,
+  [x])]}。注意：奇幻/玄幻设定本身不受限，禁的是'做法事消灾''开光转运'这类现实迷信宣扬——平台会判定为封建迷信念内容而限流下架。请改为架空世界内的仪式设定，不指向现实中的改运、治病承诺。
+legal_ref: spec/checks/compliance/_legal_sources.md#platform-rules
+tags:
+- platform
+- value

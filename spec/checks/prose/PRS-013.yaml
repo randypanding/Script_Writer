@@ -1,0 +1,10 @@
+id: PRS-013
+title: 段落禁用"全场震惊"式群体反应
+domain: prose
+severity: warn
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: not regex_any(item, @.__ctx.prose.collective_shock_patterns)
+message: 段落（{chars(item)} 字）出现了"全场/众人集体震惊、倒吸凉气、哗然"式的群体反应套话。用围观者的夸张反应代替具体描写是短剧文案最常见的水词，读者完全无感。请落到 1-2 个具体人物的动作细节上（谁的手停了、谁先开口）。
+fix_hint: 「全场哗然」改成「后排有人吹了声口哨，随即安静下来」。
+tags: [anti_ai, cliche]

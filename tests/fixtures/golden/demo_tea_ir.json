@@ -325,7 +325,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XDA",
       "order": 2,
-      "beat_kind": "escalation",
+      "beat_kind": "inciting",
       "summary": "阿珍安利楼下新店，说喝了没负担，小满满脸不信",
       "function": "把人物推向门店",
       "emotion": {
@@ -359,7 +359,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XDB",
       "order": 1,
-      "beat_kind": "complication",
+      "beat_kind": "climax",
       "summary": "小满想进店又迈不动腿，怕这又是一场好看的营销",
       "function": "放大她的自我怀疑",
       "emotion": {
@@ -427,7 +427,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XEC",
       "order": 2,
-      "beat_kind": "escalation",
+      "beat_kind": "inciting",
       "summary": "小满质疑配料表也能印假的，阿珍举着手机冲进来要拍视频",
       "function": "冲突升级：不信任被摆上台面",
       "emotion": {
@@ -461,7 +461,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XEC",
       "order": 4,
-      "beat_kind": "reversal",
+      "beat_kind": "climax",
       "summary": "阿珍看完配料表改了口风，小林顺势发出明日之约",
       "function": "最挑剔的人开始动摇",
       "emotion": {
@@ -529,7 +529,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XFD",
       "order": 2,
-      "beat_kind": "escalation",
+      "beat_kind": "inciting",
       "summary": "小满凑近看备注板，上面写满熟客口味，唯独没有她",
       "function": "失落感建立",
       "emotion": {
@@ -563,7 +563,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XFD",
       "order": 4,
-      "beat_kind": "crisis",
+      "beat_kind": "climax",
       "summary": "小满嘴上说无所谓，心里却因为没被记住而空落落",
       "function": "至暗：原来我只是路人",
       "emotion": {
@@ -631,7 +631,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XGG",
       "order": 2,
-      "beat_kind": "escalation",
+      "beat_kind": "inciting",
       "summary": "阿珍冲进来起哄要点最甜的，小满当场急了",
       "function": "损友搅局",
       "emotion": {
@@ -665,7 +665,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEHE94S90HKBAFB2XGG",
       "order": 4,
-      "beat_kind": "reversal",
+      "beat_kind": "climax",
       "summary": "阿珍抢着喝了一口，沉默两秒后当场倒戈",
       "function": "反转：最嘴硬的人被征服",
       "emotion": {
@@ -733,7 +733,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEJRKTWDQEBC894KGFZ",
       "order": 2,
-      "beat_kind": "escalation",
+      "beat_kind": "inciting",
       "summary": "全办公室跟风拼单，小满嘴上吐槽心里没底",
       "function": "赌约被围观，压力升级",
       "emotion": {
@@ -767,7 +767,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEJRKTWDQEBC894KGFZ",
       "order": 4,
-      "beat_kind": "crisis",
+      "beat_kind": "climax",
       "summary": "复查前一晚小满失眠，怕自己期待落空",
       "function": "至暗：万一没用呢",
       "emotion": {
@@ -818,7 +818,7 @@
       "kind": "beat",
       "parent_id": "01M04ZEZEJRKTWDQEBC894KGH1",
       "order": 1,
-      "beat_kind": "setup",
+      "beat_kind": "inciting",
       "summary": "报告单在两人手里推来推去，谁都不敢先打开",
       "function": "埋下：报告背面朝上",
       "emotion": {

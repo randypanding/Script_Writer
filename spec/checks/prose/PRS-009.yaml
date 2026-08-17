@@ -1,0 +1,10 @@
+id: PRS-009
+title: 交付文本禁用策划报告术语
+domain: prose
+severity: block
+stage: after_p6
+select: chapters[*].paragraphs[*]
+assert: not contains_any(item, @.__ctx.prose.report_terms)
+message: 段落（{chars(item)} 字）出现了策划/分析报告术语（核心动机/信息边界/信息落差/情绪外化/沉没成本等）。小说是给商家与读者的确认物，正文混入工作术语等于把后台黑板搬上了台面，属于必须返工的严重错误。请把该术语改写成人物可感知的行为、对话或心理。
+fix_hint: 「他的核心动机是保住店」改成「他输不起这家店」。
+tags: [anti_ai, delivery]

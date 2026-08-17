@@ -1,0 +1,10 @@
+id: PRS-012
+title: 超长段落数量上限
+domain: prose
+severity: info
+stage: after_p6
+select: chapters[*]
+assert: long_paras(join_text(item.paragraphs), 300) < 2
+message: 章节 {item.id} 有 {long_paras(join_text(item.paragraphs), 300)} 个超过 300 字的超长段落（上限 1）。手机屏上超过一屏的段落会被直接跳读，信息密度再高也到不了读者。请按"一个段落一个动作单元"拆分，每段控制在 180 字以内。
+fix_hint: 在转折词、新人物开口、场景微变化处切分段落。
+tags: [rhythm, readability]

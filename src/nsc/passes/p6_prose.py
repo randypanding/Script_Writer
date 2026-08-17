@@ -1,4 +1,10 @@
-"""p6_prose：单集 Scene[]+Line[] → NovelChapter（段落 + 100% anchor_map）。"""
+"""p6_prose：单集 Scene[]+Line[] → NovelChapter（段落 + 100% anchor_map）。
+
+LLM 输入经 nsc.context.assemble 预算装配（ADR-0013）：P1=该集 scenes/lines 序列化
+（不可裁剪），P5=episode/bible/voice/profile 参考层（逐条装入）；当前 pipeline 无
+P2-P4 输入，传空。预算取 profile 的 context.budget，缺省足够大 → 现有内容不丢、
+生成语义不变，只把拼装改为过预算装配。
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,11 @@ from typing import Any
 
 from spec.passes import signatures
 
+from ..context import assemble
 from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
+
+# profile 未配置 context.budget 时的缺省（token）：远大于单集输入，保证不裁剪。
+_DEFAULT_CONTEXT_BUDGET = 32768
 
 
 class Module(DSPyPass):
@@ -19,18 +29,36 @@ class Module(DSPyPass):
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     ep = fragment["episode"]
     beats = fragment["beats"]
+    refs = [
+        ("episode_json", json.dumps(fragment["episode"], ensure_ascii=False)),
+        ("bible_json", json.dumps(fragment["bible"], ensure_ascii=False)),
+        ("voice_json", json.dumps(fragment["voice"], ensure_ascii=False)),
+        ("profile_json", json.dumps(ctx.profile, ensure_ascii=False)),
+    ]
+    assembled = assemble(
+        p0_system="",
+        p1_current=json.dumps(fragment["scenes_with_lines"], ensure_ascii=False),
+        p2_prev_summary="",
+        p3_facts=[],
+        p4_rag=[],
+        p5_bible=[text for _key, text in refs],
+        budget=int(ctx.profile.get("context", {}).get("budget", _DEFAULT_CONTEXT_BUDGET)),
+    )
+    p1 = next((lay for lay in assembled.layers if lay.name == "P1"), None)
+    p5 = next((lay for lay in assembled.layers if lay.name == "P5"), None)
+    # P5 逐条装入是前缀式：从装配结果还原存活字段（首条未装入即后继全弃）。
+    tail = p5.text if p5 is not None else ""
+    ref_inputs: dict[str, str] = {}
+    for key, text in refs:
+        if text and tail.startswith(text):
+            ref_inputs[key] = text
+            tail = tail[len(text) + 1 :]  # 跳过层内 join 分隔符 "\n"
+        else:
+            break
     out = Module()(
         ctx,
         with_diag(
-            {
-                "episode_json": json.dumps(ep, ensure_ascii=False),
-                "scenes_with_lines_json": json.dumps(
-                    fragment["scenes_with_lines"], ensure_ascii=False
-                ),
-                "bible_json": json.dumps(fragment["bible"], ensure_ascii=False),
-                "voice_json": json.dumps(fragment["voice"], ensure_ascii=False),
-                "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
-            },
+            {"scenes_with_lines_json": p1.text if p1 else "", **ref_inputs},
             fragment,
         ),
     )
