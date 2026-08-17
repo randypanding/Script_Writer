@@ -146,6 +146,83 @@ T-22 Client Pack 化与品牌资产复用 · T-23 分镜与可拍性检查 · T-
 T-25 成本优化（低层 Pass 换小模型 + 缓存命中率优化） · T-26 `mid_drama_v1` Profile
 
 ---
+
+## P1.5 · 外部方案吸收（依据 `docs/UPGRADE_PLAN_2026-08-17.md`，ADR-0011..0014 已 accepted）
+
+> 三波实施：Wave A 零 IR 改动纯增量 → Wave B IR 1.1 → Wave C 评测增强。全部规格的权威来源是方案文档 §4–§8，本处只列做/验收。
+
+### Wave A · 零 IR 改动（纯增量，先做）
+
+#### T-27 ⭐ textstats 模块 + prose 域 16 条规则
+**做**：① 核对 `guards/budgets.py` 计数口径并写进 BUDGETS.yaml 注释（前置）；② 新建 `src/nsc/textstats/`（方案 §6.1 签名）；③ checker `__ctx` 加载器从 compliance 专用泛化为按域自动加载 `_*.yaml`；④ registry 薄注册 ≤40 行；⑤ 落盘 `spec/checks/prose/_wordlists.yaml` + PRS-001..016 及各自 fixtures。
+**验收**：`pytest tests/test_checker_dsl.py` 全绿（16 条 pass/fail/expected）；`nsc check tests/fixtures/golden/demo_tea_ir.json` 零新增 block；`make spec-guard` 绿。
+
+#### T-28 结构红线 STR-014/015  ⇐ 无
+**做**：落盘 2 条 block 规则（每集承重 beat inciting+climax 在场；情感弧零振幅）+ fixtures。
+**验收**：`pytest tests/test_checker_dsl.py -k "STR-014 or STR-015"` 绿；golden IR 不误报。
+
+#### T-29 平台合规 CMP-003..007  ⇐ 无
+**做**：落盘 `spec/checks/compliance/_platform_terms.yaml` + 5 条规则（003/004/005 block，006/007 warn）+ fixtures；`_legal_sources.md` 新增 `#platform-rules` 节（番茄 must_avoid 清单来源）。
+**验收**：规则 fixtures 全绿；`make spec-guard` 的 checks_schema 对 compliance 域 legal_ref 校验通过。
+
+#### T-30 反模式锚点入 rubric  ⇐ 无
+**做**：autonovel 12 条结构性反模式逐条落 `spec/rubrics/anchors/prose_craft.yaml` 锚点描述+反例；平台 must_have 节奏项（每 1000 字爽点、压抑释放比、前 100 字钩子）落 `hook_strength.yaml`/`naturalness.yaml`。不新增维度。
+**验收**：`tests/test_judge.py::test_all_dimensions_have_anchors` 绿；`make spec-guard` 绿。
+
+#### T-31 ⭐ 修订 brief 合成器  ⇐ T-27
+**做**：`src/nsc/revise/revision_brief.py`（方案 §6.2 五节规格：PROBLEM/KEEP/CHANGE/VOICE/TARGET，≤2600 字按 block→warn→info 截断）；接入 `gepa_metric.py` feedback 的 PROBLEM 节与 p5 自检子步。
+**验收**：`tests/test_revision_brief.py`（五节结构、block 在 PROBLEM 首、KEEP 含判官最强句、TARGET 字数公式 REWRITE/FIX/POLISH/COMPRESS 0.55×/TIGHTEN 0.85×）；`test_gepa_metric.py` 原六条断言不破。
+
+#### T-32 ⭐ revise 模块（patch/gate/snapshot/idea_bank）  ⇐ 无
+**做**：`src/nsc/revise/{patch,gate,snapshot,idea_bank}.py`（方案 §6.2：两级匹配唯一性 + ≥50% 落位门槛；strict/lenient/always 三档公式；SQLite 内容哈希快照链 + `rollback_to`；idea_bank 表 + 写入钩子）。
+**验收**：`tests/test_revise.py`：精确匹配歧义判败、归一化坐标映射、49% vs 51% 落位分野、三档门禁真值表、快照回退往返一致。
+
+#### T-33 context 模块（P0-P5 预算 + 历史压缩）+ p6 接入  ⇐ T-27
+**做**：`src/nsc/context/{assembler,compress}.py`（方案 §6.3：P0 低保 400 token 不可裁、降级顺序 P3→P4→P2→P5、P4 整层可弃、每层 token 写 runs 表；中间历史压至 ~10% 走内容寻址缓存）；p6_prose 输入组装切换到 assembler；profile 增加 `context.*` 参数节。
+**验收**：`tests/test_context_budget.py`（低保不可裁、降级链顺序、超预算 P4 整层丢弃、压缩比与缓存命中）；`nsc run` 端到端 L0 全绿且 runs 表含分层 token 记录。
+
+### Wave B · IR 1.1（⇐ ADR-0012）
+
+#### T-34 ⭐ IR 1.1 落地  ⇐ T-27
+**做**：`spec/ir/overlays.py` 新增 Fact/Thread/StateVariable/DarkThread/StateChange/MentalModel/ExpressionDNA/KnowledgeState；Scene/Episode/Character 字段扩展；container 加四张表 + `schema_version "1.1"`；invariants.py 加 INV-17..20；`ir_io.py` 加 1.0→1.1 迁移与视图派生（current/current_stage/is_overdue）。
+**验收**：`pytest tests/test_invariants.py` 全绿（含 INV-17..20 与 `test_id_stability` 回归）；旧 golden IR 迁移后 `nsc check` 结果不变。
+
+#### T-35 p1/p2 签名扩展  ⇐ T-34
+**做**：p1_bible 输出角色心智 OS 字段；p2_arc 输出 Thread/DarkThread/StateVariable + `Episode.responds_to`；`signatures.py` 与 CONTRACTS.md 同步。
+**验收**：`nsc run` 端到端产物含新字段且 after_p1/after_p2 检查绿；`prompts/` 由 `nsc compile-prompts` 重新生成（git diff 无手改）。
+
+#### T-36 p3/p4 签名扩展  ⇐ T-35
+**做**：p3 输出 Facts[]（含 `PENDING:<slug>` 前向引用解引用）+ `Episode.state_changes`；Beat.summary 改事件模板格式（签名 docstring 引导）；p4 输出 Scene 节奏字段 + knowledge_state。
+**验收**：新 fixtures 端到端绿；p3 后处理解引用有单测（跨集 resolves 闭环）。
+
+#### T-37 Wave B 规则 7 条  ⇐ T-36
+**做**：FCT-003/006/007、STR-016/017/018、DLG-008 + fixtures（registry 加 `covered_by_responds` 纯函数）。
+**验收**：`pytest tests/test_checker_dsl.py` 全绿；规则总数 ≤90（budgets 守卫断言）。
+
+#### T-38 dep_graph/快照接线 + 重编译闭包测试  ⇐ T-36, T-32
+**做**：`dep_graph.yaml` 新增 facts/threads/state_variables/dark_threads 失效闭包；pipeline 在 p3 全季后处理之后调 `snapshot.save_snapshot`；CONTRACTS.md §3 更新。
+**验收**：`tests/test_recompile.py` 新增 case（改 Fact.resolves 只重跑相关集检查、不重生成）；快照在重编译后落盘可查。
+
+### Wave C · 评测与优化增强
+
+#### T-39 三视角判官  ⇐ T-30
+**做**：`rubric_judge` 指令内嵌编辑/类型读者/普通读者三视角 + 分歧标记（单一调用，确定性聚合）；`pairwise_protocol.md` 更新；分歧注记持久化。
+**验收**：`nsc judge calibrate` 报告含视角分歧统计且 κ 相对基线不降；测试断言三视角输出结构。
+
+#### T-40 Elo 锦标赛模式  ⇐ 无
+**做**：`nsc eval l1 --tournament`（1500/K32/4 轮 Swiss 相邻配对/无平局/temperature 0.2/3000 字截断/5 比较轴）。
+**验收**：测试断言配对算法与 Elo 公式；固定 seed 排名可复现。
+
+#### T-41 plateau 停止 + Idea Bank 接线  ⇐ T-32
+**做**：revision 循环与 `gepa_run.py` 加 plateau（Δ<0.03@≥3 轮、上限 6 轮、退步回滚快照）；p2/p3 上下文注入"可复活素材"层；CLI `nsc bank list|revive`。
+**验收**：合成指标序列测试停止/回滚；bank 写入→注入→revive 往返测试。
+
+#### T-42 端到端回归验收 + BORROW_MAP 增补  ⇐ T-37, T-38, T-39
+**做**：demo_tea 全量回归（78 条规则零 block）；`nsc eval l1`（含 --tournament）基线对比报告进 `out/eval/`；`docs/BORROW_MAP.md` 增补 #29–#36（novel-studio/autonovel/inkos/StoryWriter/FicForge/NovelForge/novel-distiller/One-Sentence-One-Drama）。
+**验收**：`make ci-local` 全绿；P1.5 整体退出条件（方案 §10）逐项勾选。
+
+---
+
 ## 派单建议（单人 + AI Agent）
 - **你必须亲自做**：T-06（黄金 IR）、T-21 的人工种子核验、判官校准的分歧样本阅读、规则 L2→L3 approve。
   这四件事是"品味"的注入口，外包给 Agent 等于放弃资产。
