@@ -6,27 +6,27 @@ requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
-  "dspy>=3.0",                 # dspy.GEPA 需要 3.x
+  "dspy>=3.0", # dspy.GEPA 需要 3.x
   "litellm>=1.55",
   "python-ulid>=3.0",
-  "jmespath>=1.0",             # checker DSL select
-  "simpleeval>=1.0",           # checker DSL assert（安全求值，勿换 eval）
+  "jmespath>=1.0", # checker DSL select
+  "simpleeval>=1.0", # checker DSL assert（安全求值，勿换 eval）
   "pyyaml>=6.0",
   "jinja2>=3.1",
   "typer>=0.12",
   "rich>=13.9",
-  "diskcache>=5.6",            # 内容寻址缓存
-  "python-docx>=1.1",          # docx 生成 + 修订 XML 解析
+  "diskcache>=5.6", # 内容寻址缓存
+  "python-docx>=1.1", # docx 生成 + 修订 XML 解析
   "lxml>=5.3",
-  "rapidfuzz>=3.10",           # 模糊回退对齐
+  "rapidfuzz>=3.10", # 模糊回退对齐
   "sqlite-vec>=0.1.6",
-  "sentence-transformers>=3.2",# BGE-M3
+  "sentence-transformers>=3.2", # BGE-M3
   "hdbscan>=0.8.40",
   "numpy>=2.1",
   "scipy>=1.14",
   "langfuse>=2.53",
   "krippendorff>=0.8",
-  "statsmodels>=0.14",         # cohen_kappa
+  "statsmodels>=0.14", # cohen_kappa
 ]
 
 [project.optional-dependencies]
