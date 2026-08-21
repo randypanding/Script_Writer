@@ -36,6 +36,31 @@ class BeatTemplate(BaseModel):
     note: str = ""
 
 
+class PipelineSettings(BaseModel):
+    """SW-07 / ADR-0016：管线重试策略。缺省值 = 提案前的代码常量（零行为变化）。"""
+
+    model_config = ConfigDict(extra="forbid")
+    pass_attempts: int = Field(default=2, ge=1, description="单 Pass 输出波动重试次数（D13）")
+    phase_attempts: int = Field(default=3, ge=1, description="p3/p4、p5、p6 相位级定向重生成次数")
+
+
+class RetrievalSettings(BaseModel):
+    """SW-07 / ADR-0016：案例检索注入策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+    top_k: int = Field(default=3, ge=1, description="每 Pass 注入的命中案例条数（rerank top-n）")
+
+
+class ReviseSettings(BaseModel):
+    """SW-07 / ADR-0016：定向重生成（self-check 修订）策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+    self_check: bool = Field(default=True, description="p5 自检子步骤开关（T-31）")
+    gate_mode: Literal["strict", "lenient", "always"] = Field(
+        default="lenient", description="修订采纳门槛（nsc.revise.gate.MODES）"
+    )
+
+
 class Profile(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal["1.0"] = "1.0"
@@ -62,6 +87,13 @@ class Profile(BaseModel):
 
     beat_templates: list[BeatTemplate] = Field(default_factory=list)
     novel: NovelSettings = Field(default_factory=NovelSettings)
+
+    #: SW-07 / ADR-0016：管线策略（重试与定向重生成次数）。缺省 = 原代码常量。
+    pipeline: PipelineSettings = Field(default_factory=lambda: PipelineSettings())
+    #: SW-07 / ADR-0016：检索注入条数（rerank top-n）。
+    retrieval: RetrievalSettings = Field(default_factory=lambda: RetrievalSettings())
+    #: SW-07 / ADR-0016：定向重生成（self-check 修订）策略。
+    revise: ReviseSettings = Field(default_factory=lambda: ReviseSettings())
 
     render_targets: list[Slug] = Field(default_factory=lambda: ["novel_docx", "script_fountain"])
     enabled_check_domains: list[str] = Field(

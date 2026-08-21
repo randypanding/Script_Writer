@@ -39,6 +39,16 @@ def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
     )
 
 
+def _make_retrieval(ctx: Any) -> Any:
+    """SW-07：检索服务，注入条数 top_k 读 profile.retrieval（缺省 3=原常量）。"""
+    from nsc.retrieval import RetrievalService
+
+    return RetrievalService(
+        db_path="cases/cases.db",
+        k=max(1, int(ctx.profile.get("retrieval", {}).get("top_k", 3))),
+    )
+
+
 # --- 编译 ---
 @app.command()
 def run(
@@ -56,9 +66,7 @@ def run(
     brief_dict = yaml.safe_load(Path(brief).read_text("utf-8"))
     ctx = _make_ctx(brief_dict, Path(out))
     if not no_retrieval:
-        from nsc.retrieval import RetrievalService
-
-        ctx.retrieval = RetrievalService(db_path="cases/cases.db")
+        ctx.retrieval = _make_retrieval(ctx)
     try:
         ir = run_pipeline(ctx)
     except PassFailure as e:
