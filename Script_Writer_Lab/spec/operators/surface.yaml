@@ -1,0 +1,48 @@
+# 优化面目录 · 优化器的允许动作清单(ADR-0001 L-D5)。不在本表的动作 = 禁止。
+version: 1
+
+M1:   # 立即放权:优化器直写 + CI 绿即可
+  - id: op.prompt_instructions
+    target: "SW: prompts/<pass>.json :: instructions(p1..p6)"
+    note: 现有 GEPA 写入面,哈希守卫已在
+  - id: op.prompt_contract_strings
+    target: "SW: 各 pass 的契约字符串(p3 _SP_CONTRACT/_FACT_CONTRACT/_SC_CONTRACT、p5 契约串)"
+    note: 当前硬编码在 pass 代码里;依赖上游卡 SW-03 提升到 prompts 层后才可写
+  - id: op.routing_model_map
+    target: "SW: config/models.yaml :: tier->model/temperature/max_tokens/fallbacks"
+    note: 文件自述 models are disposable
+  - id: op.routing_escalation
+    target: "SW: escalate 阶梯与触发策略(ADR-0022)"
+  - id: op.sampling
+    target: "SW: 每 pass 的 best-of-n、rerank 开关与 n、seed 策略"
+  - id: op.profile_knobs
+    target: "SW: profiles/*.yaml :: context.budget、beats_per_episode、max_scenes、min_emotion_range、chars_per_second、novel.styles 等数值旋钮"
+  - id: op.render_voice
+    target: "SW: NarrativeVoice/风格选择(渲染参数,ADR-0003)"
+
+M2:   # 契约稳定后放(判官闸门 ON 且 OEO 在 M1 上显著赢过两个对照):
+  - id: op.memory_injection
+    target: "SW: p3 fragment 组成(prev_summary 窗口、known_facts 投影、Thread 注入开关——Thread 目前未接)"
+  - id: op.memory_assembler
+    target: "SW: context/assembler P2-P5 层预算与优先级(目前仅 p6 接线且 P2-P4 为空——休眠的头寸)"
+  - id: op.memory_compression
+    target: "SW: context/compress.compress_history 的 ratio/keep_recent(已实现未接线)"
+  - id: op.retrieval
+    target: "SW: PASS_UNIT_KIND 映射、top-k、vec 重排开关、检索池质量带过滤"
+  - id: op.graph_retry
+    target: "SW: pipeline 重试次数、定向重生成策略、并行扇出(NSC_PARALLEL)"
+  - id: op.graph_substeps
+    target: "SW: self-check 子步骤开关、批评-重写环的增删(不得违反 spec/passes/CONTRACTS.md)"
+  - id: op.revise_gate
+    target: "SW: revise/gate 阈值(strict/lenient)"
+
+M3:   # 永不放权:优化器只能产出 ADR 建议文本,人类批准
+  - op.propose_check_rule        # 新增/修改 spec/checks(尤其 severity:block)
+  - op.propose_threshold_change  # eval/thresholds.yaml、contract/*
+  - op.propose_rubric_change     # rubric 轴/权重/anchor
+  - op.propose_surface_change    # 本表的增删
+
+explicitly_not_operators:   # 容易误以为是面的禁区
+  - brief 分布规格(contract/objective.yaml::brief_distribution)——优化器训练分布由契约冻结
+  - sealed 集、判官配置、晋升规则、考试门限
+  - corpus/ 与 transcripts/ 原文——优化器无读权限

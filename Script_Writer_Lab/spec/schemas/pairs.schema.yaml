@@ -1,0 +1,24 @@
+# 偏好对的 JSON Schema(L-06 的契约;tests/test_pairs_schema.py 的依据)
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+required: [pair_id, axis, a_text, b_text, label, construction, split, created_at]
+properties:
+  pair_id: { type: string, pattern: "^pair:[a-z0-9]{26}$" }
+  axis:
+    enum: [naturalness, hook_strength, placement_integration, transportation,
+           producibility, prose_craft, l0_structure, l0_fact, l0_brand, l0_dialogue]
+  a_text: { type: string, minLength: 1 }
+  b_text: { type: string, minLength: 1 }
+  label: { enum: [a_win, b_win] }          # 由构造保证;禁止任何模型判断写入此字段
+  construction:
+    type: object
+    required: [kind]
+    properties:
+      kind: { enum: [corpus_degraded, corpus_vs_gen, gen_degraded] }
+      op_id: { type: string }              # kind=*_degraded 时必填,对应 spec/degradation/operators.yaml
+      severity: { type: number }
+      source_script_id: { type: string }
+      source_run_id: { type: string }
+  split: { enum: [exam, train, val] }      # exam=判官考试;train/val=后续优化用;按 script_id 切分防泄漏
+  created_at: { type: string }             # ISO8601
+additionalProperties: false

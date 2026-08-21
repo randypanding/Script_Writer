@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
 permissions: {contents: write, issues: write, actions: write}
 
+defaults:
+  run:
+    working-directory: Script_Writer
 jobs:
   calibrate:
     runs-on: ubuntu-latest

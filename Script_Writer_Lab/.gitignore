@@ -1,0 +1,20 @@
+# 禁地:永不提交
+corpus/**
+!corpus/inbox/
+!corpus/inbox/.gitkeep
+transcripts/
+# 人类保管的验收测试(不应留在仓库内;若忘记移走也绝不提交)
+holdout/
+# 生成物
+out/
+dashboards/
+*.db
+*.sqlite
+# 密钥
+.env
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

@@ -6,7 +6,23 @@ concurrency: {group: "ci-${{ github.ref }}", cancel-in-progress: true}
 
 permissions: {contents: read}
 
+defaults:
+  run:
+    working-directory: Script_Writer
+
 jobs:
+  lab:
+    name: Lab (lint/test/guard)
+    defaults:
+      run:
+        working-directory: Script_Writer_Lab
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync
+      - run: make ci          # lint + pytest(llm默认跳过) + corpus泄漏守卫
+
   # ---------- 阻塞：秒级，无 LLM ----------
   quality:
     name: lint & typecheck
@@ -54,7 +70,7 @@ jobs:
       - run: uv run pytest -m "not llm" -n auto --cov --cov-report=term --cov-fail-under=80
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: test-report, path: out/}
+        with: {name: test-report, path: Script_Writer/out/}
 
   golden:
     name: golden regression (结构+渲染快照)
@@ -77,5 +93,5 @@ jobs:
         with: {fetch-depth: 0}
       - name: 检查本 PR 是否新增/修改了 adr/
         run: |
-          git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^adr/' \
+          git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^Script_Writer/adr/' \
             || { echo "::error::标记 asset-change 的 PR 必须包含 ADR（AGENTS.md §5）"; exit 1; }

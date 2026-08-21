@@ -1,0 +1,30 @@
+# ScriptCard/StatsCard 的 JSON Schema(L-01/L-02 的契约;tests/test_corpus_card.py 的依据)
+$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+required: [script_id, kind, n_scenes, n_lines, dialogue_ratio, sent_len_mean, sent_len_cv, hook_positions, meta, simhash]
+properties:
+  script_id: { type: string, pattern: "^scr:[a-z0-9]{26}$" }        # ULID,内容无关
+  kind: { enum: [drama_script, novel] }
+  n_episodes: { type: integer, minimum: 0 }                          # 小说可为 0
+  n_scenes: { type: integer, minimum: 0 }
+  n_lines: { type: integer, minimum: 0 }                             # 对白行数
+  total_chars: { type: integer, minimum: 0 }
+  dialogue_ratio: { type: number, minimum: 0, maximum: 1 }
+  sent_len_mean: { type: number, minimum: 0 }
+  sent_len_cv: { type: number, minimum: 0 }
+  para_len_cv: { type: number, minimum: 0 }
+  hook_positions:                                                    # 归一化位置 [0,1]:开集钩子/集末悬念
+    type: array
+    items: { type: number, minimum: 0, maximum: 1 }
+  ep_char_counts:                                                    # 分集字数(小说=分章)
+    type: array
+    items: { type: integer, minimum: 0 }
+  meta:
+    type: object
+    required: [claimed_genre, claimed_platform]
+    properties:
+      claimed_genre: { type: string }        # 提供者声称,未经核实
+      claimed_platform: { type: string }
+      source_file: { type: string }
+  simhash: { type: string, pattern: "^[0-9a-f]{16}$" }
+additionalProperties: true

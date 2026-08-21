@@ -3,6 +3,9 @@ on:
   schedule: [{cron: "0 3 * * 1"}]
   workflow_dispatch:
 permissions: {contents: write, issues: write}
+defaults:
+  run:
+    working-directory: Script_Writer
 jobs:
   dash:
     runs-on: ubuntu-latest
@@ -21,4 +24,4 @@ jobs:
         continue-on-error: true
         with:
           issue-number: 1        # 固定一个"飞轮周报"Issue
-          body-path: docs/metrics/latest.md
+          body-path: Script_Writer/docs/metrics/latest.md

@@ -1,0 +1,15 @@
+# Lab 全局配置。models 是一次性耗材,routing 策略在 contract/(资产)。
+[paths]
+script_writer_checkout = "../Script_Writer"   # pinned;禁止 import,只能 subprocess 调 `uv run nsc ...`
+corpus = "corpus"
+mined = "mined"
+transcripts = "transcripts/transcripts.db"
+out = "out"
+
+[models]
+# 槽位 -> 模型。改本文件不需要 ADR;改 contract/judges.yaml 的家族约束需要。
+generation = { model = "qwen-plus", api_key_env = "GEN_API_KEY", api_base_env = "GEN_API_BASE" }
+generation_strong = { model = "qwen-max", api_key_env = "GEN_API_KEY", api_base_env = "GEN_API_BASE" }
+judge_dev = { model = "qwen-plus", api_key_env = "JUDGE_DEV_API_KEY", api_base_env = "JUDGE_DEV_API_BASE" }
+judge_sealed = { model = "glm-4.6", api_key_env = "JUDGE_SEALED_API_KEY", api_base_env = "JUDGE_SEALED_API_BASE" }
+synthesis = { model = "qwen-plus", api_key_env = "GEN_API_KEY", api_base_env = "GEN_API_BASE" }

@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
 permissions: {contents: write, pull-requests: write}
 
+defaults:
+  run:
+    working-directory: Script_Writer
 jobs:
   mine:
     runs-on: ubuntu-latest
@@ -23,7 +26,7 @@ jobs:
         with:
           branch: bot/rule-candidates
           title: "规则候选（自动挖掘 $(date +%F)）"
-          body-path: out/mining/validation.md
+          body-path: Script_Writer/out/mining/validation.md
           labels: |
             rule-candidate
             asset-change

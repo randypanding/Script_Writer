@@ -1,10 +1,15 @@
+# 双文件夹布局:Script_Writer/ = 交付物仓本体;Script_Writer_Lab/ = 质量契约与自优化实验场。
 # 资产层必须由你本人 review。Agent 可以提 PR，但不能自动合并。
-/spec/                @randypanding
-/profiles/            @randypanding
-/brands/              @randypanding
-/cases/export/        @randypanding
-/eval/thresholds.yaml @randypanding
-/adr/                 @randypanding
-/.github/             @randypanding
-/COMPLIANCE.md        @randypanding
+/Script_Writer/spec/                @randypanding
+/Script_Writer/profiles/            @randypanding
+/Script_Writer/brands/              @randypanding
+/Script_Writer/cases/export/        @randypanding
+/Script_Writer/eval/thresholds.yaml @randypanding
+/Script_Writer/adr/                 @randypanding
+/.github/                           @randypanding
+/Script_Writer/COMPLIANCE.md        @randypanding
+# Lab 侧契约资产(ADR-0001:contract/ 改动需人类确认;spec/adr 需 ADR)
+/Script_Writer_Lab/contract/        @randypanding
+/Script_Writer_Lab/adr/             @randypanding
+/Script_Writer_Lab/spec/            @randypanding
 # src/ 与 tests/ 不设 owner：Agent 自主区

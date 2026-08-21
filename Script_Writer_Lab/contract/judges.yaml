@@ -1,0 +1,35 @@
+# 判官契约 · ADR-0001 L-D4:LLM-as-a-Verifier 范式,分层使用
+# 打分内核:官方包 llm-verifier(见 docs/VERIFIER_IMPLEMENTATION.md);禁止自造
+version: 1
+
+dev_judge:
+  family: primary              # 可与生成同家族
+  model_slot: judge_dev        # lab.toml [models] 槽位;中档即可(弱验证器+重复采样)
+  engine: llm_verifier.compare # 两次有向调用取平均(去槽位偏差)
+  scoring: logprob_expectation # 对打分 token 的 logit 分布求期望 -> 连续分
+  scoring_fallback: k_sample_vote   # API 不暴露 logprobs 时的降级路径(必须有测试)
+  k: 5                         # 重复评估次数,降方差
+  decomposition: per_axis_signals   # 每轴拆成 rubric 信号级子问题分别验证再聚合
+  position_swap: true          # (A,B)+(B,A) 两调,去位置偏
+  rationale_visible_to_optimizer: true   # dev 判官理由可读(诊断反馈是优化燃料)
+
+sealed_judge:
+  family: secondary            # 必须跨家族(交叉锚);弱判官不降档到此层
+  model_slot: judge_sealed
+  engine: llm_verifier.compare
+  scoring: logprob_expectation
+  scoring_fallback: k_sample_vote
+  k: 5
+  decomposition: per_axis_signals
+  position_swap: true
+  rationale_visible_to_optimizer: false  # 只回标量
+
+exam:                          # 判官上岗考试(L-08):全部通过才准出分;任一轴不过则该轴降级"仅报告"
+  degradation_sensitivity: 0.85        # 每轴:构造对中判对 原版>退化版 的比例
+  block_defect_sensitivity: 0.95       # block 类缺陷(D07/D08/D09/D14)要求更高
+  position_bias: 0.08                  # 与 SW eval/thresholds.yaml 对齐
+  transitivity: 0.95                   # A>B 且 B>C 则必须 A>C
+  cross_family_agreement: 0.70         # 双判官在构造对上的成对一致率
+  min_exam_pairs_per_axis: 100
+
+recertification: weekly_or_50_experiments   # 定期重考;掉线即关闸(L-D6 面板 4)
