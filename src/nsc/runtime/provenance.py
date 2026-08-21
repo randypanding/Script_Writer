@@ -24,6 +24,24 @@ def spec_fingerprint(paths: list[Path]) -> str:
     return h.hexdigest()
 
 
+def spec_domain_fingerprints(root: Path = Path("spec")) -> dict[str, str]:
+    """SW-02 分域指纹：按 spec 顶层子域分别取 sha256[:12]。
+
+    任何小编订只让所属域的指纹变化；PassContext 据此把缓存键里的 spec_sha
+    缩到影响生成结构的域（ir/passes），避免无关域（rubrics/feedback/...）编辑
+    使全量内容缓存失效。checks 域由既有 ruleset_ver 单独覆盖；
+    全量指纹仍走 spec_fingerprint（runs.spec_sha 不弱化）。
+    """
+    domains: dict[str, list[Path]] = {}
+    for p in [*root.rglob("*.py"), *root.rglob("*.yaml")]:
+        rel = p.relative_to(root)
+        domain = rel.parts[0] if len(rel.parts) > 1 else "root"
+        if domain == "__pycache__":
+            continue
+        domains.setdefault(domain, []).append(p)
+    return {d: spec_fingerprint(ps)[:12] for d, ps in sorted(domains.items())}
+
+
 @dataclass(slots=True)
 class RunRecord:
     """对应 runs 表的一行（D20）。"""

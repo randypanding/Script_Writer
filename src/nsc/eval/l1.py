@@ -109,7 +109,7 @@ def _compile_brief(brief: dict[str, Any], retrieval_on: bool) -> dict[str, Any]:
     from nsc.passes.pipeline import run_pipeline
     from nsc.runtime.ir_io import build_view
     from nsc.runtime.models import ModelRouter
-    from nsc.runtime.provenance import RunsStore, spec_fingerprint
+    from nsc.runtime.provenance import RunsStore, spec_domain_fingerprints, spec_fingerprint
 
     profile = yaml.safe_load(Path(f"profiles/{brief.get('profile', '')}.yaml").read_text("utf-8"))
     brand = yaml.safe_load(Path(f"brands/{brief.get('brand', '')}/brand.yaml").read_text("utf-8"))
@@ -122,6 +122,7 @@ def _compile_brief(brief: dict[str, Any], retrieval_on: bool) -> dict[str, Any]:
         store=RunsStore(Path("out") / "eval_runs.db"),
         ruleset_ver=spec_fingerprint(list(Path("spec/checks").rglob("*.yaml")))[:12],
         spec_sha=spec_fingerprint(spec_files)[:12],
+        spec_shas=spec_domain_fingerprints(),  # SW-02：缓存键分域
         out_dir=Path("out") / "eval",
     )
     if retrieval_on:
@@ -294,7 +295,7 @@ def _compile_for_judge(brief: dict[str, Any]) -> dict[str, Any]:
     from nsc.passes import PassContext, PassFailure
     from nsc.passes.pipeline import run_pipeline
     from nsc.runtime.models import ModelRouter
-    from nsc.runtime.provenance import RunsStore, spec_fingerprint
+    from nsc.runtime.provenance import RunsStore, spec_domain_fingerprints, spec_fingerprint
 
     profile = yaml.safe_load(Path(f"profiles/{brief.get('profile', '')}.yaml").read_text("utf-8"))
     brand = yaml.safe_load(Path(f"brands/{brief.get('brand', '')}/brand.yaml").read_text("utf-8"))
@@ -307,6 +308,7 @@ def _compile_for_judge(brief: dict[str, Any]) -> dict[str, Any]:
         store=RunsStore(Path("out") / "eval_runs.db"),
         ruleset_ver=spec_fingerprint(list(Path("spec/checks").rglob("*.yaml")))[:12],
         spec_sha=spec_fingerprint(spec_files)[:12],
+        spec_shas=spec_domain_fingerprints(),  # SW-02：缓存键分域
         out_dir=Path("out") / "eval",
     )
     try:

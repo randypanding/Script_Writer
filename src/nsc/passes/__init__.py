@@ -47,6 +47,10 @@ def new_id() -> str:
     return str(ULID())
 
 
+#: 进缓存键的 spec 域（SW-02）：只含影响生成结构的域；checks 由 ruleset_ver 覆盖。
+CACHE_SPEC_DOMAINS = ("ir", "passes")
+
+
 @dataclass
 class PassContext:
     """一次编译的运行上下文。所有版本号集中在这里，缓存键由 cache_versions 给出。"""
@@ -62,6 +66,8 @@ class PassContext:
     seed: int | None = 1
     out_dir: Path = Path("out")
     run_id: str = ""
+    #: SW-02 分域 spec 指纹（domain → sha12）。空 = 旧语义（缓存键用全量 spec_sha）。
+    spec_shas: dict[str, str] = field(default_factory=dict)
     #: T-16 检索服务（None = 禁用检索；set 后 pipeline 会往 p1/p2/p3/p5 注入 retrieved_cases）
     retrieval: Any = None
 
@@ -73,6 +79,12 @@ class PassContext:
             return {}
         return self.router.resolve(self.tier_of(pass_name))
 
+    def scoped_spec_sha(self) -> str:
+        """缓存键用 spec 指纹：有分域指纹时只取 ir+passes，否则回退全量。"""
+        if not self.spec_shas:
+            return self.spec_sha
+        return "|".join(f"{d}:{self.spec_shas.get(d, '')}" for d in CACHE_SPEC_DOMAINS)
+
     def cache_versions(self, pass_name: str) -> dict[str, Any]:
         cfg = self._model_cfg(pass_name)
         return {
@@ -83,7 +95,7 @@ class PassContext:
             "model_id": str(cfg.get("model", "none")),
             "temperature": float(cfg.get("temperature", 0.0)),
             "seed": self.seed,
-            "spec_sha": self.spec_sha,
+            "spec_sha": self.scoped_spec_sha(),
         }
 
     def record_run(
