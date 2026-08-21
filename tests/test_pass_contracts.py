@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 _SPECS = {
@@ -43,6 +44,34 @@ def test_p3_constants_sourced_from_spec():
     assert contract_text("p3_beatsheet", "setup_payoffs") == p3._SP_CONTRACT
     assert contract_text("p3_beatsheet", "facts") == p3._FACT_CONTRACT
     assert contract_text("p3_beatsheet", "state_changes") == p3._SC_CONTRACT
+
+
+def test_missing_asset_fails_fast(monkeypatch, tmp_path):
+    """review 修正：契约资产缺失/键缺失必须 PassFailure，不得静默降级为空串。"""
+    from nsc.passes import PassFailure, contract_text
+
+    monkeypatch.setattr("nsc.passes._CONTRACTS_PATH", tmp_path / "nonexistent.yaml")
+    with pytest.raises(PassFailure, match="不可读"):
+        contract_text("p3_beatsheet", "setup_payoffs")
+
+    good = Path("spec/passes/contracts.yaml")
+    monkeypatch.setattr("nsc.passes._CONTRACTS_PATH", good)
+    with pytest.raises(PassFailure, match="p9_nothing.missing_key"):
+        contract_text("p9_nothing", "missing_key")
+
+
+def test_contract_text_rereads_asset(monkeypatch, tmp_path):
+    """review 修正：同进程内的 spec 编辑必须立刻可见（不做进程级缓存）。"""
+    import yaml as y
+
+    from nsc.passes import contract_text
+
+    f = tmp_path / "contracts.yaml"
+    f.write_text(y.safe_dump({"p3_beatsheet": {"setup_payoffs": "v1"}}), "utf-8")
+    monkeypatch.setattr("nsc.passes._CONTRACTS_PATH", f)
+    assert contract_text("p3_beatsheet", "setup_payoffs") == "v1"
+    f.write_text(y.safe_dump({"p3_beatsheet": {"setup_payoffs": "v2"}}), "utf-8")
+    assert contract_text("p3_beatsheet", "setup_payoffs") == "v2", "进程内不得缓存旧契约"
 
 
 def test_p5_contract_builders_use_spec_templates():

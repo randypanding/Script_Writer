@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -33,17 +32,32 @@ __all__ = [
 _CONTRACTS_PATH = Path("spec/passes/contracts.yaml")
 
 
-@lru_cache(maxsize=1)
 def _contracts() -> dict[str, Any]:
-    """SW-03 / ADR-0015：Pass 契约文案真相在 spec/passes/contracts.yaml（资产层）。"""
-    if not _CONTRACTS_PATH.exists():
-        return {}
-    return yaml.safe_load(_CONTRACTS_PATH.read_text("utf-8")) or {}
+    """SW-03 / ADR-0015：Pass 契约文案真相在 spec/passes/contracts.yaml（资产层）。
+
+    每次调用重读（文件小、调用频率低）：进程内缓存会让同进程的 spec 编辑
+    读到陈旧契约（review 修正）。
+    """
+    try:
+        return yaml.safe_load(_CONTRACTS_PATH.read_text("utf-8")) or {}
+    except OSError as e:
+        raise PassFailure(None, f"契约资产不可读：{_CONTRACTS_PATH}（{e}）") from e
 
 
 def contract_text(pass_name: str, key: str) -> str:
-    """读一个 Pass 的契约文案；含 ${name} 占位（string.Template），由调用方填充。"""
-    return str(_contracts().get(pass_name, {}).get(key) or "")
+    """读一个 Pass 的契约文案；含 ${name} 占位（string.Template），由调用方填充。
+
+    文件或键缺失即 PassFailure（fail fast，review 修正）：契约缺失意味着资产
+    打包/键名损坏，静默降级为空串会把格式约束整个丢给模型。
+    """
+    section = _contracts().get(pass_name)
+    if section is None or key not in section:
+        raise PassFailure(
+            None,
+            f"spec/passes/contracts.yaml 缺少 {pass_name}.{key}；契约资产不完整，"
+            "请检查文件是否被截断或键名拼写。",
+        )
+    return str(section[key])
 
 
 def with_diag(inputs: dict[str, Any], fragment: dict[str, Any]) -> dict[str, Any]:
