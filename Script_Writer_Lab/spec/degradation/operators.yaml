@@ -1,0 +1,74 @@
+# 退化算子库 v1 · 判官考试与偏好对的缺陷源(ADR-0001 L-D2 退化锚)
+# 标签由构造保证,不依赖任何模型判断。
+# mechanism: deterministic = 纯规则、同种子可复现;llm_mid = 中档模型改写(缺陷由指令注入,标签仍由构造保证)
+# axis: rubric 六轴之一,或 l0_*(用于交叉验证 L0 规则层——一条规则若对靶向缺陷不触发,即死规则)
+version: 1
+operators:
+  - id: D01_shuffle_beats
+    axis: l0_structure
+    mechanism: deterministic
+    desc: 打乱集内 beat 顺序
+    severity: { swap_pairs: [1, 3] }
+  - id: D02_remove_hook
+    axis: hook_strength
+    mechanism: deterministic
+    desc: 删除开集钩子句(首 90 秒)或集末悬念句
+  - id: D03_flatten_cliffhanger
+    axis: hook_strength
+    mechanism: llm_mid
+    desc: 把悬念结尾改写为平铺收尾,保留事件内容
+  - id: D04_flatten_rhythm
+    axis: prose_craft
+    mechanism: llm_mid
+    desc: 句长拉平,消除长短句交错(配套观测指标 sent_cv/para_cv 应显著下降)
+  - id: D05_inject_slop
+    axis: prose_craft
+    mechanism: deterministic
+    desc: 按 mined/slop_lexicon.yaml 注入 AI 套话
+    severity: { per_1k_chars: [2, 8] }
+  - id: D06_voice_homogenize
+    axis: naturalness
+    mechanism: llm_mid
+    desc: 抹去角色口吻差异,全部对白改写成同一腔调
+  - id: D07_pov_break
+    axis: l0_structure
+    mechanism: deterministic
+    block_class: true
+    desc: 破坏 POV/人称一致性(视角越界的指称替换)
+  - id: D08_inject_contradiction
+    axis: l0_fact
+    mechanism: deterministic
+    block_class: true
+    desc: 注入硬矛盾:翻转已声明的年龄/时间线/地点/称呼
+  - id: D09_brand_cut
+    axis: l0_brand
+    mechanism: deterministic
+    block_class: true
+    desc: 删除必覆盖卖点或标准产品名
+  - id: D10_brand_overstuff
+    axis: placement_integration
+    mechanism: deterministic
+    desc: 生硬重复品牌名/卖点,超出语料正常带
+    severity: { mentions_per_ep: [5, 12] }
+  - id: D11_pacing_flatten
+    axis: transportation
+    mechanism: llm_mid
+    desc: 删除反转与张力峰,事件改为顺序平推
+  - id: D12_info_stuffing
+    axis: transportation
+    mechanism: deterministic
+    desc: 注水:插入复述性 exposition,信息增量趋零
+    severity: { pad_ratio: [0.15, 0.4] }
+  - id: D13_dialogue_to_narration
+    axis: l0_dialogue
+    mechanism: llm_mid
+    desc: 对白改叙述,破坏对白占比正常带
+  - id: D14_setup_cut
+    axis: l0_structure
+    mechanism: deterministic
+    block_class: true
+    desc: 删除回收句,制造悬空伏笔
+  - id: D15_producibility_break
+    axis: producibility
+    mechanism: deterministic
+    desc: 注入超预算制作元素(群演规模/特效/外场景关键词)

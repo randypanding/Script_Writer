@@ -7,6 +7,9 @@ on:
 
 permissions: {contents: read, pull-requests: write}
 
+defaults:
+  run:
+    working-directory: Script_Writer
 jobs:
   l1:
     # 只在 PR 打了 affects-generation 标签、或 nightly 时跑（省钱）
@@ -32,8 +35,8 @@ jobs:
         run: uv run python -m nsc.eval.gate --thresholds eval/thresholds.yaml
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: l1-report, path: out/eval/}
+        with: {name: l1-report, path: Script_Writer/out/eval/}
       - name: 在 PR 上贴报告
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
-        with: {path: out/eval/l1.md}
+        with: {path: Script_Writer/out/eval/l1.md}

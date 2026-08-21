@@ -1,0 +1,17 @@
+# 晋升规则 · 外置(ADR-0001 L-D7):优化器无权接受自己的改动
+version: 1
+
+champion_change_requires:
+  l0_all_pass: true
+  per_axis_floor: true               # contract/objective.yaml::gates
+  paired_seeds: true                 # champion 与 candidate 同 brief 同种子
+  min_briefs: 12                     # 最小样本量,防噪声漂移
+  statistic: bootstrap_ci95          # 胜率差的 bootstrap 95% 置信区间下界 > 0
+  sealed_confirm: true               # dev 通过后须 sealed 确认(消耗配额)
+
+acceptance_authority: runner_only    # 仅 lab.runner 可执行晋升;优化器只能提交候选
+rollback: automatic_on_any_fail
+
+registry:
+  file: champions.yaml               # 每条:git tag + SW spec_sha + promptset hash + sealed 分数 + 日期
+  tag_prefix: champion/

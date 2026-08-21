@@ -1,0 +1,30 @@
+# 优化目标契约 · 优化器只读,改动需人类确认 + ADR
+version: 1
+
+primary_metric: sealed_pairwise_winrate_vs_champion   # 唯一主指标(ADR-0001 L-D6)
+axes:                                                  # 与 SW spec/rubrics/rubric_v1.yaml 对齐
+  - naturalness
+  - hook_strength
+  - placement_integration
+  - transportation
+  - producibility
+  - prose_craft
+
+gates:
+  l0_all_pass: true        # 对 SW 的 spec/checks 全部 severity:block 规则
+  per_axis_floor: 0.02     # 任一轴相对 champion 退化超过 2% 即拒,不接受轴间平均掩盖
+
+eval_cascade:              # 级联评测阶梯:越往下越贵;候选须过上一档才配进入下一档
+  - tier: scene            # 单场景重编译(SW recompile_scene)+ L0 + L1 标量
+    promotes_at: p50
+  - tier: episode          # 单集 + dev 判官成对
+    promotes_at: p50
+  - tier: book             # 全量 + sealed 提交(配额制)
+    promotes_at: manual    # 仅晋升候选
+
+brief_distribution: spec/brief_distribution.yaml   # 训练/评测 brief 分布规格;优化器不可改(L-14)
+
+resources:                 # 人类管理;优化器可见但不可改;null = 暂不设限
+  per_experiment_usd: null
+  sealed_quota_per_round: 20
+  human_label_credits: 0   # 合成优先启动;调 >0 需人类批准(ADR-0001 L-D2)
