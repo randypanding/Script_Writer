@@ -94,6 +94,10 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     revivable = str(fragment.get("revivable_ideas", "") or "")
     if revivable:
         inputs["revivable_ideas"] = revivable
+    # SW-05：Thread 注入（profile.context.inject_threads 开关，pipeline 组装 JSON）
+    threads = str(fragment.get("threads", "") or "")
+    if threads:
+        inputs["threads"] = threads
     out = Module()(ctx, with_diag(inputs, fragment))
     raw_beats = inner_json(out["beats_json"], "p3_beatsheet", "beats_json")
     raw_sps = inner_json(out["setup_payoffs_json"], "p3_beatsheet", "setup_payoffs_json")

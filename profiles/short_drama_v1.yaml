@@ -52,3 +52,5 @@ model_tiers:
   p4_scene: tier_draft
   p5_dialogue: tier_draft
   p6_prose: tier_draft
+# SW-05 / ADR-0017：p3 跨集上下文组成（缺省即原行为）
+context: {prev_summary_window: 1, known_fact_fields: [id, content, episode_no, status, type], inject_threads: false}
