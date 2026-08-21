@@ -55,20 +55,50 @@ def _ctx(tmp_path, spec_shas=None):
 
 
 def test_cache_versions_uses_scoped_domains(tmp_path):
-    ctx = _ctx(tmp_path, {"ir": "ir1", "passes": "pa1", "rubrics": "ru1", "checks": "ck1"})
+    full = {"ir": "ir1", "passes": "pa1", "rubrics": "ru1", "checks": "ck1", "rules": "rl1"}
+    ctx = _ctx(tmp_path, full)
     assert ctx.cache_versions("p3_beatsheet")["spec_sha"] == "ir:ir1|passes:pa1"
-    # 与生成无关的域变化不进缓存键
-    ctx2 = _ctx(tmp_path, {"ir": "ir1", "passes": "pa1", "rubrics": "ru2", "checks": "ck2"})
+    # 与生成无关的域变化不进缓存键（同 Pass 前后比对）
+    ctx2 = _ctx(tmp_path, {**full, "rubrics": "ru2", "checks": "ck2"})
     assert (
         ctx2.cache_versions("p5_dialogue")["spec_sha"]
+        == ctx.cache_versions("p5_dialogue")["spec_sha"]
+    )
+    assert (
+        ctx2.cache_versions("p3_beatsheet")["spec_sha"]
         == ctx.cache_versions("p3_beatsheet")["spec_sha"]
     )
     # 影响生成结构的域变化必须进缓存键
-    ctx3 = _ctx(tmp_path, {"ir": "ir2", "passes": "pa1", "rubrics": "ru1", "checks": "ck1"})
+    ctx3 = _ctx(tmp_path, {**full, "ir": "ir2"})
     assert (
         ctx3.cache_versions("p3_beatsheet")["spec_sha"]
         != ctx.cache_versions("p3_beatsheet")["spec_sha"]
     )
+
+
+def test_rules_domain_only_invalidates_p5(tmp_path):
+    """review 修正：p5 的 self-check 读 spec/rules/L3_canonical（VOICE RULES），
+    rules 域编辑必须使 p5 缓存失效；不读该域的 pass（p3）不受牵连。"""
+    full = {"ir": "ir1", "passes": "pa1", "rubrics": "ru1", "checks": "ck1", "rules": "rl1"}
+    ctx = _ctx(tmp_path, full)
+    changed = _ctx(tmp_path, {**full, "rules": "rl2"})
+    assert (
+        changed.cache_versions("p5_dialogue")["spec_sha"]
+        != ctx.cache_versions("p5_dialogue")["spec_sha"]
+    ), "rules 域变化必须使 p5 缓存失效"
+    assert (
+        changed.cache_versions("p3_beatsheet")["spec_sha"]
+        == ctx.cache_versions("p3_beatsheet")["spec_sha"]
+    ), "rules 域变化不得牵连不读该域的 pass"
+    assert ctx.cache_versions("p5_dialogue")["spec_sha"] == "ir:ir1|passes:pa1|rules:rl1"
+
+
+def test_partial_domain_map_falls_back_to_full_sha(tmp_path):
+    """review 修正：半套分域指纹（缺必需域）必须回退全量 spec_sha，
+    不得拼出 'ir:|passes:' 之类静默削弱缓存失效条件的键。"""
+    ctx = _ctx(tmp_path, {"ir": "ir1"})  # 缺 passes（且缺 p5 需要的 rules）
+    assert ctx.cache_versions("p3_beatsheet")["spec_sha"] == "full123"
+    assert ctx.cache_versions("p5_dialogue")["spec_sha"] == "full123"
 
 
 def test_cache_versions_falls_back_to_full_sha(tmp_path):
