@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import dspy
+import yaml
 from ulid import ULID
 
 from nsc.runtime.cache import cached_pass
@@ -21,11 +23,27 @@ __all__ = [
     "PassContext",
     "PassFailure",
     "cached_pass",
+    "contract_text",
     "generate_json",
     "new_id",
     "optional_json",
     "with_diag",
 ]
+
+_CONTRACTS_PATH = Path("spec/passes/contracts.yaml")
+
+
+@lru_cache(maxsize=1)
+def _contracts() -> dict[str, Any]:
+    """SW-03 / ADR-0015：Pass 契约文案真相在 spec/passes/contracts.yaml（资产层）。"""
+    if not _CONTRACTS_PATH.exists():
+        return {}
+    return yaml.safe_load(_CONTRACTS_PATH.read_text("utf-8")) or {}
+
+
+def contract_text(pass_name: str, key: str) -> str:
+    """读一个 Pass 的契约文案；含 ${name} 占位（string.Template），由调用方填充。"""
+    return str(_contracts().get(pass_name, {}).get(key) or "")
 
 
 def with_diag(inputs: dict[str, Any], fragment: dict[str, Any]) -> dict[str, Any]:
