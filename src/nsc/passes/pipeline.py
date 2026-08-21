@@ -648,8 +648,12 @@ _KNOWN_FACT_FIELDS: dict[str, Any] = {
 
 
 def _known_fact_fields_of(profile: dict[str, Any]) -> tuple[str, ...]:
-    """profile.context.known_fact_fields → 投影字段（白名单交集，缺省 = 原五字段）。"""
-    wanted = profile.get("context", {}).get("known_fact_fields") or list(_KNOWN_FACT_FIELDS)
+    """profile.context.known_fact_fields → 投影字段（白名单交集，缺省 = 原五字段）。
+
+    显式空列表是合法配置（投影面为空，即有意隐藏全部字段），不与"未配置"混同。
+    """
+    raw = profile.get("context", {}).get("known_fact_fields")
+    wanted = list(_KNOWN_FACT_FIELDS) if raw is None else raw
     return tuple(k for k in _KNOWN_FACT_FIELDS if k in wanted)
 
 
@@ -668,8 +672,9 @@ def _known_facts(
 
 
 def _window_join(summaries: list[str], window: int) -> str:
-    """prev_episode_summary 窗口（SW-05）：近端在前、远端追加在后，逐行拼接。
+    """prev_episode_summary 窗口（SW-05）：按时间序拼接（远端在前、近端在后）。
 
+    与 compress_history 的【前情】→【上一集】布局一致（review 澄清：chronological）。
     window=1 与原行为逐字节一致（单元素直接返回）；window=0 即恒空串。
     """
     n = max(0, int(window))

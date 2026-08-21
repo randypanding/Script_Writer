@@ -51,6 +51,8 @@ def test_known_facts_fields_from_profile(tmp_path):
     assert _known_fact_fields_of({}) == ("id", "content", "episode_no", "status", "type")
     ctx_profile = {"context": {"known_fact_fields": ["id", "content"]}}
     assert _known_fact_fields_of(ctx_profile) == ("id", "content")
+    # 显式空列表 = 有意隐藏全部字段（review 修正：不得与"未配置"混同回退缺省）
+    assert _known_fact_fields_of({"context": {"known_fact_fields": []}}) == ()
 
 
 # ---------------------------------------------------------------- 窗口与 Thread 注入（全桩管线）
@@ -110,8 +112,9 @@ def test_prev_summary_window_two_includes_grandparent(tmp_path, monkeypatch):
     summaries = {ep_no: inp["prev_episode_summary"] for ep_no, inp in enumerate(inputs)}
     assert summaries[0] == ""
     assert summaries[1] != "", "第二集窗口=第一集摘要"
-    # 窗口=2：第 3 集的窗口严格包含第 2 集的窗口（多了第 1 集摘要）
-    assert summaries[2].startswith(summaries[1]), "近端摘要在前，远端追加在后"
+    # 窗口=2：时间序拼接（远端在前、近端在后，同 compress_history 布局）——
+    # 第 3 集的窗口以第 1 集摘要开头、第 2 集摘要收尾，严格长于第 2 集的窗口
+    assert summaries[2].startswith(summaries[1]), "窗口扩展只在前端追加远端集"
     assert len(summaries[2]) > len(summaries[1])
 
 
