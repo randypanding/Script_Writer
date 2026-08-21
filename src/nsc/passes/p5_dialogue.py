@@ -236,8 +236,20 @@ def _counts(findings: list[dict[str, Any]]) -> Counts:
 
 
 def _gate_mode(ctx: PassContext) -> str:
-    """SW-07：定向重生成（self-check 修订）采纳策略（profile.revise.gate_mode，缺省 lenient）。"""
-    return str(ctx.profile.get("revise", {}).get("gate_mode", "lenient"))
+    """SW-07：定向重生成（self-check 修订）采纳策略（profile.revise.gate_mode，缺省 lenient）。
+
+    非法值转 PassFailure（review 修正）：裸 dict profile 无 schema 校验兜底，
+    不能让 revise.gate.MODES 的 ValueError 直接击穿编排的 PassFailure 捕获链。
+    """
+    mode = str(ctx.profile.get("revise", {}).get("gate_mode", "lenient"))
+    from nsc.revise.gate import MODES
+
+    if mode not in MODES:
+        raise PassFailure(
+            None,
+            f"profile.revise.gate_mode 必须是 {MODES} 之一，当前为 {mode!r}；请修正 profile。",
+        )
+    return mode
 
 
 def _self_check(

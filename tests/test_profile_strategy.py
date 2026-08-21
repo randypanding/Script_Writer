@@ -127,3 +127,26 @@ def test_retrieval_top_k_from_profile(tmp_path):
 
     svc2 = _make_retrieval(_mini_ctx(tmp_path, dict(base)))
     assert svc2 is not None and svc2.k == 3, "缺省保持原常量 k=3"
+
+
+# ---------------------------------------------------------------- review 修正：坏配置的可诊断失败
+def test_bad_profile_values_fail_with_clear_errors(tmp_path):
+    import typer
+
+    from nsc.cli import _make_retrieval
+    from nsc.passes import PassFailure, p5_dialogue
+    from nsc.passes.pipeline import _pass_attempts, _phase_attempts
+
+    # 非整数重试次数 → PassFailure（走编排的失败/诊断链路，不是裸 TypeError）
+    with pytest.raises(PassFailure, match="pass_attempts"):
+        _pass_attempts(_mini_ctx(tmp_path, {"pipeline": {"pass_attempts": "many"}}))
+    with pytest.raises(PassFailure, match="phase_attempts"):
+        _phase_attempts(_mini_ctx(tmp_path, {"pipeline": {"phase_attempts": None}}))
+
+    # 非法 gate_mode → PassFailure（不让 revise.gate 的 ValueError 击穿捕获链）
+    with pytest.raises(PassFailure, match="gate_mode"):
+        p5_dialogue._gate_mode(_mini_ctx(tmp_path, {"revise": {"gate_mode": "loose"}}))
+
+    # 坏 top_k → typer.BadParameter（用户可读，不是裸堆栈）
+    with pytest.raises(typer.BadParameter, match="top_k"):
+        _make_retrieval(_mini_ctx(tmp_path, {"retrieval": {"top_k": "3条"}}))

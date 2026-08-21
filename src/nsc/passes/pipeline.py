@@ -81,14 +81,26 @@ def _accum(diag: str, new: str) -> str:
     return f"{diag}\n---\n{new}" if diag else new
 
 
+def _attempts_of(ctx: PassContext, key: str, default: int) -> int:
+    """SW-07：读 profile.pipeline.<key> 的次数旋钮；坏值转 PassFailure（诊断句，review 修正）。"""
+    raw = ctx.profile.get("pipeline", {}).get(key, default)
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError) as e:
+        raise PassFailure(
+            None,
+            f"profile.pipeline.{key} 必须是正整数，当前为 {raw!r}；请修正 profile 配置后重跑。",
+        ) from e
+
+
 def _pass_attempts(ctx: PassContext) -> int:
     """SW-07：单 Pass 输出波动重试次数（profile.pipeline.pass_attempts，缺省 2）。"""
-    return max(1, int(ctx.profile.get("pipeline", {}).get("pass_attempts", 2)))
+    return _attempts_of(ctx, "pass_attempts", 2)
 
 
 def _phase_attempts(ctx: PassContext) -> int:
     """SW-07：p3/p4、p5、p6 相位级定向重生成次数（profile.pipeline.phase_attempts，缺省 3）。"""
-    return max(1, int(ctx.profile.get("pipeline", {}).get("phase_attempts", 3)))
+    return _attempts_of(ctx, "phase_attempts", 3)
 
 
 def _retry_pass(

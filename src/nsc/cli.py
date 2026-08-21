@@ -41,12 +41,18 @@ def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
 
 def _make_retrieval(ctx: Any) -> Any:
     """SW-07：检索服务，注入条数 top_k 读 profile.retrieval（缺省 3=原常量）。"""
+    import typer
+
     from nsc.retrieval import RetrievalService
 
-    return RetrievalService(
-        db_path="cases/cases.db",
-        k=max(1, int(ctx.profile.get("retrieval", {}).get("top_k", 3))),
-    )
+    raw = ctx.profile.get("retrieval", {}).get("top_k", 3)
+    try:
+        k = max(1, int(raw))
+    except (TypeError, ValueError) as e:
+        raise typer.BadParameter(
+            f"profile 的 retrieval.top_k 必须是正整数，当前为 {raw!r}（review 修正：给可读报错）"
+        ) from e
+    return RetrievalService(db_path="cases/cases.db", k=k)
 
 
 # --- 编译 ---
