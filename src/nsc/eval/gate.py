@@ -1,12 +1,13 @@
-"""评测门禁（T-08b）：阈值加载 + JUDGE_GATE_ENABLED + 校准结果判定。
+"""评测门禁（T-08b）：阈值加载 + 校准结果判定。
 
 D8：未过校准门槛的判官只能出报告，不能参与门禁。
-`judge calibrate` 未过闸时会把仓库变量 JUDGE_GATE_ENABLED 写为 false（协议 §4）。
+`judge calibrate` 未过闸时会把 judge-calibration.yml 的 judge_gate_enabled 写为 false
+（协议 §4）。SW-04：门禁真相只在状态文件，环境变量不再有覆盖能力——
+环境开关等于给"未校准判官可门禁"留后门，与 D8 相悖。
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -20,15 +21,8 @@ def load_thresholds(path: str | Path = THRESHOLDS_PATH) -> dict[str, Any]:
     return yaml.safe_load(Path(path).read_text("utf-8")) or {}
 
 
-def gate_var_name() -> str:
-    return str(load_thresholds().get("l1", {}).get("judge_gate_enabled_var", "JUDGE_GATE_ENABLED"))
-
-
 def gate_enabled() -> bool:
-    """判官是否允许参与门禁。优先级：环境变量 > judge-calibration.yml > 默认开启。"""
-    val = os.environ.get(gate_var_name())
-    if val is not None:
-        return val.strip().lower() not in ("0", "false", "off", "no", "")
+    """判官是否允许参与门禁。真相：judge-calibration.yml > 默认开启（SW-04：无 env 覆盖）。"""
     if GATE_STATE_PATH.exists():
         data = yaml.safe_load(GATE_STATE_PATH.read_text("utf-8")) or {}
         return bool(data.get("judge_gate_enabled", True))
@@ -108,10 +102,10 @@ def main(argv: list[str] | None = None) -> int:
         ev = evaluate_calibration(metrics)
     else:
         if not GATE_STATE_PATH.exists():
-            # CI 场景（judge-calibration.yml 尚未提交）：回退到 gate_enabled() 的
-            # 环境变量（JUDGE_GATE_ENABLED）/ 默认开启，避免硬失败。
+            # CI 场景（judge-calibration.yml 尚未提交）：回退到默认开启，避免硬失败。
+            # SW-04：环境变量不再有覆盖能力（D8：未校准判官只能出报告）。
             enabled = gate_enabled()
-            print(f"无校准状态文件；JUDGE_GATE_ENABLED={str(enabled).lower()}")
+            print(f"无校准状态文件；gate_enabled={str(enabled).lower()}")
             return 0 if enabled else 1
         state = yaml.safe_load(GATE_STATE_PATH.read_text("utf-8")) or {}
         ev = evaluate_calibration(state.get("metrics") or {})
