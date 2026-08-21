@@ -56,7 +56,7 @@ def test_missing_asset_fails_fast(monkeypatch, tmp_path):
 
     good = Path("spec/passes/contracts.yaml")
     monkeypatch.setattr("nsc.passes._CONTRACTS_PATH", good)
-    with pytest.raises(PassFailure, match="p9_nothing.missing_key"):
+    with pytest.raises(PassFailure, match=r"p9_nothing\.missing_key"):
         contract_text("p9_nothing", "missing_key")
 
 
