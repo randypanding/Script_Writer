@@ -72,7 +72,8 @@ def test_complete_writes_transcript_row(tmp_path, fake_litellm, monkeypatch):
     assert len(rows) == 1
     row = rows[0]
     assert row["caller"] == "tier_bulk"
-    assert row["model"] == "openai/LongCat-2.0"
+    # 不硬编码具体模型 ID(models.yaml 会演化):断言落库值 == 路由实际选中的模型
+    assert row["model"] == router.resolve("tier_bulk")["model"]
     assert json.loads(row["prompt"]) == [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hello"},

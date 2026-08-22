@@ -81,7 +81,9 @@ class ModelRouter:
         if self._tconn is None:
             try:
                 self.transcript_db.parent.mkdir(parents=True, exist_ok=True)
-                self._tconn = sqlite3.connect(str(self.transcript_db))
+                # timeout=0:transcripts 是 best-effort 记账,库被并发写锁住时立刻
+                # 失败走静默路径,绝不为它阻塞路由(SW-01 review:busy timeout 会加路由延迟)
+                self._tconn = sqlite3.connect(str(self.transcript_db), timeout=0.0)
                 self._tconn.execute(_TRANSCRIPT_SCHEMA)
                 self._tconn.commit()
             except Exception:
@@ -120,7 +122,11 @@ class ModelRouter:
             )
             conn.commit()
         except Exception:
-            pass
+            # best-effort:失败即回滚并弃置连接,防止半开事务长期持锁拖垮后续写入
+            try:
+                conn.rollback()
+            finally:
+                self._tconn = None
 
     def resolve(self, tier: str) -> dict[str, Any]:
         if tier not in self.tiers:
