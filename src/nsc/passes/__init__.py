@@ -21,6 +21,7 @@ from nsc.runtime.provenance import RunRecord, RunsStore
 __all__ = [
     "PassContext",
     "PassFailure",
+    "assemble_context",
     "cached_pass",
     "contract_text",
     "generate_json",
@@ -64,6 +65,60 @@ def with_diag(inputs: dict[str, Any], fragment: dict[str, Any]) -> dict[str, Any
     """把重试诊断（_previous_failure）从 fragment 转发进 LLM 输入（D13 反馈驱动再生成）。"""
     diag = str(fragment.get("_previous_failure", "") or "")
     return {**inputs, "_previous_failure": diag} if diag else inputs
+
+
+def assemble_context(
+    ctx: Any,
+    *,
+    p1_current: str,
+    prev_summary: str,
+    facts: list[str],
+    rag: list[str],
+    refs: list[tuple[str, str]],
+) -> tuple[str, int, str, list[str]]:
+    """SW-06 / ADR-0018：把 P2-P4 层与 P5 参考层过 nsc.context.assemble 预算装配。
+
+    - p1_current：不可裁剪的"当前内容"锚（P1）；
+    - facts：逐条序列化后的 fact 串（P3），返回存活条数（前缀式）；
+    - rag：检索参考（P4 整层一次判定），返回存活文本（丢弃则空串）；
+    - refs：(输入键, 文本) 参考层（P5 低保），返回存活键列表（前缀式）。
+    预算缺省 32768 足够大 → 全存活，输出与输入逐字节等价（原行为）。
+    """
+    from nsc.context import assemble
+
+    cfg = (ctx.profile.get("context") or {}) if isinstance(ctx.profile, dict) else {}
+    res = assemble(
+        p0_system="",
+        p1_current=p1_current,
+        p2_prev_summary=prev_summary,
+        p3_facts=facts,
+        p4_rag=rag,
+        p5_bible=[text for _key, text in refs],
+        budget=int(cfg.get("budget", 32768)),
+        core_guarantee=int(cfg.get("core_guarantee", 400)),
+    )
+    layers = {lay.name: lay.text for lay in res.layers}
+
+    n_facts = 0
+    acc = ""
+    p3_text = layers.get("P3", "")
+    for fs in facts:
+        cand = fs if not acc else acc + "\n" + fs
+        if p3_text.startswith(cand):
+            acc, n_facts = cand, n_facts + 1
+        else:
+            break
+
+    kept_keys: list[str] = []
+    tail = layers.get("P5", "")
+    for key, text in refs:
+        if text and tail.startswith(text):
+            kept_keys.append(key)
+            tail = tail[len(text) + 1 :]  # 跳过层内 join 分隔符 "\n"
+        else:
+            break
+
+    return layers.get("P2", ""), n_facts, layers.get("P4", ""), kept_keys
 
 
 class PassFailure(Exception):  # noqa: N818  名字由 docs/HANDOFF_STRONG_MODEL.md 约定
