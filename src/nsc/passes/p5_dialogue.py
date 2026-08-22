@@ -247,6 +247,23 @@ def _counts(findings: list[dict[str, Any]]) -> Counts:
     )
 
 
+def _gate_mode(ctx: PassContext) -> str:
+    """SW-07：定向重生成（self-check 修订）采纳策略（profile.revise.gate_mode，缺省 lenient）。
+
+    非法值转 PassFailure（review 修正）：裸 dict profile 无 schema 校验兜底，
+    不能让 revise.gate.MODES 的 ValueError 直接击穿编排的 PassFailure 捕获链。
+    """
+    mode = str(ctx.profile.get("revise", {}).get("gate_mode", "lenient"))
+    from nsc.revise.gate import MODES
+
+    if mode not in MODES:
+        raise PassFailure(
+            None,
+            f"profile.revise.gate_mode 必须是 {MODES} 之一，当前为 {mode!r}；请修正 profile。",
+        )
+    return mode
+
+
 def _self_check(
     ctx: PassContext,
     inputs: dict[str, Any],
@@ -259,8 +276,8 @@ def _self_check(
     """自我修订（默认开，profile.revise.self_check=False 关闭）。
 
     干净路径零 findings → 不调 LLM。有问题时把 revision_brief 五节文本注入重生成；
-    修订经 revisionGate(lenient) 判定采纳，未达标或解析失败则回退原稿——
-    残留 findings 由 pipeline 的 check_stage(after_p5) 兜底拦截，不会静默丢失。
+    修订经 revisionGate（策略 profile.revise.gate_mode）判定采纳，未达标或解析失败
+    则回退原稿——残留 findings 由 pipeline 的 check_stage(after_p5) 兜底拦截，不会静默丢失。
     """
     if not ctx.profile.get("revise", {}).get("self_check", True):
         return lines, out
@@ -282,6 +299,6 @@ def _self_check(
     except PassFailure:
         return lines, out
     findings2 = _scene_findings(ctx, scene, beats, lines2, characters)
-    if decide(_counts(findings), _counts(findings2), "lenient"):
+    if decide(_counts(findings), _counts(findings2), _gate_mode(ctx)):
         return lines2, out2
     return lines, out
