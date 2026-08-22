@@ -7,6 +7,7 @@ feedback 文本可直接进 GEPA（D13）。
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -348,6 +349,12 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     check_stage(ctx, cur(), "after_p2", "after_p2")
 
     episodes = r2["episodes"]
+    # SW-05：p3 fragment 组成旋钮（profile.context.*，缺省 = 原行为）
+    p3_ctx = ctx.profile.get("context", {})
+    prev_window = max(0, int(p3_ctx.get("prev_summary_window", 1)))
+    fact_fields = _known_fact_fields_of(ctx.profile)
+    inject_threads = bool(p3_ctx.get("inject_threads", False))
+    ep_summaries: list[str] = []
     # p3（逐集）+ p4 + after_p3/p4 检查作为一个相位：L0 拦截（如 BM-002 植入间隔）时
     # 带诊断整体重试（D13 反馈驱动再生成，诊断累积）；重试前恢复相位前的状态。
     diag = ""
@@ -358,7 +365,6 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
         }
         ep_state_snap = {e["id"]: list(e.get("state_changes", [])) for e in episodes}
         try:
-            prev_summary = ""
             for i, ep in enumerate(episodes):
                 placement = [
                     p for p in r2["placement_plan"] if int(p.get("episode_no", -1)) == ep["no"]
@@ -368,12 +374,12 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                     "bible": bible,
                     "placement": placement,
                     "required_brand_moment_beats": len(placement),
-                    "prev_episode_summary": prev_summary,
+                    "prev_episode_summary": _window_join(ep_summaries, prev_window),
                     "next_episode_promise": episodes[i + 1]["hook_promise"]
                     if i + 1 < len(episodes)
                     else "",
                     # ADR-0012：跨集回收上下文 + 状态变更声明域（facts/threads 等表见上）
-                    "known_facts": _known_facts(st["facts"]),
+                    "known_facts": _known_facts(st["facts"], fact_fields),
                     "declared_state": _declared_state(st),
                     "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
                 }
@@ -381,9 +387,11 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                     frag3["_previous_failure"] = diag
                 if revivable:
                     frag3["revivable_ideas"] = revivable
+                if inject_threads:
+                    frag3["threads"] = _threads_view(st["threads"])
                 r3 = _retry_pass(p3_beatsheet.run, ctx, frag3)
                 track()
-                prev_summary = "；".join(b["summary"] for b in r3["beats"])
+                ep_summaries.append("；".join(b["summary"] for b in r3["beats"]))
                 st["beats"] += r3["beats"]
                 st["setup_payoffs"] += r3["setup_payoffs"]
                 st["brand_moments"] += r3["brand_moments"]
@@ -503,23 +511,32 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
     bank_db = _state_db(ctx, pid)
     # T-41：上次重编译存入 bank 的未复活素材作为可选注入层（空则不加）
     revivable = _revivable_layer(bank_db, pid)
+    # SW-05：p3 fragment 组成旋钮（与 run_pipeline 同一 profile.context.* 段）
+    _p3c = ctx.profile.get("context", {})
+    r_window = max(0, int(_p3c.get("prev_summary_window", 1)))
 
     frag3 = {
         "episode": ep,
         "bible": bible,
         "placement": _placement_of(raw, ep),
         "required_brand_moment_beats": len(_placement_of(raw, ep)),
-        "prev_episode_summary": _episode_digest(raw, ordered[idx - 1]["id"]) if idx > 0 else "",
+        "prev_episode_summary": _window_join(
+            [_episode_digest(raw, e["id"]) for e in ordered[max(0, idx - r_window) : idx]],
+            r_window,
+        ),
         "next_episode_promise": ordered[idx + 1]["hook_promise"] if idx + 1 < len(ordered) else "",
         # ADR-0012：其他集已成立的 facts 可被本集回收；状态声明域来自 IR 表
         "known_facts": _known_facts(
-            [f for f in raw.get("facts", []) if f.get("episode_no") != ep["no"]]
+            [f for f in raw.get("facts", []) if f.get("episode_no") != ep["no"]],
+            _known_fact_fields_of(ctx.profile),
         ),
         "declared_state": _declared_state(raw),
         "retrieved_cases": _retrieved(ctx, "beat_sequence", _ep_query(ep)),
     }
     if revivable:
         frag3["revivable_ideas"] = revivable
+    if _p3c.get("inject_threads", False):
+        frag3["threads"] = _threads_view(raw.get("threads", []))
     r3 = _retry_pass(p3_beatsheet.run, ctx, frag3)
     track()
     r4 = _retry_pass(p4_scene.run, ctx, {"episode": ep, "beats": r3["beats"], "bible": bible})
@@ -647,19 +664,65 @@ def _episode_digest(raw: dict[str, Any], ep_id: str) -> str:
     return "；".join(b["summary"] for b in raw["beats"] if b["parent_id"] in scene_ids)
 
 
-def _known_facts(facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """p3 的跨集回收上下文（ADR-0012）：已成立 Fact 的最小可见面，供模型引用 id 做回收。"""
+# --- SW-05 / ADR-0017：p3 fragment 组成的 profile 旋钮（context.* 段，缺省 = 原行为） ---
+
+#: known_facts 投影字段全集（值 = 缺省填充，机制映射，非业务规则）。
+_KNOWN_FACT_FIELDS: dict[str, Any] = {
+    "id": "",
+    "content": "",
+    "episode_no": 1,
+    "status": "active",
+    "type": "plot_event",
+}
+
+
+def _known_fact_fields_of(profile: dict[str, Any]) -> tuple[str, ...]:
+    """profile.context.known_fact_fields → 投影字段（白名单交集，缺省 = 原五字段）。
+
+    显式空列表是合法配置（投影面为空，即有意隐藏全部字段），不与"未配置"混同。
+    """
+    raw = profile.get("context", {}).get("known_fact_fields")
+    wanted = list(_KNOWN_FACT_FIELDS) if raw is None else raw
+    return tuple(k for k in _KNOWN_FACT_FIELDS if k in wanted)
+
+
+def _known_facts(
+    facts: list[dict[str, Any]], fields: tuple[str, ...] = tuple(_KNOWN_FACT_FIELDS)
+) -> list[dict[str, Any]]:
+    """p3 的跨集回收上下文（ADR-0012）：已成立 Fact 的最小可见面，供模型引用 id 做回收。
+
+    SW-05：投影字段由 profile.context.known_fact_fields 决定（缺省 = 原五字段）。
+    """
     return [
-        {
-            "id": f["id"],
-            "content": f["content"],
-            "episode_no": f.get("episode_no", 1),
-            "status": f.get("status", "active"),
-            "type": f.get("type", "plot_event"),
-        }
+        {k: f.get(k, default) for k, default in _KNOWN_FACT_FIELDS.items() if k in fields}
         for f in facts
         if isinstance(f, dict)
     ]
+
+
+def _window_join(summaries: list[str], window: int) -> str:
+    """prev_episode_summary 窗口（SW-05）：按时间序拼接（远端在前、近端在后）。
+
+    与 compress_history 的【前情】→【上一集】布局一致（review 澄清：chronological）。
+    window=1 与原行为逐字节一致（单元素直接返回）；window=0 即恒空串。
+    """
+    n = max(0, int(window))
+    return "\n".join(summaries[-n:]) if n else ""
+
+
+def _threads_view(threads: list[Any]) -> str:
+    """Thread 注入面（SW-05）：p2 规划的叙事线索标题/状态，供 p3 做跨集呼应。"""
+    view = [
+        {
+            "id": t.get("id", ""),
+            "title": t.get("title", ""),
+            "status": t.get("status", "active"),
+            "state": t.get("state", ""),
+        }
+        for t in threads
+        if isinstance(t, dict)
+    ]
+    return json.dumps(view, ensure_ascii=False)
 
 
 def _declared_state(st: dict[str, Any]) -> dict[str, Any]:

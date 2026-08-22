@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from spec.ir.nodes import Slug
 
@@ -34,6 +34,31 @@ class BeatTemplate(BaseModel):
     source: Literal["craft", "mined", "client"] = "mined"
     sequence: list[str] = Field(description="beat_kind 序列，允许 '?' 表示可选")
     note: str = ""
+
+
+class ContextSettings(BaseModel):
+    """SW-05 / ADR-0017：p3 fragment 组成旋钮。缺省值 = 原代码行为（零变化）。"""
+
+    model_config = ConfigDict(extra="forbid")
+    prev_summary_window: int = Field(
+        default=1, ge=0, description="p3 prev_episode_summary 的近端窗口（集数）"
+    )
+    known_fact_fields: list[str] = Field(
+        default_factory=lambda: ["id", "content", "episode_no", "status", "type"],
+        description="known_facts 投影字段（白名单子集）",
+    )
+    inject_threads: bool = Field(
+        default=False, description="是否把 p2 的 Thread 表注入 p3 fragment"
+    )
+
+    @field_validator("known_fact_fields")
+    @classmethod
+    def _within_whitelist(cls, v: list[str]) -> list[str]:
+        allowed = {"id", "content", "episode_no", "status", "type"}
+        bad = [x for x in v if x not in allowed]
+        if bad:
+            raise ValueError(f"known_fact_fields 白名单外字段：{bad}（允许：{sorted(allowed)}）")
+        return v
 
 
 class PipelineSettings(BaseModel):
@@ -87,6 +112,7 @@ class Profile(BaseModel):
 
     beat_templates: list[BeatTemplate] = Field(default_factory=list)
     novel: NovelSettings = Field(default_factory=NovelSettings)
+    context: ContextSettings = Field(default_factory=ContextSettings)
 
     #: SW-07 / ADR-0016：管线策略（重试与定向重生成次数）。缺省 = 原代码常量。
     pipeline: PipelineSettings = Field(default_factory=lambda: PipelineSettings())
