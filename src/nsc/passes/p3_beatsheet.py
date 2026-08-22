@@ -25,6 +25,7 @@ from . import (
     DSPyPass,
     PassContext,
     PassFailure,
+    assemble_context,
     cached_pass,
     contract_text,
     inner_json,
@@ -49,6 +50,35 @@ class Module(DSPyPass):
     signature = signatures.BeatSheet
     pass_name = "p3_beatsheet"
     optional_outputs = ("facts_json", "state_changes_json")
+
+
+def _budgeted_inputs(
+    ctx: PassContext, inputs: dict[str, Any], facts_list: list[Any]
+) -> dict[str, Any]:
+    """SW-06 / ADR-0018：P2(前情)/P3(known_facts)/P4(检索) + P5 参考层过预算装配。
+
+    预算缺省足够大 → 全存活，输入与组装时逐字节等价（原行为）。
+    降级保留键、置空值（review 修正）：signature 的 InputField 是必填契约，
+    预算降级体现在内容为空，而不是缺字段击穿调用。
+    """
+    _prev, n_facts, rag, ref_keys = assemble_context(
+        ctx,
+        p1_current=inputs["episode_json"],
+        prev_summary=inputs["prev_episode_summary"],
+        facts=[json.dumps(f, ensure_ascii=False) for f in facts_list],
+        rag=[inputs["retrieved_cases"]] if inputs["retrieved_cases"] else [],
+        refs=[("bible_json", inputs["bible_json"]), ("profile_json", inputs["profile_json"])],
+    )
+    out = {
+        **inputs,
+        "prev_episode_summary": _prev,
+        "known_facts": json.dumps(facts_list[:n_facts], ensure_ascii=False),
+        "retrieved_cases": rag,
+    }
+    for _k in ("bible_json", "profile_json"):
+        if _k not in ref_keys:
+            out[_k] = ""
+    return out
 
 
 @cached_pass("p3_beatsheet")
@@ -80,6 +110,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     threads = str(fragment.get("threads", "") or "")
     if threads:
         inputs["threads"] = threads
+    inputs = _budgeted_inputs(ctx, inputs, list(fragment.get("known_facts", [])))
     out = Module()(ctx, with_diag(inputs, fragment))
     raw_beats = inner_json(out["beats_json"], "p3_beatsheet", "beats_json")
     raw_sps = inner_json(out["setup_payoffs_json"], "p3_beatsheet", "setup_payoffs_json")

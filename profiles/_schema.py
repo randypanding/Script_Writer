@@ -50,6 +50,18 @@ class ContextSettings(BaseModel):
     inject_threads: bool = Field(
         default=False, description="是否把 p2 的 Thread 表注入 p3 fragment"
     )
+    #: SW-06 / ADR-0018：P0-P5 上下文预算与历史压缩（nsc.context.assembler/compress）。
+    budget: int = Field(
+        default=32768, gt=0, description="P0-P5 总预算（token）；P1 装不下即 PassFailure"
+    )
+    core_guarantee: int = Field(default=400, ge=1, description="P5 参考层低保额（token）")
+    history_compress: bool = Field(
+        default=False, description="远端历史是否走 LLM 压缩（compress_history 接线开关）"
+    )
+    history_keep_recent: int = Field(default=1, ge=0, description="历史压缩保留近端集数")
+    history_compress_ratio: float = Field(
+        default=0.1, gt=0, le=1, description="远端历史压缩目标长度比"
+    )
 
     @field_validator("known_fact_fields")
     @classmethod

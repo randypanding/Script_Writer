@@ -17,6 +17,7 @@ from . import (
     DSPyPass,
     PassContext,
     PassFailure,
+    assemble_context,
     cached_pass,
     contract_text,
     inner_json,
@@ -73,6 +74,30 @@ def _dialogue_length_target(chars_lo: int, chars_hi: int, scene_secs: float, cps
     )
 
 
+def _budgeted_inputs(ctx: PassContext, inputs: dict[str, Any]) -> dict[str, Any]:
+    """SW-06 / ADR-0018：p5 的 P4(检索) 与 P5 参考层过预算装配（p1=当前场+Beat，不可裁剪）。
+
+    预算缺省足够大 → 全存活，返回与输入逐字段相等（原行为）。
+    """
+    _prev, _n_facts, rag, ref_keys = assemble_context(
+        ctx,
+        p1_current=inputs["scene_json"] + "\n" + inputs["beats_json"],
+        prev_summary="",
+        facts=[],
+        rag=[inputs["retrieved_cases"]] if inputs.get("retrieved_cases") else [],
+        refs=[
+            ("characters_json", inputs["characters_json"]),
+            ("profile_json", inputs["profile_json"]),
+        ],
+    )
+    out = {**inputs, "retrieved_cases": rag}
+    # 降级保留键、置空值（review 修正）：同 p3，不缺字段击穿 signature 契约。
+    for _k in ("characters_json", "profile_json"):
+        if _k not in ref_keys:
+            out[_k] = ""
+    return out
+
+
 @cached_pass("p5_dialogue")
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     scene = fragment["scene"]
@@ -113,7 +138,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         },
         fragment,
     )
-    out = cast(dict[str, Any], Module()(ctx, inputs))
+    out = cast(dict[str, Any], Module()(ctx, _budgeted_inputs(ctx, inputs)))
     lines = _parse_lines(ctx, scene, beats, out, fragment["characters"])
     # T-31 自检子步（默认开）：本场 L0 findings → revision_brief 五节 → 一次自我修订
     lines, out = _self_check(ctx, inputs, scene, beats, lines, fragment["characters"], out)
