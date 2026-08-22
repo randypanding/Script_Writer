@@ -227,16 +227,30 @@ def test_compute_metrics():
 
 
 # ---------------------------------------------------------------- 门禁
-def test_gate_enabled_respects_env(monkeypatch):
+def test_gate_enabled_ignores_env(tmp_path, monkeypatch):
+    """SW-04：环境变量不得覆盖校准门禁。D8 真相只在 judge-calibration.yml。
+
+    取代旧 test_gate_enabled_respects_env（其断言的 env 覆盖语义正是本卡移除对象，
+    冲突记录见 PR 描述）。
+    """
     from nsc.eval import gate as g
 
-    monkeypatch.setenv("JUDGE_GATE_ENABLED", "0")
-    assert g.gate_enabled() is False
+    state = tmp_path / "state.yml"
+    monkeypatch.setattr(g, "GATE_STATE_PATH", state)
     monkeypatch.setenv("JUDGE_GATE_ENABLED", "true")
-    assert g.gate_enabled() is True
-    monkeypatch.delenv("JUDGE_GATE_ENABLED")
-    monkeypatch.setattr(g, "GATE_STATE_PATH", Path("/nonexistent/state.yml"))
-    assert g.gate_enabled() is True  # 默认开
+    state.write_text("judge_gate_enabled: false\n", "utf-8")
+    assert g.gate_enabled() is False, "env=true 不得越过校准关闸"
+    monkeypatch.setenv("JUDGE_GATE_ENABLED", "0")
+    state.write_text("judge_gate_enabled: true\n", "utf-8")
+    assert g.gate_enabled() is True, "env=0 不得关掉已校准的门禁"
+
+
+def test_gate_enabled_defaults_on_without_state(tmp_path, monkeypatch):
+    from nsc.eval import gate as g
+
+    monkeypatch.setattr(g, "GATE_STATE_PATH", tmp_path / "nonexistent.yml")
+    monkeypatch.setenv("JUDGE_GATE_ENABLED", "0")
+    assert g.gate_enabled() is True  # 无校准状态文件：默认开
 
 
 def test_gate_state_file_fallback(tmp_path, monkeypatch):

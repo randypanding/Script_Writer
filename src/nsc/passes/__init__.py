@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import dspy
+import yaml
 from ulid import ULID
 
 from nsc.runtime.cache import cached_pass
@@ -21,11 +22,42 @@ __all__ = [
     "PassContext",
     "PassFailure",
     "cached_pass",
+    "contract_text",
     "generate_json",
     "new_id",
     "optional_json",
     "with_diag",
 ]
+
+_CONTRACTS_PATH = Path("spec/passes/contracts.yaml")
+
+
+def _contracts() -> dict[str, Any]:
+    """SW-03 / ADR-0015：Pass 契约文案真相在 spec/passes/contracts.yaml（资产层）。
+
+    每次调用重读（文件小、调用频率低）：进程内缓存会让同进程的 spec 编辑
+    读到陈旧契约（review 修正）。
+    """
+    try:
+        return yaml.safe_load(_CONTRACTS_PATH.read_text("utf-8")) or {}
+    except OSError as e:
+        raise PassFailure(None, f"契约资产不可读：{_CONTRACTS_PATH}（{e}）") from e
+
+
+def contract_text(pass_name: str, key: str) -> str:
+    """读一个 Pass 的契约文案；含 ${name} 占位（string.Template），由调用方填充。
+
+    文件或键缺失即 PassFailure（fail fast，review 修正）：契约缺失意味着资产
+    打包/键名损坏，静默降级为空串会把格式约束整个丢给模型。
+    """
+    section = _contracts().get(pass_name)
+    if section is None or key not in section:
+        raise PassFailure(
+            None,
+            f"spec/passes/contracts.yaml 缺少 {pass_name}.{key}；契约资产不完整，"
+            "请检查文件是否被截断或键名拼写。",
+        )
+    return str(section[key])
 
 
 def with_diag(inputs: dict[str, Any], fragment: dict[str, Any]) -> dict[str, Any]:
@@ -47,6 +79,14 @@ def new_id() -> str:
     return str(ULID())
 
 
+#: 进缓存键的 spec 域（SW-02）：只含影响生成结构的域；checks 由 ruleset_ver 覆盖。
+CACHE_SPEC_DOMAINS = ("ir", "passes")
+#: 个别 Pass 的额外缓存依赖域（review 修正）：p5 的 self-check 经
+#: nsc.revise.revision_brief 读 spec/rules/L3_canonical（VOICE RULES 五节），
+#: 该域编辑必须使 p5 缓存失效（ruleset_ver 只覆盖 spec/checks，管不到这里）。
+PASS_EXTRA_SPEC_DOMAINS: dict[str, tuple[str, ...]] = {"p5_dialogue": ("rules",)}
+
+
 @dataclass
 class PassContext:
     """一次编译的运行上下文。所有版本号集中在这里，缓存键由 cache_versions 给出。"""
@@ -62,6 +102,8 @@ class PassContext:
     seed: int | None = 1
     out_dir: Path = Path("out")
     run_id: str = ""
+    #: SW-02 分域 spec 指纹（domain → sha12）。空 = 旧语义（缓存键用全量 spec_sha）。
+    spec_shas: dict[str, str] = field(default_factory=dict)
     #: T-16 检索服务（None = 禁用检索；set 后 pipeline 会往 p1/p2/p3/p5 注入 retrieved_cases）
     retrieval: Any = None
 
@@ -73,6 +115,17 @@ class PassContext:
             return {}
         return self.router.resolve(self.tier_of(pass_name))
 
+    def scoped_spec_sha(self, pass_name: str = "") -> str:
+        """缓存键用 spec 指纹：分域只取相关域（含该 Pass 的额外依赖域）。
+
+        任一必需域缺失（半套指纹）时回退全量 spec_sha——宁可多失效，不可少失效
+        （review 修正：空域拼出的 "ir:|passes:" 会静默削弱缓存失效条件）。
+        """
+        domains = CACHE_SPEC_DOMAINS + PASS_EXTRA_SPEC_DOMAINS.get(pass_name, ())
+        if not self.spec_shas or any(d not in self.spec_shas for d in domains):
+            return self.spec_sha
+        return "|".join(f"{d}:{self.spec_shas[d]}" for d in domains)
+
     def cache_versions(self, pass_name: str) -> dict[str, Any]:
         cfg = self._model_cfg(pass_name)
         return {
@@ -83,7 +136,7 @@ class PassContext:
             "model_id": str(cfg.get("model", "none")),
             "temperature": float(cfg.get("temperature", 0.0)),
             "seed": self.seed,
-            "spec_sha": self.spec_sha,
+            "spec_sha": self.scoped_spec_sha(pass_name),
         }
 
     def record_run(
