@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
+from string import Template
 from typing import Any, cast
 
 from nsc.revise.gate import Counts, decide
@@ -12,7 +13,16 @@ from nsc.revise.revision_brief import BriefSources, build_brief
 from spec.ir.nodes import Line
 from spec.passes import signatures
 
-from . import DSPyPass, PassContext, PassFailure, cached_pass, inner_json, new_id, with_diag
+from . import (
+    DSPyPass,
+    PassContext,
+    PassFailure,
+    cached_pass,
+    contract_text,
+    inner_json,
+    new_id,
+    with_diag,
+)
 from .schema_bridge import allowed_values, schema_hint
 
 #: Line 字段真相在 spec/ir；beat_index 是归属下标（Pass 装配用），id 等由 Pass 分配。
@@ -25,15 +35,16 @@ class Module(DSPyPass):
     pass_name = "p5_dialogue"
 
 
+#: 契约文案真相在 spec/passes/contracts.yaml（SW-03 / ADR-0015）；动态部分用 Template 填充。
+
+
 def _visual_contract(visuals: list[Any]) -> str:
     """必现视觉契约文案：逐字原文要求 + 用品牌数据动态生成的示范动作行。"""
-    base = (
-        "must_include_lines 里的每一句必须在某条对白(dialogue)中逐字原文出现；"
-        "must_include_visuals 里的每一项必须逐字原文写进某条 line_type=action 的动作行，"
-        "不得改写、不得替换其中任何词（例如不得把'logo'换成'标志'）。"
-    )
+    base = contract_text("p5_dialogue", "brand_must_base")
     if visuals:
-        base += f'示范动作行："镜头拉近，{visuals[0]}清晰可见。"——动作行里必须出现与该视觉项完全一致的字面子串。'
+        base += Template(contract_text("p5_dialogue", "brand_must_example")).substitute(
+            visual=visuals[0]
+        )
     return base
 
 
@@ -50,10 +61,15 @@ def _naming_contract(brand: dict[str, Any]) -> str:
         ]
     if not canonical:
         return ""
-    return (
-        f"产品名唯一规范写法：{canonical}。任何语境（对白、动作行、菜单、招牌、字幕）"
-        f"都不得单独使用简称或变体（如 {sorted(set(forbidden)) or '别名'}），"
-        "提到产品必须写完整规范名。"
+    return Template(contract_text("p5_dialogue", "product_naming")).substitute(
+        canonical=canonical, forbidden=sorted(set(forbidden)) or "别名"
+    )
+
+
+def _dialogue_length_target(chars_lo: int, chars_hi: int, scene_secs: float, cps: float) -> str:
+    """本场对白字数目标文案（DLG-006 的前置指导；数值按 Beat 时长 × 语速推算）。"""
+    return Template(contract_text("p5_dialogue", "dialogue_length_target")).substitute(
+        chars_lo=chars_lo, chars_hi=chars_hi, secs=f"{scene_secs:.0f}", cps=cps
     )
 
 
@@ -90,11 +106,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             "must_include_visuals": json.dumps(visuals, ensure_ascii=False),
             "brand_must_contract": _visual_contract(visuals),
             "product_naming_contract": _naming_contract(ctx.brand),
-            "dialogue_length_target": (
-                f"本场对白（dialogue）总字数目标 {chars_lo}-{chars_hi} 字"
-                f"（按本场 Beat 时长 {scene_secs:.0f}s × {cps} 字/秒推算）；"
-                "对白太少会导致成片时长不足（DLG-006）。"
-            ),
+            "dialogue_length_target": _dialogue_length_target(chars_lo, chars_hi, scene_secs, cps),
             "profile_json": json.dumps(ctx.profile, ensure_ascii=False),
             "retrieved_cases": fragment.get("retrieved_cases", ""),
             "line_schema_hint": _LINE_HINT + "；另需 beat_index: int（归属第几个 Beat，从 0）",

@@ -1,0 +1,32 @@
+# SW-03 / ADR-0015：Pass 输出契约文案（资产层 A5 知识）。
+#
+# 这些是"机械复述给模型的格式契约"：描述输出 JSON 的形状与填法，属于规范知识，
+# 按 AGENTS.md §2 不得硬编码在 src/ 代码里；它们也不是 GEPA 优化对象
+# （优化对象只有 prompts/<pass>.json 的 instructions，prompts/** 禁止手改）。
+# 运行时占位符用 ${name}（string.Template），由 Pass 用品牌/预算数据填充。
+schema_version: "1.0"
+
+p3_beatsheet:
+  # setup_payoffs_json 的格式契约（防把下标写成描述）
+  setup_payoffs: |-
+    setup_payoffs_json 每个条目形如 {"slug":"小写短标识","setup":<beats_json 的下标 int>,"payoff":<beats_json 的下标 int> 或 "PENDING:<对方条目 slug>","kind":"prop|line|promise|secret|skill","description":"一句话"}。setup/payoff 只能填整数下标（0 起）或 PENDING 字符串，绝不能填情节描述文字。
+  # facts_json 的格式契约（ADR-0012；同集引用用下标，跨集引用用 known_facts 里的 id）
+  facts: |-
+    facts_json 每个条目形如 {"content":"一句话事实","type":"character_detail|relationship|backstory|plot_event|foreshadowing|world_rule","status":"active|unresolved|resolved|deprecated","resolves":null 或同集 facts_json 下标 int 或 known_facts 里 fact 的 id 字符串,"episode_no":int,"narrative_weight":"low|medium|high"}。尚未回收的伏笔 resolves 填 null；被回收后的状态翻转由系统统一完成，无需自己改前集状态。
+  # state_changes_json 的格式契约（ADR-0012；key 必须来自 declared_state）
+  state_changes: |-
+    state_changes_json 每个条目形如 {"key":"declared_state 里已声明的状态变量/暗线 key","delta":number 型变量用数值/string 型用字符串/暗线推进用 int 步数,"reason":"一句话原因"}。
+
+p5_dialogue:
+  # 必现视觉/必提台词契约的静态基底（动态示范行见 brand_must_example）
+  brand_must_base: |-
+    must_include_lines 里的每一句必须在某条对白(dialogue)中逐字原文出现；must_include_visuals 里的每一项必须逐字原文写进某条 line_type=action 的动作行，不得改写、不得替换其中任何词（例如不得把'logo'换成'标志'）。
+  # 有必现视觉时追加的示范动作行（${visual} = 第一项视觉符号）
+  brand_must_example: |-
+    示范动作行："镜头拉近，${visual}清晰可见。"——动作行里必须出现与该视觉项完全一致的字面子串。
+  # 产品命名契约模板（BM-009 真相在 brand 资产；列表由代码机械派生）
+  product_naming: |-
+    产品名唯一规范写法：${canonical}。任何语境（对白、动作行、菜单、招牌、字幕）都不得单独使用简称或变体（如 ${forbidden}），提到产品必须写完整规范名。
+  # 本场对白字数目标模板（DLG-006 前置指导；数值由代码按 Beat 时长×语速推算）
+  dialogue_length_target: |-
+    本场对白（dialogue）总字数目标 ${chars_lo}-${chars_hi} 字（按本场 Beat 时长 ${secs}s × ${cps} 字/秒推算）；对白太少会导致成片时长不足（DLG-006）。
