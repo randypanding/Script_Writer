@@ -47,6 +47,14 @@ def new_id() -> str:
     return str(ULID())
 
 
+#: 进缓存键的 spec 域（SW-02）：只含影响生成结构的域；checks 由 ruleset_ver 覆盖。
+CACHE_SPEC_DOMAINS = ("ir", "passes")
+#: 个别 Pass 的额外缓存依赖域（review 修正）：p5 的 self-check 经
+#: nsc.revise.revision_brief 读 spec/rules/L3_canonical（VOICE RULES 五节），
+#: 该域编辑必须使 p5 缓存失效（ruleset_ver 只覆盖 spec/checks，管不到这里）。
+PASS_EXTRA_SPEC_DOMAINS: dict[str, tuple[str, ...]] = {"p5_dialogue": ("rules",)}
+
+
 @dataclass
 class PassContext:
     """一次编译的运行上下文。所有版本号集中在这里，缓存键由 cache_versions 给出。"""
@@ -62,6 +70,8 @@ class PassContext:
     seed: int | None = 1
     out_dir: Path = Path("out")
     run_id: str = ""
+    #: SW-02 分域 spec 指纹（domain → sha12）。空 = 旧语义（缓存键用全量 spec_sha）。
+    spec_shas: dict[str, str] = field(default_factory=dict)
     #: T-16 检索服务（None = 禁用检索；set 后 pipeline 会往 p1/p2/p3/p5 注入 retrieved_cases）
     retrieval: Any = None
 
@@ -73,6 +83,17 @@ class PassContext:
             return {}
         return self.router.resolve(self.tier_of(pass_name))
 
+    def scoped_spec_sha(self, pass_name: str = "") -> str:
+        """缓存键用 spec 指纹：分域只取相关域（含该 Pass 的额外依赖域）。
+
+        任一必需域缺失（半套指纹）时回退全量 spec_sha——宁可多失效，不可少失效
+        （review 修正：空域拼出的 "ir:|passes:" 会静默削弱缓存失效条件）。
+        """
+        domains = CACHE_SPEC_DOMAINS + PASS_EXTRA_SPEC_DOMAINS.get(pass_name, ())
+        if not self.spec_shas or any(d not in self.spec_shas for d in domains):
+            return self.spec_sha
+        return "|".join(f"{d}:{self.spec_shas[d]}" for d in domains)
+
     def cache_versions(self, pass_name: str) -> dict[str, Any]:
         cfg = self._model_cfg(pass_name)
         return {
@@ -83,7 +104,7 @@ class PassContext:
             "model_id": str(cfg.get("model", "none")),
             "temperature": float(cfg.get("temperature", 0.0)),
             "seed": self.seed,
-            "spec_sha": self.spec_sha,
+            "spec_sha": self.scoped_spec_sha(pass_name),
         }
 
     def record_run(
