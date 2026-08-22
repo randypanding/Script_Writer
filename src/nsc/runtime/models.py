@@ -2,17 +2,36 @@
 
 tier → 模型 的映射在 config/models.yaml（配置是生成物，路由策略是资产）。
 成本统计走 litellm.completion_cost；Langfuse trace 在配置缺失时静默降级。
+SW-01：每次调用的 prompt/response 落 SQLite transcripts（Lab ADR-0001 §接口），
+best-effort——写库失败静默降级，绝不影响路由本身。
 """
 
 from __future__ import annotations
 
+import json
 import os
+import sqlite3
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+_TRANSCRIPT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS transcripts (
+  ts            TEXT NOT NULL,
+  caller        TEXT NOT NULL,
+  model         TEXT NOT NULL,
+  prompt        TEXT NOT NULL,
+  response      TEXT NOT NULL,
+  tokens_in     INTEGER NOT NULL DEFAULT 0,
+  tokens_out    INTEGER NOT NULL DEFAULT 0,
+  cost_usd      REAL NOT NULL DEFAULT 0,
+  experiment_id TEXT NOT NULL DEFAULT ''
+)
+"""
 
 
 @dataclass(slots=True)
@@ -36,7 +55,13 @@ def _has_json(text: str) -> bool:
 class ModelRouter:
     """按 tier 路由到具体模型，带重试与成本统计。"""
 
-    def __init__(self, config_path: str | Path = "config/models.yaml") -> None:
+    def __init__(
+        self,
+        config_path: str | Path = "config/models.yaml",
+        *,
+        transcript_db: str | Path | None = None,
+        experiment_id: str = "",
+    ) -> None:
         cfg = yaml.safe_load(Path(config_path).read_text("utf-8"))
         self.tiers: dict[str, dict[str, Any]] = cfg.get("tiers", {})
         self.budgets: dict[str, float] = cfg.get("budgets", {})
@@ -44,6 +69,64 @@ class ModelRouter:
         self.attempts: int = int(retry.get("attempts", 3))
         # litellm 不认识的新模型（如 LongCat-2.0）用配置价兜底成本统计。
         self.cost_per_mtok: dict[str, float] = cfg.get("cost_usd_per_mtok", {}) or {}
+        # SW-01 transcript 台账：库路径/实验号可用环境变量接线（Lab subprocess 场景）。
+        self.transcript_db = Path(
+            transcript_db or os.environ.get("NSC_TRANSCRIPT_DB") or "out/transcripts.db"
+        )
+        self.experiment_id = experiment_id or os.environ.get("NSC_EXPERIMENT_ID", "")
+        self._tconn: sqlite3.Connection | None = None
+
+    def _transcript_conn(self) -> sqlite3.Connection | None:
+        """懒建连接；任何 IO 异常 → 返回 None（本功能 best-effort）。"""
+        if self._tconn is None:
+            try:
+                self.transcript_db.parent.mkdir(parents=True, exist_ok=True)
+                # timeout=0:transcripts 是 best-effort 记账,库被并发写锁住时立刻
+                # 失败走静默路径,绝不为它阻塞路由(SW-01 review:busy timeout 会加路由延迟)
+                self._tconn = sqlite3.connect(str(self.transcript_db), timeout=0.0)
+                self._tconn.execute(_TRANSCRIPT_SCHEMA)
+                self._tconn.commit()
+            except Exception:
+                self._tconn = None
+        return self._tconn
+
+    def _record_transcript(
+        self,
+        tier: str,
+        model_id: str,
+        messages: list[dict[str, str]],
+        text: str,
+        tokens_in: int,
+        tokens_out: int,
+        cost: float,
+    ) -> None:
+        conn = self._transcript_conn()
+        if conn is None:
+            return
+        try:
+            conn.execute(
+                "INSERT INTO transcripts (ts, caller, model, prompt, response,"
+                " tokens_in, tokens_out, cost_usd, experiment_id)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    datetime.now(UTC).isoformat(),
+                    tier,
+                    model_id,
+                    json.dumps(messages, ensure_ascii=False),
+                    text,
+                    tokens_in,
+                    tokens_out,
+                    cost,
+                    self.experiment_id,
+                ),
+            )
+            conn.commit()
+        except Exception:
+            # best-effort:失败即回滚并弃置连接,防止半开事务长期持锁拖垮后续写入
+            try:
+                conn.rollback()
+            finally:
+                self._tconn = None
 
     def resolve(self, tier: str) -> dict[str, Any]:
         if tier not in self.tiers:
@@ -119,6 +202,7 @@ class ModelRouter:
                 tokens_in * float(self.cost_per_mtok.get("input", 0.0))
                 + tokens_out * float(self.cost_per_mtok.get("output", 0.0))
             ) / 1_000_000
+        self._record_transcript(tier, cfg["model"], messages, text, tokens_in, tokens_out, cost)
         return LLMResult(
             text=text,
             model_id=cfg["model"],

@@ -26,6 +26,7 @@ from . import (
     PassContext,
     PassFailure,
     cached_pass,
+    contract_text,
     inner_json,
     new_id,
     optional_json,
@@ -38,29 +39,10 @@ _BEAT_HINT = schema_hint(
     Beat, skip=("id", "kind", "parent_id", "order", "provenance_id", "locked", "brand_moment_id")
 )
 
-#: setup_payoffs_json 的格式契约（本模块输出契约，机械复述给模型，防把下标写成描述）。
-_SP_CONTRACT = (
-    'setup_payoffs_json 每个条目形如 {"slug":"小写短标识","setup":<beats_json 的下标 int>,'
-    '"payoff":<beats_json 的下标 int> 或 "PENDING:<对方条目 slug>","kind":"prop|line|promise|secret|skill",'
-    '"description":"一句话"}。setup/payoff 只能填整数下标（0 起）或 PENDING 字符串，'
-    "绝不能填情节描述文字。"
-)
-
-#: facts_json 的格式契约（ADR-0012；同集引用用下标，跨集引用用 known_facts 里的 id）。
-_FACT_CONTRACT = (
-    'facts_json 每个条目形如 {"content":"一句话事实",'
-    '"type":"character_detail|relationship|backstory|plot_event|foreshadowing|world_rule",'
-    '"status":"active|unresolved|resolved|deprecated",'
-    '"resolves":null 或同集 facts_json 下标 int 或 known_facts 里 fact 的 id 字符串,'
-    '"episode_no":int,"narrative_weight":"low|medium|high"}。'
-    "尚未回收的伏笔 resolves 填 null；被回收后的状态翻转由系统统一完成，无需自己改前集状态。"
-)
-
-#: state_changes_json 的格式契约（ADR-0012；key 必须来自 declared_state）。
-_SC_CONTRACT = (
-    'state_changes_json 每个条目形如 {"key":"declared_state 里已声明的状态变量/暗线 key",'
-    '"delta":number 型变量用数值/string 型用字符串/暗线推进用 int 步数,"reason":"一句话原因"}。'
-)
+#: 三条输出格式契约的文案真相在 spec/passes/contracts.yaml（SW-03 / ADR-0015）。
+_SP_CONTRACT = contract_text("p3_beatsheet", "setup_payoffs")
+_FACT_CONTRACT = contract_text("p3_beatsheet", "facts")
+_SC_CONTRACT = contract_text("p3_beatsheet", "state_changes")
 
 
 class Module(DSPyPass):

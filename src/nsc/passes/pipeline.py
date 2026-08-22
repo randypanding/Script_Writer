@@ -82,20 +82,46 @@ def _accum(diag: str, new: str) -> str:
     return f"{diag}\n---\n{new}" if diag else new
 
 
-def _retry_pass(fn: Any, ctx: PassContext, fragment: dict[str, Any], *, attempts: int = 2) -> Any:
+def _attempts_of(ctx: PassContext, key: str, default: int) -> int:
+    """SW-07：读 profile.pipeline.<key> 的次数旋钮；坏值转 PassFailure（诊断句，review 修正）。"""
+    raw = ctx.profile.get("pipeline", {}).get(key, default)
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError) as e:
+        raise PassFailure(
+            None,
+            f"profile.pipeline.{key} 必须是正整数，当前为 {raw!r}；请修正 profile 配置后重跑。",
+        ) from e
+
+
+def _pass_attempts(ctx: PassContext) -> int:
+    """SW-07：单 Pass 输出波动重试次数（profile.pipeline.pass_attempts，缺省 2）。"""
+    return _attempts_of(ctx, "pass_attempts", 2)
+
+
+def _phase_attempts(ctx: PassContext) -> int:
+    """SW-07：p3/p4、p5、p6 相位级定向重生成次数（profile.pipeline.phase_attempts，缺省 3）。"""
+    return _attempts_of(ctx, "phase_attempts", 3)
+
+
+def _retry_pass(
+    fn: Any, ctx: PassContext, fragment: dict[str, Any], *, attempts: int | None = None
+) -> Any:
     """生成型 Pass 的输出波动重试：把上次失败诊断注入重试输入（D13 反馈驱动再生成）。
 
     LLM 输出有随机性（漏字段/数错个数），带诊断的重试能显著降低端到端失败率；
     失败语义不变（全部失败照样抛 PassFailure，GEPA 反馈信号不受影响），缓存只存成功产物。
+    attempts：SW-07 缺省读 profile.pipeline.pass_attempts（原常量 2）。
     """
+    total = attempts if attempts is not None else _pass_attempts(ctx)
     last_reason = ""
-    for i in range(attempts):
+    for i in range(total):
         frag = {**fragment, "_previous_failure": last_reason} if last_reason else fragment
         try:
             return fn(ctx, frag)
         except PassFailure as e:
             last_reason = str(e)
-            if i == attempts - 1:
+            if i == total - 1:
                 raise
 
 
@@ -332,7 +358,8 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     # p3（逐集）+ p4 + after_p3/p4 检查作为一个相位：L0 拦截（如 BM-002 植入间隔）时
     # 带诊断整体重试（D13 反馈驱动再生成，诊断累积）；重试前恢复相位前的状态。
     diag = ""
-    for attempt in range(3):
+    phase_n = _phase_attempts(ctx)
+    for attempt in range(phase_n):
         snapshot = {
             k: list(st[k]) for k in ("beats", "setup_payoffs", "brand_moments", "scenes", "facts")
         }
@@ -394,12 +421,13 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
             for e_ in episodes:
                 e_["state_changes"] = ep_state_snap[e_["id"]]
             diag = _accum(diag, str(e))
-            if attempt == 2:
+            if attempt == phase_n - 1:
                 raise
 
     # p5 相位：对白 + after_p5 检查（如 BM-007 必提台词）；拦截时带累积诊断整体重试。
     diag5 = ""
-    for attempt in range(3):
+    phase5_n = _phase_attempts(ctx)
+    for attempt in range(phase5_n):
         snapshot_lines = list(st["lines"])
         _dbg(f"p5-phase attempt={attempt} scenes={len(st['scenes'])} diag={diag5[:120]!r}")
         try:
@@ -421,14 +449,15 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
             _dbg(f"p5-phase caught PassFailure: {str(e)[:160]!r}")
             st["lines"] = snapshot_lines
             diag5 = _accum(diag5, str(e))
-            if attempt == 2:
+            if attempt == phase5_n - 1:
                 raise
 
     if ctx.profile.get("novel", {}).get("enabled"):
         st["voice"] = _voice(ctx, bible)
         # p6 相位：小说 + after_p6 检查（如 NOV-001 锚点覆盖）；同上带累积诊断重试。
         diag6 = ""
-        for attempt in range(3):
+        phase6_n = _phase_attempts(ctx)
+        for attempt in range(phase6_n):
             snapshot_chapters = list(st["chapters"])
             _dbg(f"p6-phase attempt={attempt} diag={diag6[:120]!r}")
             try:
@@ -446,7 +475,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 _dbg(f"p6-phase caught PassFailure: {str(e)[:160]!r}")
                 st["chapters"] = snapshot_chapters
                 diag6 = _accum(diag6, str(e))
-                if attempt == 2:
+                if attempt == phase6_n - 1:
                     raise
 
     ir = cur()

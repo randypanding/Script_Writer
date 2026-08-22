@@ -21,7 +21,7 @@ def _load_assets(profile_id: str, brand_id: str) -> tuple[dict, dict]:
 def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
     from nsc.passes import PassContext
     from nsc.runtime.models import ModelRouter
-    from nsc.runtime.provenance import RunsStore, spec_fingerprint
+    from nsc.runtime.provenance import RunsStore, spec_domain_fingerprints, spec_fingerprint
 
     profile, brand = _load_assets(brief.get("profile", ""), brief.get("brand", ""))
     spec_files = list(Path("spec").rglob("*.py")) + list(Path("spec").rglob("*.yaml"))
@@ -34,9 +34,26 @@ def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
         store=RunsStore(out_dir / "runs.db"),
         ruleset_ver=spec_fingerprint(list(Path("spec/checks").rglob("*.yaml")))[:12],
         spec_sha=spec_fingerprint(spec_files)[:12],
+        spec_shas=spec_domain_fingerprints(),  # SW-02：缓存键分域；provenance 仍全量
         promptset_ver=spec_fingerprint(prompts)[:12] if prompts else "seed",
         out_dir=out_dir,
     )
+
+
+def _make_retrieval(ctx: Any) -> Any:
+    """SW-07：检索服务，注入条数 top_k 读 profile.retrieval（缺省 3=原常量）。"""
+    import typer
+
+    from nsc.retrieval import RetrievalService
+
+    raw = ctx.profile.get("retrieval", {}).get("top_k", 3)
+    try:
+        k = max(1, int(raw))
+    except (TypeError, ValueError) as e:
+        raise typer.BadParameter(
+            f"profile 的 retrieval.top_k 必须是正整数，当前为 {raw!r}（review 修正：给可读报错）"
+        ) from e
+    return RetrievalService(db_path="cases/cases.db", k=k)
 
 
 # --- 编译 ---
@@ -56,9 +73,7 @@ def run(
     brief_dict = yaml.safe_load(Path(brief).read_text("utf-8"))
     ctx = _make_ctx(brief_dict, Path(out))
     if not no_retrieval:
-        from nsc.retrieval import RetrievalService
-
-        ctx.retrieval = RetrievalService(db_path="cases/cases.db")
+        ctx.retrieval = _make_retrieval(ctx)
     try:
         ir = run_pipeline(ctx)
     except PassFailure as e:
