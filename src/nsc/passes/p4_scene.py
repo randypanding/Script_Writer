@@ -102,8 +102,26 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    _repair_protagonist_present(scenes, bible_chars)
     assigned = _assign(mapping, beats, scenes, ep)
     return {"episode_id": ep["id"], "scenes": scenes, "beats": assigned, "_usage": out["_usage"]}
+
+
+def _repair_protagonist_present(
+    scenes: list[dict[str, Any]], bible_chars: list[dict[str, Any]]
+) -> None:
+    """STR-010 机械兜底：主角整集缺席时补进在场人数最多的场景（人最多处冲突最密，
+    主角最该在）。随机后端会在支线集漏主角（实证第 6 集 STR-010 拦截），相位重试
+    只复述诊断不改结构，机械补位优于烧轮次。"""
+    pro_ids = [str(c.get("id")) for c in bible_chars if c.get("role") == "protagonist"]
+    if not pro_ids or not scenes:
+        return
+    present = {cid for sc in scenes for cid in sc["present_character_ids"]}
+    missing = [pid for pid in pro_ids if pid not in present]
+    if not missing:
+        return
+    host = max(scenes, key=lambda sc: len(sc["present_character_ids"]))
+    host["present_character_ids"].extend(missing)
 
 
 def _public_beats(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
