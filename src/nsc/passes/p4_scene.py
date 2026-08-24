@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from spec.ir.nodes import KnowledgeState, Scene
@@ -129,17 +130,41 @@ def _knowledge_state(raw: Any) -> dict[str, str] | None:
     return {k: str(v) for k, v in raw.items() if k in KnowledgeState.model_fields} or None
 
 
+def _coerce_entry(m: Any) -> tuple[int, int] | None:
+    """把结构漂移的映射项矫正为 (beat_index, scene_index);矫正不了返回 None。
+
+    随机后端实测漂移形态:"0:1" 字符串对 / {"beat":..,"scene":..} 键名变体 / [b,s] 二元组。"""
+    if isinstance(m, dict):
+        b = m.get("beat_index", m.get("beat", m.get("b")))
+        s = m.get("scene_index", m.get("scene", m.get("s")))
+        if b is not None and s is not None:
+            return int(b), int(s)
+        return None
+    if isinstance(m, (list, tuple)) and len(m) == 2:
+        return int(m[0]), int(m[1])
+    if isinstance(m, str):
+        nums = [p for p in re.split(r"[:：,\-–—/ ]+", m.strip()) if p.strip().isdigit()]
+        if len(nums) == 2:
+            return int(nums[0]), int(nums[1])
+    return None
+
+
 def _assign(
     mapping: Any,
     beats: list[dict[str, Any]],
     scenes: list[dict[str, Any]],
     ep: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    if isinstance(mapping, dict):
+        mapping = [{"beat_index": k, "scene_index": v} for k, v in mapping.items()]
     if not isinstance(mapping, list):
         raise PassFailure(ep["id"], "p4_scene 输出的 beat_to_scene 应为列表")
     beat_to_scene: dict[int, int] = {}
     for m in mapping:
-        beat_to_scene[int(m["beat_index"])] = int(m["scene_index"])
+        pair = _coerce_entry(m)
+        if pair is None:
+            raise PassFailure(ep["id"], f"beat_to_scene 含不可解析的映射项:{str(m)[:60]}")
+        beat_to_scene[pair[0]] = pair[1]
     out = []
     scene_counters: dict[int, int] = {}
     for i, b in enumerate(beats):
