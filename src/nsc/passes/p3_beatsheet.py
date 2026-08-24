@@ -116,6 +116,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     setup_payoffs = _attach_setup_payoffs(raw_sps, beats, ep)  # 先按下标解引用:下方修复换序不影响
     _repair_load_bearing(beats)
     _repair_brand_gap(beats, _min_gap_beats(ctx))
+    _rescale_durations(beats, ep)
     brand_moments = _attach_brand_moments(beats, fragment["placement"], ep)
     facts = _attach_facts(
         optional_json(out, "facts_json", "p3_beatsheet"), ep, fragment.get("known_facts", [])
@@ -194,6 +195,26 @@ def _repair_brand_gap(beats: list[dict[str, Any]], min_gap: int) -> None:
         beats.insert(target, beats.pop(b_))
     for i, bt in enumerate(beats):
         bt["order"] = i
+
+
+def _rescale_durations(beats: list[dict[str, Any]], ep: dict[str, Any]) -> None:
+    """DLG-006 根因机械归一：NPC 系统性低估 est_duration_s（全集合计 ~70s vs 目标 90s，
+    实证 attempt3 六集对白全灭），p5 按它换算对白地板必然欠量。把各拍时长等比缩放到
+    集目标时长（duration_target_s），让下游体量地板算真账；全 0 时均分；无目标不动。"""
+    try:
+        target = float(ep.get("duration_target_s") or 0)
+    except (TypeError, ValueError):
+        return
+    if target <= 0 or not beats:
+        return
+    total = sum(float(b.get("est_duration_s") or 0) for b in beats)
+    if total <= 0:
+        for b in beats:
+            b["est_duration_s"] = round(target / len(beats), 2)
+        return
+    scale = target / total
+    for b in beats:
+        b["est_duration_s"] = round(float(b.get("est_duration_s") or 0) * scale, 2)
 
 
 def _attach_facts(

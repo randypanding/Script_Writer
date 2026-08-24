@@ -104,6 +104,28 @@ def _phase_attempts(ctx: PassContext) -> int:
     return _attempts_of(ctx, "phase_attempts", 3)
 
 
+_TRANSIENT_MARKERS = (
+    "APIConnectionError",
+    "APITimeoutError",
+    "ConnectError",
+    "ReadTimeout",
+    "RemoteProtocolError",
+    "ServiceUnavailableError",
+)
+
+
+def _is_transient(exc: Exception) -> bool:
+    """传输层故障判定（shim 重启/CNB 抖动/网关超时）：类名匹配或内建网络异常。
+
+    实证 attempt2：shim 重启期间 APIConnectionError 逃过所有重试通道直接杀死整轮——
+    传输故障必须与 PassFailure 走同一条带诊断重试通道，而不是让 2.5h 的跑批陪葬。
+    """
+    name = type(exc).__name__
+    return any(m in name for m in _TRANSIENT_MARKERS) or isinstance(
+        exc, (ConnectionError, TimeoutError, OSError)
+    )
+
+
 def _retry_pass(
     fn: Any, ctx: PassContext, fragment: dict[str, Any], *, attempts: int | None = None
 ) -> Any:
@@ -112,6 +134,7 @@ def _retry_pass(
     LLM 输出有随机性（漏字段/数错个数），带诊断的重试能显著降低端到端失败率；
     失败语义不变（全部失败照样抛 PassFailure，GEPA 反馈信号不受影响），缓存只存成功产物。
     attempts：SW-07 缺省读 profile.pipeline.pass_attempts（原常量 2）。
+    传输故障（_is_transient）同样重试；耗尽后落成 PassFailure 让相位重试接管。
     """
     total = attempts if attempts is not None else _pass_attempts(ctx)
     last_reason = ""
@@ -123,6 +146,12 @@ def _retry_pass(
             last_reason = str(e)
             if i == total - 1:
                 raise
+        except Exception as e:  # noqa: BLE001 —— 只放行传输故障,代码 bug 原样上抛
+            if not _is_transient(e):
+                raise
+            last_reason = f"传输故障:{type(e).__name__} {str(e)[:120]}"
+            if i == total - 1:
+                raise PassFailure(None, last_reason) from e
 
 
 def _run_checks(
