@@ -382,12 +382,18 @@ def _attach_setup_payoffs(
 
 
 def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """全季后处理：解引用 PENDING:<slug>。规则：slug 相同的条目互为两端。"""
+    """全季后处理:解引用 PENDING:<slug>。规则:slug 相同的条目互为两端。
+
+    降级语义(round12):无 donor 时删除该条目而不是 PassFailure——随机后端几乎从不
+    补 donor,悬空 PENDING 由此成为最高频死法;解除跨集伏笔契约(叙事文本保留)
+    优于全管线死亡。"""
     by_slug: dict[str, list[dict[str, Any]]] = {}
     for sp in setup_payoffs:
         by_slug.setdefault(sp["_slug"], []).append(sp)
+    kept: list[dict[str, Any]] = []
     for slug, group in by_slug.items():
         for sp in group:
+            demoted = False
             for side in ("setup", "payoff"):
                 ref = sp[f"{side}_beat_id"]
                 if isinstance(ref, str) and ref.startswith("PENDING:"):
@@ -401,12 +407,12 @@ def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]
                         None,
                     )
                     if donor is None:
-                        raise PassFailure(
-                            sp["_episode_id"],
-                            f"伏笔 {sp['description']} 的 {side} 引用 PENDING:{target_slug} "
-                            "无法解引用（没有对应条目提供真实 Beat）",
-                        )
+                        demoted = True  # 无 donor → 解除契约,不致命
+                        break
                     sp[f"{side}_beat_id"] = donor[f"{side}_beat_id"]
+            if not demoted:
+                kept.append(sp)
+    return kept
         if slug:
             continue
     return [
