@@ -55,7 +55,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     locations = _assign_ids(
         filter_extra(inner_json(out["locations_json"], "p1_bible", "locations_json"), Location)
     )
-    props = _assign_ids(filter_extra(inner_json(out["props_json"], "p1_bible", "props_json"), Prop))
+    props = _assign_ids(_sanitize_props(filter_extra(inner_json(out["props_json"], "p1_bible", "props_json"), Prop)))
     motifs = _assign_ids(
         filter_extra(inner_json(out["motifs_json"], "p1_bible", "motifs_json"), Motif)
     )
@@ -73,6 +73,17 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         "tone": tone,
         "_usage": out["_usage"],
     }
+
+
+def _sanitize_props(props: Any) -> Any:
+    """Prop 机械归一:NPC 显式给 sku_ref=null 时归一为 ""(pydantic str 拒 None;
+    随机后端 ValidationError props.N.sku_ref 实证)。"""
+    if not isinstance(props, list):
+        return props
+    for p in props:
+        if isinstance(p, dict) and p.get("sku_ref") is None:
+            p["sku_ref"] = ""
+    return props
 
 
 def _sanitize_mind(characters: list[dict[str, Any]]) -> list[dict[str, Any]]:
