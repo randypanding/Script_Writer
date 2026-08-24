@@ -130,18 +130,27 @@ def _knowledge_state(raw: Any) -> dict[str, str] | None:
     return {k: str(v) for k, v in raw.items() if k in KnowledgeState.model_fields} or None
 
 
+def _to_int(x: Any) -> int | None:
+    """宽容转 int:直接转换失败时提取首个数字串;都不行返回 None。"""
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        m = re.search(r"\d+", str(x))
+        return int(m.group(0)) if m else None
+
+
 def _coerce_entry(m: Any) -> tuple[int, int] | None:
     """把结构漂移的映射项矫正为 (beat_index, scene_index);矫正不了返回 None。
 
-    随机后端实测漂移形态:"0:1" 字符串对 / {"beat":..,"scene":..} 键名变体 / [b,s] 二元组。"""
+    随机后端实测漂移形态:"0:1" 字符串对 / {"beat":..,"scene":..} 键名变体 / [b,s] 二元组 /
+    字符串值("beat_0"、"s1")。"""
     if isinstance(m, dict):
-        b = m.get("beat_index", m.get("beat", m.get("b")))
-        s = m.get("scene_index", m.get("scene", m.get("s")))
-        if b is not None and s is not None:
-            return int(b), int(s)
-        return None
+        b = _to_int(m.get("beat_index", m.get("beat", m.get("b"))))
+        s = _to_int(m.get("scene_index", m.get("scene", m.get("s"))))
+        return (b, s) if b is not None and s is not None else None
     if isinstance(m, (list, tuple)) and len(m) == 2:
-        return int(m[0]), int(m[1])
+        b, s = _to_int(m[0]), _to_int(m[1])
+        return (b, s) if b is not None and s is not None else None
     if isinstance(m, str):
         nums = [p for p in re.split(r"[:：,\-–—/ ]+", m.strip()) if p.strip().isdigit()]
         if len(nums) == 2:

@@ -41,3 +41,11 @@ def test_unsalvageable_raises_with_diagnostic():
         _assign([{"foo": "bar"}, {"beat_index": 1, "scene_index": 0},
                  {"beat_index": 2, "scene_index": 1}], BEATS, SCENES, EP)
     assert "beat_to_scene" in str(ei.value)
+
+
+def test_string_valued_indexes():
+    """字符串形式的下标("beat_0"/"s1"/"0")也要矫正,不得 TypeError(round10 实证)。"""
+    out = _assign([{"beat_index": "beat_0", "scene_index": "s0"},
+                   {"beat_index": "1", "scene_index": "0"},
+                   {"beat_index": 2, "scene_index": "s1"}], BEATS, SCENES, EP)
+    assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
