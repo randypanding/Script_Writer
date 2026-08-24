@@ -412,9 +412,6 @@ def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]
                     sp[f"{side}_beat_id"] = donor[f"{side}_beat_id"]
             if not demoted:
                 kept.append(sp)
-    return kept
-        if slug:
-            continue
     return [
         {
             "id": sp["id"],
@@ -423,5 +420,5 @@ def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]
             "kind": sp["kind"],
             "description": sp["description"],
         }
-        for sp in setup_payoffs
+        for sp in kept
     ]
