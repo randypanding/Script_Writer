@@ -49,15 +49,24 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         ),
     )
     characters = _assign_ids(
-        filter_extra(inner_json(out["characters_json"], "p1_bible", "characters_json"), Character)
+        _null_str_fields_to_default(
+            filter_extra(inner_json(out["characters_json"], "p1_bible", "characters_json"), Character),
+            Character,
+        )
     )
     characters = _sanitize_mind(characters)
     locations = _assign_ids(
-        filter_extra(inner_json(out["locations_json"], "p1_bible", "locations_json"), Location)
+        _null_str_fields_to_default(
+            filter_extra(inner_json(out["locations_json"], "p1_bible", "locations_json"), Location),
+            Location,
+        )
     )
     props = _assign_ids(_sanitize_props(filter_extra(inner_json(out["props_json"], "p1_bible", "props_json"), Prop)))
     motifs = _assign_ids(
-        filter_extra(inner_json(out["motifs_json"], "p1_bible", "motifs_json"), Motif)
+        _null_str_fields_to_default(
+            filter_extra(inner_json(out["motifs_json"], "p1_bible", "motifs_json"), Motif),
+            Motif,
+        )
     )
     for m in motifs if isinstance(motifs, list) else []:
         m.pop("occurrence_beat_ids", None)  # p1 阶段 Beat 尚不存在，引用必为伪造
@@ -75,15 +84,30 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _null_str_fields_to_default(coll: Any, model_cls: Any) -> Any:
+    """通用归一:NPC 显式给字段 null 时归一为字段默认值/默认工厂产出
+    (pydantic str/list 拒 None;随机后端 ValidationError props.sku_ref、
+    characters.persona_ref 系列实证)。"""
+    from pydantic_core import PydanticUndefined
+
+    if not isinstance(coll, list):
+        return coll
+    for item in coll:
+        if not isinstance(item, dict):
+            continue
+        for name, f in model_cls.model_fields.items():
+            if item.get(name) is None:
+                if f.default is not None and f.default is not PydanticUndefined:
+                    item[name] = f.default
+                elif f.default_factory is not None:
+                    item[name] = f.default_factory()
+    return coll
+
+
 def _sanitize_props(props: Any) -> Any:
     """Prop 机械归一:NPC 显式给 sku_ref=null 时归一为 ""(pydantic str 拒 None;
     随机后端 ValidationError props.N.sku_ref 实证)。"""
-    if not isinstance(props, list):
-        return props
-    for p in props:
-        if isinstance(p, dict) and p.get("sku_ref") is None:
-            p["sku_ref"] = ""
-    return props
+    return _null_str_fields_to_default(props, Prop)
 
 
 def _sanitize_mind(characters: list[dict[str, Any]]) -> list[dict[str, Any]]:
