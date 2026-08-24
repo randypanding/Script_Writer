@@ -74,6 +74,8 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                     f"（{sorted(char_ids)}）或角色名。",
                 )
             present.append(cid)
+        if not present:  # NPC 给空表:pydantic 要求 ≥1(实证 scenes.N present_character_ids=[])→ 全集兜底
+            present = _fallback_present(present, char_ids)
         scenes.append(
             {
                 "id": new_id(),
@@ -137,6 +139,11 @@ def _to_int(x: Any) -> int | None:
     except (TypeError, ValueError):
         m = re.search(r"\d+", str(x))
         return int(m.group(0)) if m else None
+
+
+def _fallback_present(present: list[str], char_ids: set[str]) -> list[str]:
+    """空 present_character_ids 兜底为全部已知角色(实证 scenes.N=[] 崩 NarrativeIR)。"""
+    return present if present else sorted(char_ids)
 
 
 def _coerce_entry(m: Any) -> tuple[int, int] | None:

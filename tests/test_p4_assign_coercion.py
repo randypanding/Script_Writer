@@ -49,3 +49,10 @@ def test_string_valued_indexes():
                    {"beat_index": "1", "scene_index": "0"},
                    {"beat_index": 2, "scene_index": "s1"}], BEATS, SCENES, EP)
     assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
+
+
+def test_empty_present_falls_back_to_all():
+    """空 present_character_ids 兜底全集(scenes.N=[] ValidationError 实证)。"""
+    from nsc.passes.p4_scene import _fallback_present
+    assert _fallback_present([], {"c1", "c2"}) == ["c1", "c2"]
+    assert _fallback_present(["c1"], {"c1", "c2"}) == ["c1"]
