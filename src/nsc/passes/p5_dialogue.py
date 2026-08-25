@@ -130,14 +130,16 @@ def _dialogue_chars(lines: list[dict[str, Any]]) -> int:
 
 
 def _scene_dialogue_floor(ctx: PassContext, beats: list[dict[str, Any]]) -> int:
-    """本场对白字数下限：scene_secs × cps × (1-tol)，与 DLG-006 门禁比率一致。
+    """本场对白字数下限：scene_secs × cps × (1-tol+0.03)。
 
     各场都过此线 → 集级总和必过门禁（p3 已把 est_duration_s 等比缩放到集目标时长）。
+    +0.03 余量（round16b）：实证 NPC 扩写后落在门禁线 ±3 字内（341/342/344 vs 344.25），
+    int 截断与浮点边界会吃掉最后几个字——瞄准线必须高于门禁线。
     """
     cps = float(ctx.profile.get("chars_per_second", 4.5))
     tol = float(ctx.profile.get("duration_tolerance", 0.15))
     scene_secs = sum(float(b.get("est_duration_s", 0.0)) for b in beats)
-    return int(scene_secs * cps * (1 - tol))
+    return int(scene_secs * cps * (1 - tol + 0.03))
 
 
 def _expand_if_thin(
@@ -157,22 +159,27 @@ def _expand_if_thin(
     """
     floor = _scene_dialogue_floor(ctx, beats)
     have = _dialogue_chars(lines)
-    if have >= floor:
-        return lines, out
-    brief = (
-        f"【体量扩写】本场对白当前 {have} 字，低于时长预算下限 {floor} 字"
-        f"（缺口 {floor - have} 字）。在保留既有台词、节拍归属与 beat_index 的前提下扩写："
-        "给角色增加追问、反驳、解释、情绪反应等回合，把动作行承接成对话；"
-        f"扩写后对白总字数必须 ≥ {floor} 字。只输出完整 lines_json。"
-    )
-    try:
-        out2 = cast(dict[str, Any], Module()(ctx, {**inputs, "revision_brief": brief}))
-        lines2 = _parse_lines(ctx, scene, beats, out2, characters)
-    except PassFailure:
-        return lines, out
-    if _dialogue_chars(lines2) > have:
-        return lines2, out2
-    return lines, out
+    best, best_out = lines, out
+    for _ in range(2):  # 最多两次扩写;只保留严格更厚的稿子,达标即停
+        if have >= floor:
+            break
+        brief = (
+            f"【体量扩写】本场对白当前 {have} 字，低于时长预算下限 {floor} 字"
+            f"（缺口 {floor - have} 字）。在保留既有台词、节拍归属与 beat_index 的前提下扩写："
+            "给角色增加追问、反驳、解释、情绪反应等回合，把动作行承接成对话；"
+            f"扩写后对白总字数必须 ≥ {floor} 字。只输出完整 lines_json。"
+        )
+        try:
+            out2 = cast(dict[str, Any], Module()(ctx, {**inputs, "revision_brief": brief}))
+            lines2 = _parse_lines(ctx, scene, beats, out2, characters)
+        except PassFailure:
+            break
+        chars2 = _dialogue_chars(lines2)
+        if chars2 > have:
+            best, best_out, have = lines2, out2, chars2
+        else:
+            break  # 无增量:再试也是同一分布,省一次调用
+    return best, best_out
 
 
 def _parse_lines(

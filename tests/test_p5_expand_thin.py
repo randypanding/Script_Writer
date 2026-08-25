@@ -21,10 +21,12 @@ def test_scene_dialogue_floor_matches_gate_ratio():
     ctx = SimpleNamespace(profile={"chars_per_second": 4.5, "duration_tolerance": 0.15})
     beats = [{"est_duration_s": 50.0}, {"est_duration_s": 40.0}]  # 90s ≈ 一集
     floor = _scene_dialogue_floor(ctx, beats)
-    assert floor == int(90 * 4.5 * 0.85) == 344  # 与 DLG-006 下限一致
+    # round16b:瞄准线 = 门禁线 + 3pp 余量(实证 NPC 落在 341-344 vs 门禁 344.25 毫厘之死)
+    assert floor == int(90 * 4.5 * 0.88) == 356
+    assert floor > int(90 * 4.5 * 0.85)  # 严格高于门禁下限
 
 
 def test_scene_dialogue_floor_defaults():
     ctx = SimpleNamespace(profile={})
     beats = [{"est_duration_s": 100.0}]
-    assert _scene_dialogue_floor(ctx, beats) == int(100 * 4.5 * 0.85)
+    assert _scene_dialogue_floor(ctx, beats) == int(100 * 4.5 * 0.88)
