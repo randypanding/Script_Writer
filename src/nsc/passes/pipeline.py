@@ -867,9 +867,22 @@ def _p6_fragment(
         "episode": ep,
         "beats": beats,
         "scenes_with_lines": _scenes_with_lines(scenes, beats, raw),
-        "bible": bible,
+        "bible": _slim_bible_for_episode(bible, scenes),
         "voice": voice,
     }
+
+
+def _slim_bible_for_episode(
+    bible: dict[str, Any], scenes: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """bible 的按集投影（round17 prompt 瘦身）：只留本集出场的角色与用到的地点，
+    外加 tone/motifs；props 不进（台词文本已含全部实体信息，散文编织不查资产表）。"""
+    char_ids = {c for sc in scenes for c in sc.get("present_character_ids", [])}
+    loc_ids = {sc.get("location_id") for sc in scenes}
+    out = {k: v for k, v in bible.items() if k in ("tone", "motifs")}
+    out["characters"] = [c for c in bible.get("characters", []) if c.get("id") in char_ids]
+    out["locations"] = [loc for loc in bible.get("locations", []) if loc.get("id") in loc_ids]
+    return out
 
 
 def _splice_episode(
