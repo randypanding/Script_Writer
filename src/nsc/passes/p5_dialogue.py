@@ -80,11 +80,13 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     visuals = list(
         fragment.get("must_include_visuals") or ctx.brand.get("must_include_visuals", [])
     )
-    # 本场对白字数目标：按本场 Beat 的 est_duration_s × 语速机械推算（DLG-006 的前置指导）
+    # 本场对白字数目标：按本场 Beat 的 est_duration_s × 语速机械推算（DLG-006 的前置指导）。
+    # round16：区间与门禁对齐（旧 lo=0.8× 低于门禁下限 0.85×，全顺从也会死——实证 attempt3
+    # 区间 [324,526] vs 门禁 [344,466]，NPC 取区间低端必然欠量），欠量由 _expand_if_thin 兜底。
     cps = float(ctx.profile.get("chars_per_second", 4.5))
     scene_secs = sum(float(b.get("est_duration_s", 0.0)) for b in beats)
-    chars_lo = int(scene_secs * cps * 0.8)
-    chars_hi = int(scene_secs * cps * 1.3)
+    chars_lo = int(scene_secs * cps * 1.0)
+    chars_hi = int(scene_secs * cps * 1.15)
     inputs = with_diag(
         {
             "scene_json": json.dumps(_public_scene(scene), ensure_ascii=False),
@@ -117,7 +119,60 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     lines = _parse_lines(ctx, scene, beats, out, fragment["characters"])
     # T-31 自检子步（默认开）：本场 L0 findings → revision_brief 五节 → 一次自我修订
     lines, out = _self_check(ctx, inputs, scene, beats, lines, fragment["characters"], out)
+    # round16：DLG-006 前瞻兜底——对白欠量当场定点扩写（相位整季重生成改不了系统性欠量）
+    lines, out = _expand_if_thin(ctx, inputs, scene, beats, lines, fragment["characters"], out)
     return {"scene_id": scene["id"], "lines": lines, "_usage": out["_usage"]}
+
+
+def _dialogue_chars(lines: list[dict[str, Any]]) -> int:
+    """DLG-006 的度量单位：只计 line_type==dialogue 的正文字数。"""
+    return sum(len(ln["text"]) for ln in lines if ln["line_type"] == "dialogue")
+
+
+def _scene_dialogue_floor(ctx: PassContext, beats: list[dict[str, Any]]) -> int:
+    """本场对白字数下限：scene_secs × cps × (1-tol)，与 DLG-006 门禁比率一致。
+
+    各场都过此线 → 集级总和必过门禁（p3 已把 est_duration_s 等比缩放到集目标时长）。
+    """
+    cps = float(ctx.profile.get("chars_per_second", 4.5))
+    tol = float(ctx.profile.get("duration_tolerance", 0.15))
+    scene_secs = sum(float(b.get("est_duration_s", 0.0)) for b in beats)
+    return int(scene_secs * cps * (1 - tol))
+
+
+def _expand_if_thin(
+    ctx: PassContext,
+    inputs: dict[str, Any],
+    scene: dict[str, Any],
+    beats: list[dict[str, Any]],
+    lines: list[dict[str, Any]],
+    characters: list[dict[str, Any]],
+    out: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """对白欠量的当场定点扩写（一次 LLM 调用，带当前稿与缺口；只接受严格增量的稿子）。
+
+    实证：NPC 对白系统性欠量 ~26%（attempt1/3 全季 DLG-006 连灭），相位重试整季
+    重生成三轮也改不了系统性——把测得到的缺口变成当场补的扩写调用，比烧相位便宜
+    且对症。解析失败或无增量都回退原稿，残留缺口由 check_stage(after_p5) 兜底。
+    """
+    floor = _scene_dialogue_floor(ctx, beats)
+    have = _dialogue_chars(lines)
+    if have >= floor:
+        return lines, out
+    brief = (
+        f"【体量扩写】本场对白当前 {have} 字，低于时长预算下限 {floor} 字"
+        f"（缺口 {floor - have} 字）。在保留既有台词、节拍归属与 beat_index 的前提下扩写："
+        "给角色增加追问、反驳、解释、情绪反应等回合，把动作行承接成对话；"
+        f"扩写后对白总字数必须 ≥ {floor} 字。只输出完整 lines_json。"
+    )
+    try:
+        out2 = cast(dict[str, Any], Module()(ctx, {**inputs, "revision_brief": brief}))
+        lines2 = _parse_lines(ctx, scene, beats, out2, characters)
+    except PassFailure:
+        return lines, out
+    if _dialogue_chars(lines2) > have:
+        return lines2, out2
+    return lines, out
 
 
 def _parse_lines(
