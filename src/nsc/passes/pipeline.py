@@ -508,6 +508,9 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 if attempt == phase6_n - 1:
                     raise
 
+    n_fixed = _sanitize_absolute_terms(st, _absolute_terms())
+    if n_fixed:
+        _dbg(f"absolute terms sanitized: {n_fixed} 处")
     ir = cur()
     p7_render.run(ctx, ir.model_dump())
     track()
@@ -854,6 +857,70 @@ def _scenes_with_lines(
             }
         )
     return out
+
+
+#: CMP-001 绝对化用语的合规替换表(门禁 fix 要求:"必须替换为可证实的相对表述"——
+#: 机械执行这个要求本身,比相位重试碰运气便宜且确定性收敛;词表真相在 spec/checks/
+#: compliance/_absolute_terms.yaml,此处只覆盖有安全对应词的条目)。
+_ABS_TERM_FIX = {
+    "国家级": "行业级",
+    "最高级": "高水准",
+    "最佳": "上佳",
+    "第一品牌": "头部品牌",
+    "唯一": "少有",
+    "绝无": "难有",
+    "100%有效": "有效",
+    "永久": "长久",
+    "彻底解决": "有效缓解",
+}
+
+#: 只在这些键的字符串值上做合规替换(id/枚举/引用键不动)。
+_TEXT_KEYS = frozenset({
+    "text", "subtext", "delivery", "summary", "function", "goal", "conflict", "turn",
+    "entry", "exit", "opening_attractor", "ending_hook", "title", "logline",
+    "hook_promise", "cliffhanger", "integration_note", "description", "reason",
+    "content", "paragraphs",
+})
+
+
+def _absolute_terms() -> list[str]:
+    """绝对化用语词表(真相 spec/checks/compliance/_absolute_terms.yaml;读不到退替换表键)。"""
+    try:
+        data = yaml.safe_load(Path("spec/checks/compliance/_absolute_terms.yaml").read_text("utf-8"))
+        terms = [str(t) for t in (data or {}).get("terms", [])]
+    except OSError:
+        terms = []
+    return terms or list(_ABS_TERM_FIX)
+
+
+def _sanitize_absolute_terms(st: dict[str, Any], terms: list[str]) -> int:
+    """CMP-001 机械前置(round19):交付文本里的绝对化用语就地替换为相对表述。
+
+    实证 round18 attempt2 全量产物死于 final 门(CMP-001「唯一」)——NPC 对禁用词表
+    的遵守是彩票,相位重试三轮仍复发;合规约束与结构约束同类:机械兜底,门禁复核。
+    返回替换处数(0=无需替换)。
+    """
+    n = 0
+
+    def walk(obj: Any, in_text_key: bool) -> Any:
+        nonlocal n
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                obj[k] = walk(v, k in _TEXT_KEYS)
+            return obj
+        if isinstance(obj, list):
+            return [walk(x, in_text_key) for x in obj]
+        if isinstance(obj, str) and in_text_key:
+            for t in terms:
+                repl = _ABS_TERM_FIX.get(t)
+                if repl and t in obj:
+                    n += obj.count(t)
+                    obj = obj.replace(t, repl)
+        return obj
+
+    for key in ("lines", "beats", "scenes", "chapters", "episodes"):
+        walk(st.get(key, []), False)
+    return n
 
 
 def _clamp_dark_thread_deltas(

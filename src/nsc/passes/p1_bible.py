@@ -101,6 +101,10 @@ def _null_str_fields_to_default(coll: Any, model_cls: Any) -> Any:
                     item[name] = f.default
                 elif f.default_factory is not None:
                     item[name] = f.default_factory()
+            elif item.get(name) == "" and f.is_required() and f.annotation is str:
+                # NPC 给空串(实证 round18 attempt1 characters.4.need string_too_short):
+                # 必填 str 空串必炸校验,占位与 null 归一同哲学——残缺输入宁占位不崩管线
+                item[name] = "（未填）"
     return coll
 
 
