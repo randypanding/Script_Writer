@@ -437,6 +437,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 st["beats"] = [b for b in st["beats"] if b["_episode_id"] != ep["id"]] + r4["beats"]
             st["setup_payoffs"] = p3_beatsheet.resolve_pending(st["setup_payoffs"])
             st["facts"] = p3_beatsheet.apply_fact_cascade(st["facts"])
+            _clamp_dark_thread_deltas(episodes, st["dark_threads"])
             ir3 = cur()
             violations, rep = _run_checks(ctx, ir3, "after_p3", "after_p4")
             _fail_on_violations(violations, rep)
@@ -853,6 +854,35 @@ def _scenes_with_lines(
             }
         )
     return out
+
+
+def _clamp_dark_thread_deltas(
+    episodes: list[dict[str, Any]], dark_threads: list[dict[str, Any]]
+) -> None:
+    """暗线步进钳制（round18，INV-19 的机械前置）：按集序累加 int delta，
+    累加值越界的步进逐集缩减到恰好顶到 [0, len(stages)-1] 边界。
+
+    实证 round17 attempt1：全部 8 章产物死于 final 门——两条暗线累加 5/7 超出 [0,2]。
+    NPC 的步进分配系统性地不知道跨集预算，相位重试改不了系统性；
+    钳制幂等（相位重试恢复快照后重生成会重新钳），bool/非暗线 key 不动。
+    """
+    caps = {
+        str(d.get("key")): max(0, len(d.get("stages") or []) - 1)
+        for d in dark_threads
+        if isinstance(d, dict)
+    }
+    if not caps:
+        return
+    acc = {k: 0 for k in caps}
+    for ep in sorted(episodes, key=lambda e: e.get("order", 0)):
+        for ch in ep.get("state_changes", []):
+            k = str(ch.get("key"))
+            delta = ch.get("delta")
+            if k not in caps or not isinstance(delta, int) or isinstance(delta, bool):
+                continue
+            clamped = min(max(acc[k] + delta, 0), caps[k])
+            ch["delta"] = clamped - acc[k]
+            acc[k] = clamped
 
 
 def _p6_fragment(
