@@ -130,16 +130,17 @@ def _dialogue_chars(lines: list[dict[str, Any]]) -> int:
 
 
 def _scene_dialogue_floor(ctx: PassContext, beats: list[dict[str, Any]]) -> int:
-    """本场对白字数下限：scene_secs × cps × (1-tol+0.03)。
+    """本场对白字数下限：scene_secs × cps × (1-tol+0.06)。
 
     各场都过此线 → 集级总和必过门禁（p3 已把 est_duration_s 等比缩放到集目标时长）。
-    +0.03 余量（round16b）：实证 NPC 扩写后落在门禁线 ±3 字内（341/342/344 vs 344.25），
-    int 截断与浮点边界会吃掉最后几个字——瞄准线必须高于门禁线。
+    余量演进：+0.03（round16b，治 341/342/344 vs 344.25 的毫厘之死）→ +0.06
+    （round20：实证 round18 attempt3 第 8 集 332 差 12 字,7/8 已过,余量再抬 3pp,
+    仍远低于门禁上限 1.15,无过厚风险）。
     """
     cps = float(ctx.profile.get("chars_per_second", 4.5))
     tol = float(ctx.profile.get("duration_tolerance", 0.15))
     scene_secs = sum(float(b.get("est_duration_s", 0.0)) for b in beats)
-    return int(scene_secs * cps * (1 - tol + 0.03))
+    return int(scene_secs * cps * (1 - tol + 0.06))
 
 
 def _expand_if_thin(
@@ -160,7 +161,7 @@ def _expand_if_thin(
     floor = _scene_dialogue_floor(ctx, beats)
     have = _dialogue_chars(lines)
     best, best_out = lines, out
-    for _ in range(2):  # 最多两次扩写;只保留严格更厚的稿子,达标即停
+    for _ in range(3):  # 最多三次扩写(round20:2 次偶尔够不着,实证 ep8 差 12 字);只留更厚稿,达标即停
         if have >= floor:
             break
         brief = (
