@@ -7,8 +7,8 @@ industry: tourism
 products:
   - id: nolan_ip
     name: 南浪仔
-    canonical_name: 南浪仔 NOLAN
-    aliases: [NOLAN, 南浪仔]
+    canonical_name: 南浪仔
+    aliases: [南浪仔 NOLAN, NOLAN]
     category: 文旅 IP 形象
     facts:
       prototype: "原型是海南长臂猿，全世界最稀有的灵长类之一，只生活在海南岛霸王岭的热带雨林"
