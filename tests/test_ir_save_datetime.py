@@ -9,7 +9,8 @@ from spec.ir.container import NarrativeIR, Provenance, Project
 
 def _ir_with_provenance() -> NarrativeIR:
     project = Project(
-        id="01M0TEST000000000000000001", title="测试", profile_id="pp", brand_id="bb"
+        id="01M0TEST000000000000000001", title="测试", profile_id="pp", brand_id="bb",
+        provenance_id="r1", logline="测试故事",
     )
     prov = Provenance(
         run_id="r1", pass_name="p0_intake", spec_sha="s", profile_ver="1",
