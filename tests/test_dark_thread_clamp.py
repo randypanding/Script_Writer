@@ -1,12 +1,16 @@
 """round18:暗线步进钳制(实证 round17 attempt1 全量产物死于 final 门:
 current_stage 5/7 超出 [0,2]——NPC 的 int delta 跨集累加溢出 stages 上限,
 相位重试改不了系统性,机械钳制保累加值恒在 [0, len(stages)-1])。"""
+
 from nsc.passes.pipeline import _clamp_dark_thread_deltas
 
 
 def _ep(order, deltas):
-    return {"order": order, "no": order + 1,
-            "state_changes": [{"key": k, "delta": d, "reason": "r"} for k, d in deltas]}
+    return {
+        "order": order,
+        "no": order + 1,
+        "state_changes": [{"key": k, "delta": d, "reason": "r"} for k, d in deltas],
+    }
 
 
 def test_overflow_clamped_to_cap():

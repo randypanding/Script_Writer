@@ -2,14 +2,18 @@
 承重节拍(STR-014)、植入扎堆(BM-002)、支线集主角缺席(STR-010)。相位重试只会
 轮轮复述同一诊断而结构不变(实证 attempt 4/5 各烧 ~1.5h 死于同一批门禁),
 机械修复把"指望模型遵守"换成"结构必然成立",优于烧轮次。"""
+
 from nsc.passes.p3_beatsheet import _repair_brand_gap, _repair_load_bearing
 from nsc.passes.p4_scene import _repair_protagonist_present
 
 
 def _beat(i, kind, arousal=0.5):
     return {
-        "id": f"b{i}", "order": i, "beat_kind": kind,
-        "emotion": {"valence": 0.0, "arousal": arousal}, "summary": f"节拍{i}",
+        "id": f"b{i}",
+        "order": i,
+        "beat_kind": kind,
+        "emotion": {"valence": 0.0, "arousal": arousal},
+        "summary": f"节拍{i}",
     }
 
 
@@ -19,10 +23,15 @@ def _kinds(beats):
 
 # ---------- _repair_load_bearing(STR-014) ----------
 
+
 def test_missing_climax_converts_highest_arousal_late_beat():
     beats = [
-        _beat(0, "hook"), _beat(1, "inciting"), _beat(2, "escalation", 0.6),
-        _beat(3, "brand_moment"), _beat(4, "escalation", 0.9), _beat(5, "cliffhanger"),
+        _beat(0, "hook"),
+        _beat(1, "inciting"),
+        _beat(2, "escalation", 0.6),
+        _beat(3, "brand_moment"),
+        _beat(4, "escalation", 0.9),
+        _beat(5, "cliffhanger"),
     ]
     _repair_load_bearing(beats)
     assert beats[4]["beat_kind"] == "climax"  # 唤起最高的后段非保护拍
@@ -31,8 +40,12 @@ def test_missing_climax_converts_highest_arousal_late_beat():
 
 def test_missing_inciting_converts_central_beat():
     beats = [
-        _beat(0, "hook"), _beat(1, "setup", 0.3), _beat(2, "escalation", 0.8),
-        _beat(3, "reversal", 0.4), _beat(4, "climax"), _beat(5, "cliffhanger"),
+        _beat(0, "hook"),
+        _beat(1, "setup", 0.3),
+        _beat(2, "escalation", 0.8),
+        _beat(3, "reversal", 0.4),
+        _beat(4, "climax"),
+        _beat(5, "cliffhanger"),
     ]
     _repair_load_bearing(beats)
     assert beats[2]["beat_kind"] == "inciting"  # 居中且唤起最高
@@ -48,14 +61,24 @@ def test_both_present_is_noop():
 
 def test_never_touches_protected_kinds():
     """全保护拍的退化集:无可改写对象时不强行制造,交给检查器报真问题。"""
-    beats = [_beat(0, "hook"), _beat(1, "brand_moment"), _beat(2, "brand_moment"), _beat(3, "cliffhanger")]
+    beats = [
+        _beat(0, "hook"),
+        _beat(1, "brand_moment"),
+        _beat(2, "brand_moment"),
+        _beat(3, "cliffhanger"),
+    ]
     _repair_load_bearing(beats)
     assert _kinds(beats) == ["hook", "brand_moment", "brand_moment", "cliffhanger"]
 
 
 def test_climax_not_on_last_beat():
     """fix_hint:climax 紧邻集末终态之前——集末拍不许被改写为 climax。"""
-    beats = [_beat(0, "hook"), _beat(1, "inciting"), _beat(2, "escalation", 0.7), _beat(3, "escalation", 0.99)]
+    beats = [
+        _beat(0, "hook"),
+        _beat(1, "inciting"),
+        _beat(2, "escalation", 0.7),
+        _beat(3, "escalation", 0.99),
+    ]
     _repair_load_bearing(beats)
     assert beats[2]["beat_kind"] == "climax"
     assert beats[3]["beat_kind"] == "escalation"
@@ -63,8 +86,11 @@ def test_climax_not_on_last_beat():
 
 # ---------- _repair_brand_gap(BM-002,min_gap=2) ----------
 
+
 def test_adjacent_brand_beats_get_spaced():
-    beats = [_beat(0, "brand_moment"), _beat(1, "brand_moment")] + [_beat(i, "escalation") for i in range(2, 6)]
+    beats = [_beat(0, "brand_moment"), _beat(1, "brand_moment")] + [
+        _beat(i, "escalation") for i in range(2, 6)
+    ]
     _repair_brand_gap(beats, 2)
     bm_idx = [i for i, b in enumerate(beats) if b["beat_kind"] == "brand_moment"]
     assert bm_idx[1] - bm_idx[0] >= 2
@@ -89,8 +115,12 @@ def test_unfixable_gap_terminates_without_oscillation():
 
 def test_gap_repair_moves_later_brand_beat_not_earlier():
     beats = [
-        _beat(0, "hook"), _beat(1, "brand_moment"), _beat(2, "escalation"),
-        _beat(3, "brand_moment"), _beat(4, "escalation"), _beat(5, "cliffhanger"),
+        _beat(0, "hook"),
+        _beat(1, "brand_moment"),
+        _beat(2, "escalation"),
+        _beat(3, "brand_moment"),
+        _beat(4, "escalation"),
+        _beat(5, "cliffhanger"),
     ]
     _repair_brand_gap(beats, 3)
     bm_idx = [i for i, b in enumerate(beats) if b["beat_kind"] == "brand_moment"]
@@ -98,6 +128,7 @@ def test_gap_repair_moves_later_brand_beat_not_earlier():
 
 
 # ---------- _repair_protagonist_present(STR-010) ----------
+
 
 def _chars():
     return [

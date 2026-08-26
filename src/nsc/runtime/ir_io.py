@@ -531,7 +531,9 @@ def _flat(ir: NarrativeIR) -> list[Any]:
 def save(ir: NarrativeIR, path: str | Path) -> None:
     # mode="json"：provenance.created_at 是 datetime,python 模式 dump 直接炸
     # （实证 round20 南浪仔 attempt1 全绿产物死于 ir.json 导出 TypeError）
-    Path(path).write_text(json.dumps(ir.model_dump(mode="json"), ensure_ascii=False, indent=2), "utf-8")
+    Path(path).write_text(
+        json.dumps(ir.model_dump(mode="json"), ensure_ascii=False, indent=2), "utf-8"
+    )
 
 
 def load(path: str | Path) -> NarrativeIR:

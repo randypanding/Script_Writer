@@ -1,5 +1,6 @@
 """round19:CMP-001 绝对化用语机械替换 + p1 必填 str 空串占位(实证 round18
 attempt2 全量产物死于 final 门「唯一」;round18 attempt1 characters.4.need 空串)。"""
+
 from nsc.passes.p1_bible import _null_str_fields_to_default
 from nsc.passes.pipeline import _absolute_terms, _sanitize_absolute_terms
 from spec.ir.overlays import Character

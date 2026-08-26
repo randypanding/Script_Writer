@@ -1,14 +1,17 @@
 """resolve_pending 的降级语义(round12:NPC 从不补 donor,PENDING 悬空是随机后端最高频死法)。"""
-import pytest
 
 from nsc.passes.p3_beatsheet import resolve_pending
 
 
 def _sp(ep: str, slug: str, setup_ref, payoff_ref, desc="测试伏笔"):
     return {
-        "id": f"sp-{ep}-{slug}", "kind": "setup_payoff",
-        "_episode_id": ep, "_slug": slug, "description": desc,
-        "setup_beat_id": setup_ref, "payoff_beat_id": payoff_ref,
+        "id": f"sp-{ep}-{slug}",
+        "kind": "setup_payoff",
+        "_episode_id": ep,
+        "_slug": slug,
+        "description": desc,
+        "setup_beat_id": setup_ref,
+        "payoff_beat_id": payoff_ref,
     }
 
 

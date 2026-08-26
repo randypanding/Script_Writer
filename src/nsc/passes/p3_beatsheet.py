@@ -188,11 +188,7 @@ def _repair_load_bearing(beats: list[dict[str, Any]]) -> None:
             pick = max(pool, key=lambda b: (b["emotion"]["arousal"], -abs(b["order"] - center)))
             pick["beat_kind"] = "inciting"
     if "climax" not in kinds:
-        pool = [
-            b
-            for b in beats
-            if b["beat_kind"] not in _PROTECTED_KINDS and b["order"] < n - 1
-        ]
+        pool = [b for b in beats if b["beat_kind"] not in _PROTECTED_KINDS and b["order"] < n - 1]
         if pool:
             pick = max(pool, key=lambda b: (b["emotion"]["arousal"], b["order"]))
             pick["beat_kind"] = "climax"

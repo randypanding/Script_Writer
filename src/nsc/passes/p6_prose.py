@@ -29,7 +29,16 @@ class Module(DSPyPass):
 # 实证：p6 首达即撞 shim 20000 护栏（prompt 46631 字符，其中 P1 全字段 dump 占大头）。
 # 投影只留散文编织需要的字段；id 一律保留（anchor_map 引用 beat_id/line_ids 是硬契约）。
 
-_SCENE_KEYS = ("id", "location_name", "time_of_day", "character_names", "goal", "conflict", "turn", "summary")
+_SCENE_KEYS = (
+    "id",
+    "location_name",
+    "time_of_day",
+    "character_names",
+    "goal",
+    "conflict",
+    "turn",
+    "summary",
+)
 _BEAT_KEYS = ("id", "order", "beat_kind", "summary")
 _LINE_KEYS = ("id", "line_type", "character_id", "text", "subtext", "delivery", "is_brand_line")
 _PROFILE_KEYS = ("novel", "chars_per_second", "duration_tolerance", "genre", "language")

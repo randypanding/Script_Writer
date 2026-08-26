@@ -4,6 +4,7 @@
 - _slim_profile:只留下笔/时长相关键;
 - _slim_bible_for_episode:角色/地点按集过滤。
 """
+
 import json
 
 from nsc.passes.p6_prose import _slim_profile, _slim_scenes
@@ -12,22 +13,50 @@ from nsc.passes.pipeline import _slim_bible_for_episode
 
 def _scene():
     return {
-        "id": "sc1", "kind": "scene", "parent_id": "ep1", "order": 0,
-        "location_id": "loc1", "location_name": "茶店", "time_of_day": "afternoon",
-        "present_character_ids": ["c1", "c2"], "character_names": ["小满", "阿茶"],
-        "goal": "g", "conflict": "c", "turn": "t", "summary": "s",
-        "entry": "e", "exit": "x", "knowledge_state": {"k": "v"},
-        "provenance_id": "run", "locked": False,
+        "id": "sc1",
+        "kind": "scene",
+        "parent_id": "ep1",
+        "order": 0,
+        "location_id": "loc1",
+        "location_name": "茶店",
+        "time_of_day": "afternoon",
+        "present_character_ids": ["c1", "c2"],
+        "character_names": ["小满", "阿茶"],
+        "goal": "g",
+        "conflict": "c",
+        "turn": "t",
+        "summary": "s",
+        "entry": "e",
+        "exit": "x",
+        "knowledge_state": {"k": "v"},
+        "provenance_id": "run",
+        "locked": False,
         "beats": [
             {
-                "id": "b1", "kind": "beat", "parent_id": "sc1", "order": 0,
-                "beat_kind": "hook", "summary": "开场", "est_duration_s": 12.0,
-                "emotion": {"valence": 0.1, "arousal": 0.5}, "provenance_id": "run",
+                "id": "b1",
+                "kind": "beat",
+                "parent_id": "sc1",
+                "order": 0,
+                "beat_kind": "hook",
+                "summary": "开场",
+                "est_duration_s": 12.0,
+                "emotion": {"valence": 0.1, "arousal": 0.5},
+                "provenance_id": "run",
                 "lines": [
-                    {"id": "l1", "kind": "line", "parent_id": "b1", "order": 0,
-                     "line_type": "dialogue", "character_id": "c1", "text": "台词",
-                     "subtext": "s", "delivery": "d", "is_brand_line": False,
-                     "provenance_id": "run", "locked": False}
+                    {
+                        "id": "l1",
+                        "kind": "line",
+                        "parent_id": "b1",
+                        "order": 0,
+                        "line_type": "dialogue",
+                        "character_id": "c1",
+                        "text": "台词",
+                        "subtext": "s",
+                        "delivery": "d",
+                        "is_brand_line": False,
+                        "provenance_id": "run",
+                        "locked": False,
+                    }
                 ],
             }
         ],
@@ -52,8 +81,13 @@ def test_slim_scenes_shrinks_size():
 
 
 def test_slim_profile():
-    prof = {"novel": {"enabled": True}, "chars_per_second": 4.5, "pipeline": {"x": 1},
-            "retrieval": {"y": 2}, "genre": "drama"}
+    prof = {
+        "novel": {"enabled": True},
+        "chars_per_second": 4.5,
+        "pipeline": {"x": 1},
+        "retrieval": {"y": 2},
+        "genre": "drama",
+    }
     slim = _slim_profile(prof)
     assert set(slim) == {"novel", "chars_per_second", "genre"}
 

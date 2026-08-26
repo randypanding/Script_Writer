@@ -903,18 +903,39 @@ _ABS_TERM_FIX = {
 }
 
 #: 只在这些键的字符串值上做合规替换(id/枚举/引用键不动)。
-_TEXT_KEYS = frozenset({
-    "text", "subtext", "delivery", "summary", "function", "goal", "conflict", "turn",
-    "entry", "exit", "opening_attractor", "ending_hook", "title", "logline",
-    "hook_promise", "cliffhanger", "integration_note", "description", "reason",
-    "content", "paragraphs",
-})
+_TEXT_KEYS = frozenset(
+    {
+        "text",
+        "subtext",
+        "delivery",
+        "summary",
+        "function",
+        "goal",
+        "conflict",
+        "turn",
+        "entry",
+        "exit",
+        "opening_attractor",
+        "ending_hook",
+        "title",
+        "logline",
+        "hook_promise",
+        "cliffhanger",
+        "integration_note",
+        "description",
+        "reason",
+        "content",
+        "paragraphs",
+    }
+)
 
 
 def _absolute_terms() -> list[str]:
     """绝对化用语词表(真相 spec/checks/compliance/_absolute_terms.yaml;读不到退替换表键)。"""
     try:
-        data = yaml.safe_load(Path("spec/checks/compliance/_absolute_terms.yaml").read_text("utf-8"))
+        data = yaml.safe_load(
+            Path("spec/checks/compliance/_absolute_terms.yaml").read_text("utf-8")
+        )
         terms = [str(t) for t in (data or {}).get("terms", [])]
     except OSError:
         terms = []
@@ -997,9 +1018,7 @@ def _p6_fragment(
     }
 
 
-def _slim_bible_for_episode(
-    bible: dict[str, Any], scenes: list[dict[str, Any]]
-) -> dict[str, Any]:
+def _slim_bible_for_episode(bible: dict[str, Any], scenes: list[dict[str, Any]]) -> dict[str, Any]:
     """bible 的按集投影（round17 prompt 瘦身）：只留本集出场的角色与用到的地点，
     外加 tone/motifs；props 不进（台词文本已含全部实体信息，散文编织不查资产表）。"""
     char_ids = {c for sc in scenes for c in sc.get("present_character_ids", [])}

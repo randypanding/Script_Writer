@@ -6,19 +6,25 @@
 2. _retry_pass 传输容错:shim 重启/CNB 抖动抛 APIConnectionError 直接杀死整轮
    (实证 attempt2 殉爆),传输故障应走与 PassFailure 相同的带诊断重试通道。
 """
+
 from types import SimpleNamespace
 
 import pytest
 
+from nsc.passes import PassFailure
 from nsc.passes.p3_beatsheet import _rescale_durations
 from nsc.passes.pipeline import _retry_pass
-from nsc.passes import PassFailure
 
 
 def _beat(i, secs):
-    return {"id": f"b{i}", "order": i, "beat_kind": "escalation",
-            "emotion": {"valence": 0.0, "arousal": 0.5}, "summary": f"节拍{i}",
-            "est_duration_s": secs}
+    return {
+        "id": f"b{i}",
+        "order": i,
+        "beat_kind": "escalation",
+        "emotion": {"valence": 0.0, "arousal": 0.5},
+        "summary": f"节拍{i}",
+        "est_duration_s": secs,
+    }
 
 
 def test_rescale_sums_to_target_preserving_ratios():
@@ -42,6 +48,7 @@ def test_rescale_no_target_is_noop():
 
 
 # ---------- _retry_pass 传输容错 ----------
+
 
 class APIConnectionError(Exception):  # 类名匹配即视为传输故障(与 openai 同名)
     pass

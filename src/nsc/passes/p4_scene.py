@@ -74,7 +74,9 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                     f"（{sorted(char_ids)}）或角色名。",
                 )
             present.append(cid)
-        if not present:  # NPC 给空表:pydantic 要求 ≥1(实证 scenes.N present_character_ids=[])→ 全集兜底
+        if (
+            not present
+        ):  # NPC 给空表:pydantic 要求 ≥1(实证 scenes.N present_character_ids=[])→ 全集兜底
             present = _fallback_present(present, char_ids)
         scenes.append(
             {

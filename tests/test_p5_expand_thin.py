@@ -3,6 +3,7 @@
 1. 目标区间与门禁对齐——旧 chars_lo=0.8× 低于 DLG-006 下限 0.85×,模型全顺从也会死;
 2. _expand_if_thin——欠量当场定点扩写,只接受严格增量;此处测纯函数部分。
 """
+
 from types import SimpleNamespace
 
 from nsc.passes.p5_dialogue import _dialogue_chars, _scene_dialogue_floor

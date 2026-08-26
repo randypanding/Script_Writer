@@ -50,7 +50,9 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     )
     characters = _assign_ids(
         _null_str_fields_to_default(
-            filter_extra(inner_json(out["characters_json"], "p1_bible", "characters_json"), Character),
+            filter_extra(
+                inner_json(out["characters_json"], "p1_bible", "characters_json"), Character
+            ),
             Character,
         )
     )
@@ -61,7 +63,9 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             Location,
         )
     )
-    props = _assign_ids(_sanitize_props(filter_extra(inner_json(out["props_json"], "p1_bible", "props_json"), Prop)))
+    props = _assign_ids(
+        _sanitize_props(filter_extra(inner_json(out["props_json"], "p1_bible", "props_json"), Prop))
+    )
     motifs = _assign_ids(
         _null_str_fields_to_default(
             filter_extra(inner_json(out["motifs_json"], "p1_bible", "motifs_json"), Motif),

@@ -1,5 +1,6 @@
 """p1_bible Prop 归一(round12b:NPC 显式 sku_ref=null 致 NarrativeIR ValidationError)。"""
-from nsc.passes.p1_bible import _sanitize_props, _null_str_fields_to_default
+
+from nsc.passes.p1_bible import _null_str_fields_to_default, _sanitize_props
 from spec.ir.overlays import Character
 
 
@@ -19,4 +20,3 @@ def test_generic_null_to_default_character():
     chars = [{"name": "林晚", "persona_ref": None}]
     out = _null_str_fields_to_default(chars, Character)
     assert out[0]["persona_ref"] == ""
-
