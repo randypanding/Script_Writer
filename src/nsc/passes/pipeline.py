@@ -146,7 +146,7 @@ def _retry_pass(
             last_reason = str(e)
             if i == total - 1:
                 raise
-        except Exception as e:  # noqa: BLE001 —— 只放行传输故障,代码 bug 原样上抛
+        except Exception as e:  # 只放行传输故障(_is_transient 判守),代码 bug 原样上抛
             if not _is_transient(e):
                 raise
             last_reason = f"传输故障:{type(e).__name__} {str(e)[:120]}"

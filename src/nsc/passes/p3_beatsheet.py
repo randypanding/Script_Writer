@@ -15,6 +15,7 @@ ADR-0012 可缺省输出（省略即空表）：
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from typing import Any
 
 from spec.ir.nodes import Beat
@@ -213,7 +214,7 @@ def _repair_brand_gap(beats: list[dict[str, Any]], min_gap: int) -> None:
         return
     for _ in range(len(beats) * 2):
         idx = [i for i, b in enumerate(beats) if b["beat_kind"] == "brand_moment"]
-        bad = next(((a, b_) for a, b_ in zip(idx, idx[1:]) if b_ - a < min_gap), None)
+        bad = next(((a, b_) for a, b_ in pairwise(idx) if b_ - a < min_gap), None)
         if bad is None:
             break
         a, b_ = bad
@@ -505,7 +506,7 @@ def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]
     for sp in setup_payoffs:
         by_slug.setdefault(sp["_slug"], []).append(sp)
     kept: list[dict[str, Any]] = []
-    for slug, group in by_slug.items():
+    for group in by_slug.values():
         for sp in group:
             demoted = False
             for side in ("setup", "payoff"):
