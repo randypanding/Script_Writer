@@ -1,0 +1,16 @@
+id: CRAFT-001
+title: 主角与对手每集同场
+domain: structure
+severity: warn
+stage: after_p4
+select: episodes[*]
+bind:
+  pro: '@.__ctx.ir.characters[?role==''protagonist''].id'
+  ant: '@.__ctx.ir.characters[?role==''antagonist''].id'
+assert: any_of(pro, 'x in item.__present_character_ids') and any_of(ant, 'x in item.__present_character_ids')
+message: 第 {item.no} 集主角与对手（antagonist）未同场。爆款短剧 83% 的冲突是人与人（315
+  卡实证）：没有对手在场的集只能写内心戏，张力必然平。请让本集至少一场戏让主角与对手同框；若
+  Bible 没有 antagonist，请先补一个与主角立场冲突的角色。
+tags:
+- craft
+- conflict

@@ -1,0 +1,13 @@
+id: CRAFT-002
+title: 每集至少一处信息差声明
+domain: structure
+severity: warn
+stage: after_p4
+select: episodes[*]
+assert: any_of(item.scenes, 'x.knowledge_state and (x.knowledge_state.audience_knows or x.knowledge_state.characters_know)')
+message: 第 {item.no} 集没有任何场景声明知识状态（knowledge_state）。爆款 72%
+  的单元存在信息差（315 卡实证）：没有人守着秘密的戏没有反讽引擎。请至少一场填写
+  audience_knows/characters_know（观众知道什么、角色知道什么、新证据），优先角色之间的信息差。
+tags:
+- craft
+- info_gap
