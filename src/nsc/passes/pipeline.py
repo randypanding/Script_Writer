@@ -104,6 +104,28 @@ def _phase_attempts(ctx: PassContext) -> int:
     return _attempts_of(ctx, "phase_attempts", 3)
 
 
+_TRANSIENT_MARKERS = (
+    "APIConnectionError",
+    "APITimeoutError",
+    "ConnectError",
+    "ReadTimeout",
+    "RemoteProtocolError",
+    "ServiceUnavailableError",
+)
+
+
+def _is_transient(exc: Exception) -> bool:
+    """传输层故障判定（shim 重启/CNB 抖动/网关超时）：类名匹配或内建网络异常。
+
+    实证 attempt2：shim 重启期间 APIConnectionError 逃过所有重试通道直接杀死整轮——
+    传输故障必须与 PassFailure 走同一条带诊断重试通道，而不是让 2.5h 的跑批陪葬。
+    """
+    name = type(exc).__name__
+    return any(m in name for m in _TRANSIENT_MARKERS) or isinstance(
+        exc, (ConnectionError, TimeoutError, OSError)
+    )
+
+
 def _retry_pass(
     fn: Any, ctx: PassContext, fragment: dict[str, Any], *, attempts: int | None = None
 ) -> Any:
@@ -112,6 +134,7 @@ def _retry_pass(
     LLM 输出有随机性（漏字段/数错个数），带诊断的重试能显著降低端到端失败率；
     失败语义不变（全部失败照样抛 PassFailure，GEPA 反馈信号不受影响），缓存只存成功产物。
     attempts：SW-07 缺省读 profile.pipeline.pass_attempts（原常量 2）。
+    传输故障（_is_transient）同样重试；耗尽后落成 PassFailure 让相位重试接管。
     """
     total = attempts if attempts is not None else _pass_attempts(ctx)
     last_reason = ""
@@ -123,6 +146,12 @@ def _retry_pass(
             last_reason = str(e)
             if i == total - 1:
                 raise
+        except Exception as e:  # 只放行传输故障(_is_transient 判守),代码 bug 原样上抛
+            if not _is_transient(e):
+                raise
+            last_reason = f"传输故障:{type(e).__name__} {str(e)[:120]}"
+            if i == total - 1:
+                raise PassFailure(None, last_reason) from e
 
 
 def _run_checks(
@@ -408,6 +437,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 st["beats"] = [b for b in st["beats"] if b["_episode_id"] != ep["id"]] + r4["beats"]
             st["setup_payoffs"] = p3_beatsheet.resolve_pending(st["setup_payoffs"])
             st["facts"] = p3_beatsheet.apply_fact_cascade(st["facts"])
+            _clamp_dark_thread_deltas(episodes, st["dark_threads"])
             ir3 = cur()
             violations, rep = _run_checks(ctx, ir3, "after_p3", "after_p4")
             _fail_on_violations(violations, rep)
@@ -478,6 +508,9 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                 if attempt == phase6_n - 1:
                     raise
 
+    n_fixed = _sanitize_absolute_terms(st, _absolute_terms())
+    if n_fixed:
+        _dbg(f"absolute terms sanitized: {n_fixed} 处")
     ir = cur()
     p7_render.run(ctx, ir.model_dump())
     track()
@@ -854,6 +887,120 @@ def _scenes_with_lines(
     return out
 
 
+#: CMP-001 绝对化用语的合规替换表(门禁 fix 要求:"必须替换为可证实的相对表述"——
+#: 机械执行这个要求本身,比相位重试碰运气便宜且确定性收敛;词表真相在 spec/checks/
+#: compliance/_absolute_terms.yaml,此处只覆盖有安全对应词的条目)。
+_ABS_TERM_FIX = {
+    "国家级": "行业级",
+    "最高级": "高水准",
+    "最佳": "上佳",
+    "第一品牌": "头部品牌",
+    "唯一": "少有",
+    "绝无": "难有",
+    "100%有效": "有效",
+    "永久": "长久",
+    "彻底解决": "有效缓解",
+}
+
+#: 只在这些键的字符串值上做合规替换(id/枚举/引用键不动)。
+_TEXT_KEYS = frozenset(
+    {
+        "text",
+        "subtext",
+        "delivery",
+        "summary",
+        "function",
+        "goal",
+        "conflict",
+        "turn",
+        "entry",
+        "exit",
+        "opening_attractor",
+        "ending_hook",
+        "title",
+        "logline",
+        "hook_promise",
+        "cliffhanger",
+        "integration_note",
+        "description",
+        "reason",
+        "content",
+        "paragraphs",
+    }
+)
+
+
+def _absolute_terms() -> list[str]:
+    """绝对化用语词表(真相 spec/checks/compliance/_absolute_terms.yaml;读不到退替换表键)。"""
+    try:
+        data = yaml.safe_load(
+            Path("spec/checks/compliance/_absolute_terms.yaml").read_text("utf-8")
+        )
+        terms = [str(t) for t in (data or {}).get("terms", [])]
+    except OSError:
+        terms = []
+    return terms or list(_ABS_TERM_FIX)
+
+
+def _sanitize_absolute_terms(st: dict[str, Any], terms: list[str]) -> int:
+    """CMP-001 机械前置(round19):交付文本里的绝对化用语就地替换为相对表述。
+
+    实证 round18 attempt2 全量产物死于 final 门(CMP-001「唯一」)——NPC 对禁用词表
+    的遵守是彩票,相位重试三轮仍复发;合规约束与结构约束同类:机械兜底,门禁复核。
+    返回替换处数(0=无需替换)。
+    """
+    n = 0
+
+    def walk(obj: Any, in_text_key: bool) -> Any:
+        nonlocal n
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                obj[k] = walk(v, k in _TEXT_KEYS)
+            return obj
+        if isinstance(obj, list):
+            return [walk(x, in_text_key) for x in obj]
+        if isinstance(obj, str) and in_text_key:
+            for t in terms:
+                repl = _ABS_TERM_FIX.get(t)
+                if repl and t in obj:
+                    n += obj.count(t)
+                    obj = obj.replace(t, repl)
+        return obj
+
+    for key in ("lines", "beats", "scenes", "chapters", "episodes"):
+        walk(st.get(key, []), False)
+    return n
+
+
+def _clamp_dark_thread_deltas(
+    episodes: list[dict[str, Any]], dark_threads: list[dict[str, Any]]
+) -> None:
+    """暗线步进钳制（round18，INV-19 的机械前置）：按集序累加 int delta，
+    累加值越界的步进逐集缩减到恰好顶到 [0, len(stages)-1] 边界。
+
+    实证 round17 attempt1：全部 8 章产物死于 final 门——两条暗线累加 5/7 超出 [0,2]。
+    NPC 的步进分配系统性地不知道跨集预算，相位重试改不了系统性；
+    钳制幂等（相位重试恢复快照后重生成会重新钳），bool/非暗线 key 不动。
+    """
+    caps = {
+        str(d.get("key")): max(0, len(d.get("stages") or []) - 1)
+        for d in dark_threads
+        if isinstance(d, dict)
+    }
+    if not caps:
+        return
+    acc = {k: 0 for k in caps}
+    for ep in sorted(episodes, key=lambda e: e.get("order", 0)):
+        for ch in ep.get("state_changes", []):
+            k = str(ch.get("key"))
+            delta = ch.get("delta")
+            if k not in caps or not isinstance(delta, int) or isinstance(delta, bool):
+                continue
+            clamped = min(max(acc[k] + delta, 0), caps[k])
+            ch["delta"] = clamped - acc[k]
+            acc[k] = clamped
+
+
 def _p6_fragment(
     ir: NarrativeIR, bible: dict[str, Any], voice: dict[str, Any], ep_id: str
 ) -> dict[str, Any]:
@@ -866,9 +1013,20 @@ def _p6_fragment(
         "episode": ep,
         "beats": beats,
         "scenes_with_lines": _scenes_with_lines(scenes, beats, raw),
-        "bible": bible,
+        "bible": _slim_bible_for_episode(bible, scenes),
         "voice": voice,
     }
+
+
+def _slim_bible_for_episode(bible: dict[str, Any], scenes: list[dict[str, Any]]) -> dict[str, Any]:
+    """bible 的按集投影（round17 prompt 瘦身）：只留本集出场的角色与用到的地点，
+    外加 tone/motifs；props 不进（台词文本已含全部实体信息，散文编织不查资产表）。"""
+    char_ids = {c for sc in scenes for c in sc.get("present_character_ids", [])}
+    loc_ids = {sc.get("location_id") for sc in scenes}
+    out = {k: v for k, v in bible.items() if k in ("tone", "motifs")}
+    out["characters"] = [c for c in bible.get("characters", []) if c.get("id") in char_ids]
+    out["locations"] = [loc for loc in bible.get("locations", []) if loc.get("id") in loc_ids]
+    return out
 
 
 def _splice_episode(

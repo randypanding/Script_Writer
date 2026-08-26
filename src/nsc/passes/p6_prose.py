@@ -25,6 +25,46 @@ class Module(DSPyPass):
     pass_name = "p6_prose"
 
 
+# ---------------------------------------------------------------- round17 prompt 瘦身
+# 实证：p6 首达即撞 shim 20000 护栏（prompt 46631 字符，其中 P1 全字段 dump 占大头）。
+# 投影只留散文编织需要的字段；id 一律保留（anchor_map 引用 beat_id/line_ids 是硬契约）。
+
+_SCENE_KEYS = (
+    "id",
+    "location_name",
+    "time_of_day",
+    "character_names",
+    "goal",
+    "conflict",
+    "turn",
+    "summary",
+)
+_BEAT_KEYS = ("id", "order", "beat_kind", "summary")
+_LINE_KEYS = ("id", "line_type", "character_id", "text", "subtext", "delivery", "is_brand_line")
+_PROFILE_KEYS = ("novel", "chars_per_second", "duration_tolerance", "genre", "language")
+
+
+def _slim_scenes(scenes_with_lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """scenes_with_lines 的散文投影：剥掉 IR 管理字段（provenance/locked/knowledge_state 等）。"""
+    out = []
+    for sc in scenes_with_lines:
+        slim = {k: sc[k] for k in _SCENE_KEYS if k in sc}
+        slim["beats"] = [
+            {
+                **{k: b[k] for k in _BEAT_KEYS if k in b},
+                "lines": [{k: ln[k] for k in _LINE_KEYS if k in ln} for ln in b.get("lines", [])],
+            }
+            for b in sc.get("beats", [])
+        ]
+        out.append(slim)
+    return out
+
+
+def _slim_profile(profile: dict[str, Any]) -> dict[str, Any]:
+    """profile 的散文投影：只留下笔/时长相关的键（全量 profile dump 有数千字管理配置）。"""
+    return {k: v for k, v in profile.items() if k in _PROFILE_KEYS}
+
+
 @cached_pass("p6_prose")
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     ep = fragment["episode"]
@@ -33,11 +73,11 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         ("episode_json", json.dumps(fragment["episode"], ensure_ascii=False)),
         ("bible_json", json.dumps(fragment["bible"], ensure_ascii=False)),
         ("voice_json", json.dumps(fragment["voice"], ensure_ascii=False)),
-        ("profile_json", json.dumps(ctx.profile, ensure_ascii=False)),
+        ("profile_json", json.dumps(_slim_profile(ctx.profile), ensure_ascii=False)),
     ]
     assembled = assemble(
         p0_system="",
-        p1_current=json.dumps(fragment["scenes_with_lines"], ensure_ascii=False),
+        p1_current=json.dumps(_slim_scenes(fragment["scenes_with_lines"]), ensure_ascii=False),
         p2_prev_summary="",
         p3_facts=[],
         p4_rag=[],

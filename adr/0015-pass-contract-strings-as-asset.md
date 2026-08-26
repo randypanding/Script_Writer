@@ -1,6 +1,6 @@
 # ADR-0015：Pass 契约文案作为资产（spec/passes/contracts.yaml）
 
-- 状态：proposed
+- 状态：accepted
 - 日期：2026-08-22
 - 影响层：A5 知识（+ A6 配置）
 

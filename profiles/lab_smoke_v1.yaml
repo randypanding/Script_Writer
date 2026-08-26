@@ -1,0 +1,60 @@
+schema_version: "1.0"
+id: lab_smoke_v1
+version: "1.0.0"
+display_name: Lab 冒烟评测切片（3 集,迭代用）
+
+layers: {season: false, episode: true, scene: true, beat: true, line: true}
+
+episode_count: [3, 3]
+duration_target_s: 90
+duration_tolerance: 0.15
+beats_per_episode: [4, 7]
+max_scenes_per_episode: 3
+max_characters: 5
+max_line_chars: 40
+chars_per_second: 4.5
+
+min_emotion_range: 0.7
+require_setup_payoff: true
+max_payoff_span_episodes: 2
+min_voice_tic_ratio: 0.15
+location_cost_budget: 3.0
+
+beat_templates:
+  - id: hook_escalate_reveal
+    source: craft
+    note: "来源：Save the Cat 的节拍思路裁剪到 90 秒；待用 mined 统计替换（T-21）"
+    sequence: [hook, setup, escalation, complication, reversal, brand_moment, cliffhanger]
+  - id: mined_common_6beat
+    source: mined
+    note: "逆向标注 214 条样本中最高频序列；由 nsc annotate priors 生成（T-21 后填入真实值）"
+    sequence: [hook, inciting, escalation, brand_moment, reversal, cliffhanger]
+
+novel:
+  enabled: true
+  styles: [web_novel, warm_realism]
+  chars_per_episode: [1200, 2200]
+  default_voice:
+    person: third_limited
+    tense: past
+    style: web_novel
+    paragraph_max_chars: 180
+    interiority: medium
+
+render_targets: [novel_docx, novel_md, script_fountain, script_docx, storyboard_csv]
+enabled_check_domains: [structure, brand, dialogue, novel, compliance, producibility, fact]
+
+model_tiers:
+  p0_intake: tier_bulk
+  p1_bible: tier_plan
+  p2_arc: tier_plan
+  p3_beatsheet: tier_plan
+  p4_scene: tier_draft
+  p5_dialogue: tier_draft
+  p6_prose: tier_draft
+# SW-05 / ADR-0017：p3 跨集上下文组成（缺省即原行为）
+context: {prev_summary_window: 1, known_fact_fields: [id, content, episode_no, status, type], inject_threads: false}
+# SW-07 / ADR-0016：管线策略（缺省即原代码常量；弱模型/强模型 profile 可分道调参）
+pipeline: {pass_attempts: 2, phase_attempts: 3}
+retrieval: {top_k: 3}
+revise: {self_check: true, gate_mode: lenient}

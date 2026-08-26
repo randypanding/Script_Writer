@@ -1,0 +1,84 @@
+schema_version: "1.0"
+brand_id: hainan_nolan
+brand_name: 南浪仔 NOLAN（海南文旅 IP）
+version: "1.0.0"
+industry: tourism
+
+products:
+  - id: nolan_ip
+    name: 南浪仔
+    canonical_name: 南浪仔
+    aliases: [南浪仔 NOLAN, NOLAN]
+    category: 文旅 IP 形象
+    facts:
+      prototype: "原型是海南长臂猿，全世界最稀有的灵长类之一，只生活在海南岛霸王岭的热带雨林"
+      look: "一身暖阳黄，大眼睛，一双天生的长手臂"
+      slogan: "一身暖阳黄，自在南浪仔"
+
+selling_points:
+  - id: free_spirit
+    claim: 自在松弛的探索方式：不打卡、不赶路，慵懒但认真
+    priority: 1
+    must_cover: true
+    proof: "他玩累了半眯眼晒太阳的样子就是答案"
+  - id: hainan_diversity
+    claim: 海南的好玩不止一种：浪尖、雨林、椰林、热气球、日落
+    priority: 2
+    must_cover: true
+    proof: "他的足迹遍布全岛"
+  - id: gibbon_care
+    claim: 海南长臂猿值得被更多人看见和记住
+    priority: 3
+    must_cover: false
+    proof: "每多一个人认识南浪仔，雨林里的家族就多一分被看见的机会"
+    forbidden_phrasings: ["募捐", "救助", "卖惨"]
+
+audience:
+  - id: family_kid
+    label: 亲子家庭与喜欢治愈系内容的年轻旅行者
+    age_range: "5-35"
+    pains: [旅行变成赶场打卡, 孩子对自然无感, 想带走一份有温度的纪念]
+    triggers: [一只可爱的长臂猿, 一个温柔的故事, 收集与陪伴]
+    language_notes: 简单、温暖、不说教
+
+usage_scenes:
+  - id: bawangling_canopy
+    description: 霸王岭热带雨林树冠层
+    shootable: true
+  - id: bay_surf
+    description: 海湾浪尖与沙滩
+    shootable: true
+  - id: hot_air_balloon
+    description: 热气球上俯瞰海岸
+    shootable: true
+  - id: coconut_camp
+    description: 椰林露营篝火
+    shootable: true
+  - id: city_sunset
+    description: 城市高处看日落
+    shootable: true
+
+tone_words: [自由, 治愈, 松弛, 温柔, 一点点孤独底色]
+banned_words: [打卡, 网红, 必去, 灭绝, 募捐, 卖惨]
+must_include_lines: ["一身暖阳黄，自在南浪仔"]
+must_include_visuals: [暖阳黄的长臂猿身影]
+
+placement:
+  max_moments_per_episode: 2
+  min_gap_beats: 2
+  max_high_intensity_per_episode: 1
+  require_high_plot_connection: 1
+  forbid_in_beat_kinds: [hook]
+
+legal:
+  banned_words: []
+  competitor_names: []
+  claim_whitelist: ["全世界最稀有的灵长类之一", "只生活在霸王岭"]
+  ip_assignment: 交付后著作权归甲方所有
+  legal_refs: []
+
+account_context: >
+  海南文旅 IP「南浪仔 NOLAN」的内容阵地，以盲盒、壁纸、短视频传播 IP 形象。
+  希望用连续短剧与小说让大众认识这只从雨林走向大海的长臂猿，
+  把"自在"二字变成海南旅游的情感记忆点。
+business_goal: awareness

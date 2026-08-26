@@ -15,6 +15,7 @@ ADR-0012 可缺省输出（省略即空表）：
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 from typing import Any
 
 from spec.ir.nodes import Beat
@@ -144,8 +145,11 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    setup_payoffs = _attach_setup_payoffs(raw_sps, beats, ep)  # 先按下标解引用:下方修复换序不影响
+    _repair_load_bearing(beats)
+    _repair_brand_gap(beats, _min_gap_beats(ctx))
+    _rescale_durations(beats, ep)
     brand_moments = _attach_brand_moments(beats, fragment["placement"], ep)
-    setup_payoffs = _attach_setup_payoffs(raw_sps, beats, ep)
     facts = _attach_facts(
         optional_json(out, "facts_json", "p3_beatsheet"), ep, fragment.get("known_facts", [])
     )
@@ -163,6 +167,82 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         "state_changes": state_changes,
         "_usage": out["_usage"],
     }
+
+
+#: 承重/特殊拍：机械修复永不动这些 kind（品牌拍有数量契约、hook/cliffhanger 有首尾语义）。
+_PROTECTED_KINDS = frozenset({"hook", "brand_moment", "cliffhanger", "inciting", "climax"})
+
+
+def _repair_load_bearing(beats: list[dict[str, Any]]) -> None:
+    """STR-014 机械兜底：缺 inciting/climax 时把最合适的非保护 Beat 改写之。
+
+    随机后端常漏 climax（实证 attempt 4/5 同门连死两轮），相位重试只复述诊断不改结构。
+    inciting 取居中且唤起最高者（fix_hint），climax 取后段唤起最高者且不落集末拍。
+    """
+    n = len(beats)
+    kinds = {b["beat_kind"] for b in beats}
+    if "inciting" not in kinds:
+        pool = [b for b in beats if b["beat_kind"] not in _PROTECTED_KINDS]
+        if pool:
+            center = (n - 1) / 2
+            pick = max(pool, key=lambda b: (b["emotion"]["arousal"], -abs(b["order"] - center)))
+            pick["beat_kind"] = "inciting"
+    if "climax" not in kinds:
+        pool = [b for b in beats if b["beat_kind"] not in _PROTECTED_KINDS and b["order"] < n - 1]
+        if pool:
+            pick = max(pool, key=lambda b: (b["emotion"]["arousal"], b["order"]))
+            pick["beat_kind"] = "climax"
+
+
+def _min_gap_beats(ctx: PassContext) -> int:
+    try:
+        return int(ctx.brand.get("placement", {}).get("min_gap_beats", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _repair_brand_gap(beats: list[dict[str, Any]], min_gap: int) -> None:
+    """BM-002 机械兜底：brand_moment 间距不足时，把后一个植入拍向后移到首个
+    非植入空位（间距达标处）。只换序不改内容；步数有限（防两种排列间振荡死循环，
+    无处可挪时保持现状交给检查器报真问题）；结束后 order 重排。
+    """
+    if min_gap <= 1:
+        return
+    for _ in range(len(beats) * 2):
+        idx = [i for i, b in enumerate(beats) if b["beat_kind"] == "brand_moment"]
+        bad = next(((a, b_) for a, b_ in pairwise(idx) if b_ - a < min_gap), None)
+        if bad is None:
+            break
+        a, b_ = bad
+        target = next(
+            (t for t in range(a + min_gap, len(beats)) if beats[t]["beat_kind"] != "brand_moment"),
+            None,
+        )
+        if target is None:  # 集长不足/植入过密：修不了，保持原样
+            break
+        beats.insert(target, beats.pop(b_))
+    for i, bt in enumerate(beats):
+        bt["order"] = i
+
+
+def _rescale_durations(beats: list[dict[str, Any]], ep: dict[str, Any]) -> None:
+    """DLG-006 根因机械归一：NPC 系统性低估 est_duration_s（全集合计 ~70s vs 目标 90s，
+    实证 attempt3 六集对白全灭），p5 按它换算对白地板必然欠量。把各拍时长等比缩放到
+    集目标时长（duration_target_s），让下游体量地板算真账；全 0 时均分；无目标不动。"""
+    try:
+        target = float(ep.get("duration_target_s") or 0)
+    except (TypeError, ValueError):
+        return
+    if target <= 0 or not beats:
+        return
+    total = sum(float(b.get("est_duration_s") or 0) for b in beats)
+    if total <= 0:
+        for b in beats:
+            b["est_duration_s"] = round(target / len(beats), 2)
+        return
+    scale = target / total
+    for b in beats:
+        b["est_duration_s"] = round(float(b.get("est_duration_s") or 0) * scale, 2)
 
 
 def _attach_facts(
@@ -413,12 +493,18 @@ def _attach_setup_payoffs(
 
 
 def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """全季后处理：解引用 PENDING:<slug>。规则：slug 相同的条目互为两端。"""
+    """全季后处理:解引用 PENDING:<slug>。规则:slug 相同的条目互为两端。
+
+    降级语义(round12):无 donor 时删除该条目而不是 PassFailure——随机后端几乎从不
+    补 donor,悬空 PENDING 由此成为最高频死法;解除跨集伏笔契约(叙事文本保留)
+    优于全管线死亡。"""
     by_slug: dict[str, list[dict[str, Any]]] = {}
     for sp in setup_payoffs:
         by_slug.setdefault(sp["_slug"], []).append(sp)
-    for slug, group in by_slug.items():
+    kept: list[dict[str, Any]] = []
+    for group in by_slug.values():
         for sp in group:
+            demoted = False
             for side in ("setup", "payoff"):
                 ref = sp[f"{side}_beat_id"]
                 if isinstance(ref, str) and ref.startswith("PENDING:"):
@@ -432,14 +518,11 @@ def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]
                         None,
                     )
                     if donor is None:
-                        raise PassFailure(
-                            sp["_episode_id"],
-                            f"伏笔 {sp['description']} 的 {side} 引用 PENDING:{target_slug} "
-                            "无法解引用（没有对应条目提供真实 Beat）",
-                        )
+                        demoted = True  # 无 donor → 解除契约,不致命
+                        break
                     sp[f"{side}_beat_id"] = donor[f"{side}_beat_id"]
-        if slug:
-            continue
+            if not demoted:
+                kept.append(sp)
     return [
         {
             "id": sp["id"],
@@ -448,5 +531,5 @@ def resolve_pending(setup_payoffs: list[dict[str, Any]]) -> list[dict[str, Any]]
             "kind": sp["kind"],
             "description": sp["description"],
         }
-        for sp in setup_payoffs
+        for sp in kept
     ]

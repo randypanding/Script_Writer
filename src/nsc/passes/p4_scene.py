@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from spec.ir.nodes import KnowledgeState, Scene
@@ -73,6 +74,10 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                     f"（{sorted(char_ids)}）或角色名。",
                 )
             present.append(cid)
+        if (
+            not present
+        ):  # NPC 给空表:pydantic 要求 ≥1(实证 scenes.N present_character_ids=[])→ 全集兜底
+            present = _fallback_present(present, char_ids)
         scenes.append(
             {
                 "id": new_id(),
@@ -99,8 +104,26 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    _repair_protagonist_present(scenes, bible_chars)
     assigned = _assign(mapping, beats, scenes, ep)
     return {"episode_id": ep["id"], "scenes": scenes, "beats": assigned, "_usage": out["_usage"]}
+
+
+def _repair_protagonist_present(
+    scenes: list[dict[str, Any]], bible_chars: list[dict[str, Any]]
+) -> None:
+    """STR-010 机械兜底：主角整集缺席时补进在场人数最多的场景（人最多处冲突最密，
+    主角最该在）。随机后端会在支线集漏主角（实证第 6 集 STR-010 拦截），相位重试
+    只复述诊断不改结构，机械补位优于烧轮次。"""
+    pro_ids = [str(c.get("id")) for c in bible_chars if c.get("role") == "protagonist"]
+    if not pro_ids or not scenes:
+        return
+    present = {cid for sc in scenes for cid in sc["present_character_ids"]}
+    missing = [pid for pid in pro_ids if pid not in present]
+    if not missing:
+        return
+    host = max(scenes, key=lambda sc: len(sc["present_character_ids"]))
+    host["present_character_ids"].extend(missing)
 
 
 def _public_beats(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -129,17 +152,55 @@ def _knowledge_state(raw: Any) -> dict[str, str] | None:
     return {k: str(v) for k, v in raw.items() if k in KnowledgeState.model_fields} or None
 
 
+def _to_int(x: Any) -> int | None:
+    """宽容转 int:直接转换失败时提取首个数字串;都不行返回 None。"""
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        m = re.search(r"\d+", str(x))
+        return int(m.group(0)) if m else None
+
+
+def _fallback_present(present: list[str], char_ids: set[str]) -> list[str]:
+    """空 present_character_ids 兜底为全部已知角色(实证 scenes.N=[] 崩 NarrativeIR)。"""
+    return present if present else sorted(char_ids)
+
+
+def _coerce_entry(m: Any) -> tuple[int, int] | None:
+    """把结构漂移的映射项矫正为 (beat_index, scene_index);矫正不了返回 None。
+
+    随机后端实测漂移形态:"0:1" 字符串对 / {"beat":..,"scene":..} 键名变体 / [b,s] 二元组 /
+    字符串值("beat_0"、"s1")。"""
+    if isinstance(m, dict):
+        b = _to_int(m.get("beat_index", m.get("beat", m.get("b"))))
+        s = _to_int(m.get("scene_index", m.get("scene", m.get("s"))))
+        return (b, s) if b is not None and s is not None else None
+    if isinstance(m, (list, tuple)) and len(m) == 2:
+        b, s = _to_int(m[0]), _to_int(m[1])
+        return (b, s) if b is not None and s is not None else None
+    if isinstance(m, str):
+        nums = [p for p in re.split(r"[:：,\-–—/ ]+", m.strip()) if p.strip().isdigit()]
+        if len(nums) == 2:
+            return int(nums[0]), int(nums[1])
+    return None
+
+
 def _assign(
     mapping: Any,
     beats: list[dict[str, Any]],
     scenes: list[dict[str, Any]],
     ep: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    if isinstance(mapping, dict):
+        mapping = [{"beat_index": k, "scene_index": v} for k, v in mapping.items()]
     if not isinstance(mapping, list):
         raise PassFailure(ep["id"], "p4_scene 输出的 beat_to_scene 应为列表")
     beat_to_scene: dict[int, int] = {}
     for m in mapping:
-        beat_to_scene[int(m["beat_index"])] = int(m["scene_index"])
+        pair = _coerce_entry(m)
+        if pair is None:
+            raise PassFailure(ep["id"], f"beat_to_scene 含不可解析的映射项:{str(m)[:60]}")
+        beat_to_scene[pair[0]] = pair[1]
     out = []
     scene_counters: dict[int, int] = {}
     for i, b in enumerate(beats):

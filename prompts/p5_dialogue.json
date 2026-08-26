@@ -1,0 +1,10 @@
+{
+ "instructions": "为单个场景写对白与动作。\n\n硬约束:\n- 只能使用 present_character_ids 中的角色说话。\n- 每条对白不超过 max_line_chars 字。\n- 【体量地板】全场对白总字数必须达到 dialogue_length_target 指定的区间(由场景 est_duration_s × chars_per_second 机械换算)。\n  写完自检:逐条数字数并加总,低于区间下限时,必须扩写——给角色增加回合(追问、反驳、解释、情绪反应、\n  把动作描写展开成可被拍摄的连续动作),直到加总达标为止。宁可多 10%,不可少 1 字。\n- 必须体现该场的 turn(场景结束时状态必须已改变)。\n- 若本场含 brand_moment Beat:卖点信息必须由后果或反应体现,禁止角色宣读参数;\n  不得出现 BrandBrief.facts 之外的任何数字或参数。\n- 必提台词(must_include_lines)若分配到本场,必须原文出现。\n- 禁用词零出现。\n- 输出必须是合法 JSON,不要使用任何 Markdown 代码栅栏或解释性文字。",
+ "_meta": {
+  "generated_by": "lab-round13-optimizer",
+  "pass_name": "p5_dialogue",
+  "content_hash": "d69fac3529d7247c8b2713cb82f2c3926f10b21c68d817a3b0f75cc9022c502d",
+  "note": "round13: 对白体量地板+逐字自检(DLG-006×6 实证)",
+  "created_at": "2026-08-24"
+ }
+}

@@ -1,0 +1,86 @@
+"""p4_scene._assign 映射项类型矫正(round10:随机后端 beat_to_scene 结构漂移实证)。"""
+
+import pytest
+
+from nsc.passes import PassFailure
+from nsc.passes.p4_scene import _assign
+
+BEATS = [{"id": f"b{i}"} for i in range(3)]
+SCENES = [{"id": "s0"}, {"id": "s1"}]
+EP = {"id": "ep1", "no": 1}
+
+
+def test_canonical_entries():
+    out = _assign(
+        [
+            {"beat_index": 0, "scene_index": 0},
+            {"beat_index": 1, "scene_index": 0},
+            {"beat_index": 2, "scene_index": 1},
+        ],
+        BEATS,
+        SCENES,
+        EP,
+    )
+    assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
+
+
+def test_string_pair_entries():
+    """NPC 输出 "0:0" 式字符串对。"""
+    out = _assign(["0:0", "1:0", "2:1"], BEATS, SCENES, EP)
+    assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
+
+
+def test_alt_key_names():
+    """NPC 输出 beat/scene 键名变体。"""
+    out = _assign(
+        [{"beat": 0, "scene": 0}, {"beat": 1, "scene": 0}, {"beat": 2, "scene": 1}],
+        BEATS,
+        SCENES,
+        EP,
+    )
+    assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
+
+
+def test_dict_mapping():
+    """NPC 输出 {"0": 0, "1": 0, "2": 1} 字典。"""
+    out = _assign({"0": 0, "1": 0, "2": 1}, BEATS, SCENES, EP)
+    assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
+
+
+def test_unsalvageable_raises_with_diagnostic():
+    """矫正不了的项必须 PassFailure 且带可喂优化器的诊断。"""
+    with pytest.raises(PassFailure) as ei:
+        _assign(
+            [
+                {"foo": "bar"},
+                {"beat_index": 1, "scene_index": 0},
+                {"beat_index": 2, "scene_index": 1},
+            ],
+            BEATS,
+            SCENES,
+            EP,
+        )
+    assert "beat_to_scene" in str(ei.value)
+
+
+def test_string_valued_indexes():
+    """字符串形式的下标("beat_0"/"s1"/"0")也要矫正,不得 TypeError(round10 实证)。"""
+    out = _assign(
+        [
+            {"beat_index": "beat_0", "scene_index": "s0"},
+            {"beat_index": "1", "scene_index": "0"},
+            {"beat_index": 2, "scene_index": "s1"},
+        ],
+        BEATS,
+        SCENES,
+        EP,
+    )
+    assert [b["parent_id"] for b in out] == ["s0", "s0", "s1"]
+
+
+def test_empty_present_falls_back_to_all():
+    """空 present_character_ids 兜底全集(scenes.N=[] ValidationError 实证)。"""
+    from nsc.passes.p4_scene import _fallback_present
+
+    assert _fallback_present([], {"c1", "c2"}) == ["c1", "c2"]
+    assert _fallback_present(["c1"], {"c1", "c2"}) == ["c1"]
