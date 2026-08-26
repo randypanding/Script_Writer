@@ -383,7 +383,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
     prev_window = max(0, int(p3_ctx.get("prev_summary_window", 1)))
     fact_fields = _known_fact_fields_of(ctx.profile)
     inject_threads = bool(p3_ctx.get("inject_threads", False))
-    ep_summaries: list[str] = []
+    ep_summaries: list[tuple[int, Any]] = []  # (episode.no, beat 摘要串)
     # p3（逐集）+ p4 + after_p3/p4 检查作为一个相位：L0 拦截（如 BM-002 植入间隔）时
     # 带诊断整体重试（D13 反馈驱动再生成，诊断累积）；重试前恢复相位前的状态。
     diag = ""
@@ -403,7 +403,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                     "bible": bible,
                     "placement": placement,
                     "required_brand_moment_beats": len(placement),
-                    "prev_episode_summary": _window_join(ep_summaries, prev_window),
+                    "prev_episode_summary": _history_text(ctx, ep_summaries, ep["no"], prev_window),
                     "next_episode_promise": episodes[i + 1]["hook_promise"]
                     if i + 1 < len(episodes)
                     else "",
@@ -420,7 +420,7 @@ def run_pipeline(ctx: PassContext) -> NarrativeIR:
                     frag3["threads"] = _threads_view(st["threads"])
                 r3 = _retry_pass(p3_beatsheet.run, ctx, frag3)
                 track()
-                ep_summaries.append("；".join(b["summary"] for b in r3["beats"]))
+                ep_summaries.append((ep["no"], "；".join(b["summary"] for b in r3["beats"])))
                 st["beats"] += r3["beats"]
                 st["setup_payoffs"] += r3["setup_payoffs"]
                 st["brand_moments"] += r3["brand_moments"]
@@ -553,8 +553,10 @@ def recompile_episode(ctx: PassContext, ir: NarrativeIR, ep_no: int) -> Narrativ
         "bible": bible,
         "placement": _placement_of(raw, ep),
         "required_brand_moment_beats": len(_placement_of(raw, ep)),
-        "prev_episode_summary": _window_join(
-            [_episode_digest(raw, e["id"]) for e in ordered[max(0, idx - r_window) : idx]],
+        "prev_episode_summary": _history_text(
+            ctx,
+            [(e["no"], _episode_digest(raw, e["id"])) for e in ordered[:idx]],
+            ep["no"],
             r_window,
         ),
         "next_episode_promise": ordered[idx + 1]["hook_promise"] if idx + 1 < len(ordered) else "",
@@ -741,6 +743,32 @@ def _window_join(summaries: list[str], window: int) -> str:
     """
     n = max(0, int(window))
     return "\n".join(summaries[-n:]) if n else ""
+
+
+def _history_text(
+    ctx: PassContext, hist: list[tuple[int, str]], current_no: int, window: int
+) -> str:
+    """p3 前情文本（SW-06 / ADR-0018）。
+
+    history_compress 开且窗口宽于 keep_recent 时，远端集走 compress_history
+    （LLM 压缩，经 make_llm_summarizer 路由），近端集保原文；否则退回 SW-05 的
+    原文窗口 _window_join（缺省路径，逐字节同原实现）。
+    """
+    cfg = ctx.profile.get("context", {}) or {}
+    keep_recent = max(0, int(cfg.get("history_keep_recent", 1)))
+    n = max(0, int(window))
+    visible = hist[-n:] if n else []
+    if bool(cfg.get("history_compress")) and n > keep_recent and len(visible) > keep_recent:
+        from nsc.context import compress_history, make_llm_summarizer
+
+        return compress_history(
+            [{"no": no, "text": text} for no, text in visible],
+            current_no,
+            make_llm_summarizer(ctx.router),
+            keep_recent=keep_recent,
+            ratio=float(cfg.get("history_compress_ratio", 0.1)),
+        )
+    return _window_join([text for _no, text in hist], n)
 
 
 def _threads_view(threads: list[Any]) -> str:

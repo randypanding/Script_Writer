@@ -57,7 +57,15 @@ model_tiers:
   p5_dialogue: tier_draft
   p6_prose: tier_draft
 # SW-05 / ADR-0017：p3 跨集上下文组成（缺省即原行为）
-context: {prev_summary_window: 1, known_fact_fields: [id, content, episode_no, status, type], inject_threads: false}
+context:
+  prev_summary_window: 1
+  known_fact_fields: [id, content, episode_no, status, type]
+  inject_threads: false
+  budget: 32768            # SW-06 / ADR-0018：P0-P5 总预算（token）
+  core_guarantee: 400      # P5 参考层低保额
+  history_compress: false  # 远端历史 LLM 压缩开关
+  history_keep_recent: 1
+  history_compress_ratio: 0.1
 # SW-07 / ADR-0016：管线策略（缺省即原代码常量；弱模型/强模型 profile 可分道调参）
 pipeline: {pass_attempts: 2, phase_attempts: 3}
 retrieval: {top_k: 3}
