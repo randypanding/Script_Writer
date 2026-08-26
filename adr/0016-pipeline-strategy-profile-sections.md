@@ -1,6 +1,6 @@
 # ADR-0016：管线策略 profile 化（pipeline/retrieval/revise 三段）
 
-- 状态：proposed
+- 状态：accepted
 - 日期：2026-08-22
 - 影响层：A 资产层（profiles/_schema.py + 两个 profile yaml）；B 层仅消费
 

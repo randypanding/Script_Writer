@@ -1,6 +1,6 @@
 # ADR-0017：p3 fragment 组成数据化（profile.context 段）
 
-- 状态：proposed
+- 状态：accepted
 - 日期：2026-08-22
 - 影响层：A 资产层（profiles/_schema.py + profile yaml）；B 层仅消费
 
