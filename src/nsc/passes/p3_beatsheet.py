@@ -15,6 +15,8 @@ ADR-0012 可缺省输出（省略即空表）：
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import replace as _dc_replace
 from itertools import pairwise
 from typing import Any
 
@@ -51,6 +53,86 @@ class Module(DSPyPass):
     signature = signatures.BeatSheet
     pass_name = "p3_beatsheet"
     optional_outputs = ("facts_json", "state_changes_json")
+
+
+def _best_of_n(
+    ctx: PassContext, inputs: dict[str, Any], fragment: dict[str, Any], n: int
+) -> dict[str, Any]:
+    """best-of-n 候选 + 监制重排（R3）：同一集生成 n 版节拍，三标准选优。
+
+    动机（实证）：RLHF 磨平效应靠"采样+选择"绕开（调温度只增方差不增张力）；
+    R2 教训（round23）：选择标准必须同时纳入植入自然度——否则戏剧挤占 IP 高光
+    （placement 0.964→0.765）。失败候选直接淘汰；重排失败/解析失败保首候选。
+    候选多样性：CNB 随机后端天然多样；真实 API 路径经 seed 递增区分。
+    """
+    cands: list[dict[str, Any]] = []
+    for i in range(n):
+        ctx_i = _dc_replace(ctx, seed=(ctx.seed or 0) + i * 1000) if ctx.seed is not None else ctx
+        try:
+            cands.append(Module()(ctx_i, with_diag(inputs, fragment)))
+        except PassFailure:
+            continue
+    if not cands:
+        raise PassFailure(fragment["episode"]["id"], "p3_beatsheet best-of-n 全部候选失败")
+    if len(cands) == 1:
+        return cands[0]
+    return cands[_rerank(ctx, inputs, cands)]
+
+
+def _candidate_digest(out: dict[str, Any]) -> list[dict[str, Any]]:
+    """候选的节拍摘要（重排 prompt 瘦身：全量 JSON 数倍于摘要,46k 护栏实证）。"""
+    try:
+        beats = json.loads(out.get("beats_json", "[]"))
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(beats, list):
+        return []
+    return [
+        {
+            "beat_kind": b.get("beat_kind"),
+            "summary": str(b.get("summary", ""))[:120],
+            "arousal": (b.get("emotion") or {}).get("arousal"),
+        }
+        for b in beats
+        if isinstance(b, dict)
+    ]
+
+
+def _rerank(ctx: PassContext, inputs: dict[str, Any], cands: list[dict[str, Any]]) -> int:
+    """监制重排：张力（钩型/冲突/收束/arousal 曲线）+ 植入自然 + 赌注一致,三标准选优。"""
+    digest = [{"candidate": i, "beats": _candidate_digest(c)} for i, c in enumerate(cands)]
+    prompt = (
+        f"你是短剧监制。下面是同一集的 {len(cands)} 版节拍候选,按三条标准选一版:\n"
+        "①戏剧张力:钩型是否威胁/承诺/颠覆型、冲突是否人与人、末拍收束是否有力(reveal/danger)、"
+        "arousal 曲线是否真实起伏(不许全 0.5);\n"
+        "②品牌植入自然度:brand_moment 是否融进冲突而非打断剧情;\n"
+        "③与本集 logline/赌注的一致性。\n"
+        '只输出合法 JSON {"winner": 候选序号(从0), "reason": "一句话"},不要任何其他内容。\n\n'
+        f"episode: {inputs['episode_json'][:600]}\n"
+        f"candidates: {json.dumps(digest, ensure_ascii=False)}"
+    )
+    try:
+        res = ctx.router.complete(
+            ctx.tier_of("p3_beatsheet"),
+            [{"role": "user", "content": prompt}],
+            json_mode=True,
+            seed=ctx.seed,
+        )
+        return _parse_winner(res.text, len(cands))
+    except Exception:
+        return 0
+
+
+def _parse_winner(text: str, n: int) -> int:
+    """从重排回复提取 winner 下标;解析失败/越界 → 0(保首候选,不退化)。"""
+    m = re.search(r"\{[^{}]*\}", text or "", re.DOTALL)
+    if not m:
+        return 0
+    try:
+        w = int(json.loads(m.group(0)).get("winner", 0))
+    except (ValueError, TypeError, AttributeError):
+        return 0
+    return w if 0 <= w < n else 0
 
 
 def _budgeted_inputs(
@@ -112,7 +194,12 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     if threads:
         inputs["threads"] = threads
     inputs = _budgeted_inputs(ctx, inputs, list(fragment.get("known_facts", [])))
-    out = Module()(ctx, with_diag(inputs, fragment))
+    # R3：best-of-n 候选 + 监制重排（profile.pipeline.beats_best_of，缺省 1 = 原行为单次生成）
+    best_of = int(ctx.profile.get("pipeline", {}).get("beats_best_of", 1) or 1)
+    if best_of > 1:
+        out = _best_of_n(ctx, inputs, fragment, best_of)
+    else:
+        out = Module()(ctx, with_diag(inputs, fragment))
     raw_beats = inner_json(out["beats_json"], "p3_beatsheet", "beats_json")
     raw_sps = inner_json(out["setup_payoffs_json"], "p3_beatsheet", "setup_payoffs_json")
     if not isinstance(raw_beats, list) or not raw_beats:
