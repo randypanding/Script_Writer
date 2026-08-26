@@ -8,10 +8,11 @@
 """
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
-from nsc.passes import PassFailure
+from nsc.passes import PassContext, PassFailure
 from nsc.passes.p3_beatsheet import _rescale_durations
 from nsc.passes.pipeline import _retry_pass
 
@@ -54,8 +55,9 @@ class APIConnectionError(Exception):  # 类名匹配即视为传输故障(与 op
     pass
 
 
-def _ctx():
-    return SimpleNamespace(profile={})
+def _ctx() -> PassContext:
+    # pyright 门禁:函数只读 ctx.profile,cast 声明这一测试替身的最小契约
+    return cast(PassContext, SimpleNamespace(profile={}))
 
 
 def test_transient_error_retried_then_succeeds():

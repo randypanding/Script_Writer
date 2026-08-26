@@ -5,7 +5,9 @@
 """
 
 from types import SimpleNamespace
+from typing import cast
 
+from nsc.passes import PassContext
 from nsc.passes.p5_dialogue import _dialogue_chars, _scene_dialogue_floor
 
 
@@ -19,7 +21,9 @@ def test_dialogue_chars_counts_only_dialogue():
 
 
 def test_scene_dialogue_floor_matches_gate_ratio():
-    ctx = SimpleNamespace(profile={"chars_per_second": 4.5, "duration_tolerance": 0.15})
+    ctx = cast(
+        PassContext, SimpleNamespace(profile={"chars_per_second": 4.5, "duration_tolerance": 0.15})
+    )
     beats = [{"est_duration_s": 50.0}, {"est_duration_s": 40.0}]  # 90s ≈ 一集
     floor = _scene_dialogue_floor(ctx, beats)
     # round16b:瞄准线 = 门禁线 + 6pp 余量(round20:ep8 差 12 字实证,仍远低于上限 1.15)
@@ -28,6 +32,6 @@ def test_scene_dialogue_floor_matches_gate_ratio():
 
 
 def test_scene_dialogue_floor_defaults():
-    ctx = SimpleNamespace(profile={})
+    ctx = cast(PassContext, SimpleNamespace(profile={}))
     beats = [{"est_duration_s": 100.0}]
     assert _scene_dialogue_floor(ctx, beats) == int(100 * 4.5 * 0.91)
