@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace as _dc_replace
 from typing import Any
 
 from spec.ir.overlays import BrandMoment, DarkThread, StateVariable, Thread
@@ -17,6 +18,7 @@ from . import (
     inner_json,
     new_id,
     optional_json,
+    parse_winner,
     with_diag,
 )
 from .schema_bridge import allowed_values, coerce_enum, schema_hint
@@ -43,6 +45,77 @@ class Module(DSPyPass):
     optional_outputs = ("threads_json", "dark_threads_json", "state_variables_json")
 
 
+def _best_of_n(
+    ctx: PassContext, inputs: dict[str, Any], fragment: dict[str, Any], n: int
+) -> dict[str, Any]:
+    """best-of-n 候选 + 监制重排（R4）：同一季生成 n 版弧线，四标准选优。
+
+    动机（实证 round24）：conflict person 缺口（50% vs 爆款 83%）的决策点在季弧层——
+    节拍重排救不了弧级的"独自旅行"结构；季弧全季仅一次调用，best-of-n 成本极低。
+    失败候选直接淘汰；重排故障保首候选（永不比单发差）。
+    """
+    cands: list[dict[str, Any]] = []
+    for i in range(n):
+        ctx_i = _dc_replace(ctx, seed=(ctx.seed or 0) + i * 1000) if ctx.seed is not None else ctx
+        try:
+            cands.append(Module()(ctx_i, with_diag(inputs, fragment)))
+        except PassFailure:
+            continue
+    if not cands:
+        raise PassFailure(None, "p2_arc best-of-n 全部候选失败")
+    if len(cands) == 1:
+        return cands[0]
+    return cands[_rerank(ctx, inputs, cands)]
+
+
+def _rerank(ctx: PassContext, inputs: dict[str, Any], cands: list[dict[str, Any]]) -> int:
+    """季弧重排：人与人冲突覆盖+赌注升级/前提可复述/钩型收束/植入计划合理。"""
+    digest = []
+    for i, c in enumerate(cands):
+        try:
+            eps = json.loads(c.get("episodes_json", "[]"))
+        except (TypeError, json.JSONDecodeError):
+            eps = []
+        digest.append(
+            {
+                "candidate": i,
+                "season_arc": str(c.get("season_arc", ""))[:200],
+                "episodes": [
+                    {
+                        "no": ep.get("no"),
+                        "logline": str(ep.get("logline", ""))[:80],
+                        "hook_promise": str(ep.get("hook_promise", ""))[:60],
+                        "cliffhanger": str(ep.get("cliffhanger", ""))[:60],
+                    }
+                    for ep in eps
+                    if isinstance(ep, dict)
+                ],
+            }
+        )
+    prompt = (
+        f"你是短剧监制。下面是同一季的 {len(cands)} 版弧线候选,按四条标准选一版:\n"
+        "①人与人冲突覆盖:每集是否都有明确的对手方的人在场(不是主角独自感受/独自旅行——\n"
+        "  爆款短剧 83% 的冲突是人与人);\n"
+        "②赌注是否逐集升级(主角失败会失去什么,且一集比一集重);\n"
+        "③season_arc 是否有一句可复述的前提,每集 logline 是否推进或拷问它;\n"
+        "④第 1 集钩子是否威胁/承诺/颠覆型,各集 cliffhanger 是否落在揭露或危险上;\n"
+        "⑤植入分配是否融进冲突线而非孤立于剧情。\n"
+        '只输出合法 JSON {"winner": 候选序号(从0), "reason": "一句话"},不要任何其他内容。\n\n'
+        f"bible: {inputs['bible_json'][:500]}\n"
+        f"candidates: {json.dumps(digest, ensure_ascii=False)}"
+    )
+    try:
+        res = ctx.router.complete(
+            ctx.tier_of("p2_arc"),
+            [{"role": "user", "content": prompt}],
+            json_mode=True,
+            seed=ctx.seed,
+        )
+        return parse_winner(res.text, len(cands))
+    except Exception:
+        return 0
+
+
 @cached_pass("p2_arc")
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     inputs = {
@@ -57,7 +130,12 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     revivable = str(fragment.get("revivable_ideas", "") or "")
     if revivable:
         inputs["revivable_ideas"] = revivable
-    out = Module()(ctx, with_diag(inputs, fragment))
+    # R4：best-of-n 候选 + 监制重排（profile.pipeline.arc_best_of，缺省 1 = 原行为单次生成）
+    arc_best_of = int(ctx.profile.get("pipeline", {}).get("arc_best_of", 1) or 1)
+    if arc_best_of > 1:
+        out = _best_of_n(ctx, inputs, fragment, arc_best_of)
+    else:
+        out = Module()(ctx, with_diag(inputs, fragment))
     episodes = inner_json(out["episodes_json"], "p2_arc", "episodes_json")
     placement = inner_json(out["placement_plan_json"], "p2_arc", "placement_plan_json")
     if not isinstance(episodes, list) or not episodes:

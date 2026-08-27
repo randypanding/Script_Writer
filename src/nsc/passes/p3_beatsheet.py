@@ -15,7 +15,6 @@ ADR-0012 可缺省输出（省略即空表）：
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import replace as _dc_replace
 from itertools import pairwise
 from typing import Any
@@ -124,15 +123,10 @@ def _rerank(ctx: PassContext, inputs: dict[str, Any], cands: list[dict[str, Any]
 
 
 def _parse_winner(text: str, n: int) -> int:
-    """从重排回复提取 winner 下标;解析失败/越界 → 0(保首候选,不退化)。"""
-    m = re.search(r"\{[^{}]*\}", text or "", re.DOTALL)
-    if not m:
-        return 0
-    try:
-        w = int(json.loads(m.group(0)).get("winner", 0))
-    except (ValueError, TypeError, AttributeError):
-        return 0
-    return w if 0 <= w < n else 0
+    """兼容别名（真相在 passes.parse_winner,R4 起与 p2 共用）。"""
+    from . import parse_winner
+
+    return parse_winner(text, n)
 
 
 def _budgeted_inputs(

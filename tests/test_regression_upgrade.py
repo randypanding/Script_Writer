@@ -85,7 +85,9 @@ def test_rule_inventory():
     ids = {r["id"] for r in rs.rules}
     assert len(rs.rules) == on_disk, f"落盘 {on_disk} 条 vs 加载 {len(rs.rules)} 条"
     assert MIN_RULES <= on_disk <= MAX_RULES, on_disk
-    assert on_disk == 81  # 48 存量 + 23 Wave A + 7 Wave B + 1 校正（UPGRADE_PLAN §5）+ 2 CRAFT（2026-08-27 R2 正向契约）
+    assert (
+        on_disk == 81
+    )  # 48 存量 + 23 Wave A + 7 Wave B + 1 校正（UPGRADE_PLAN §5）+ 2 CRAFT（2026-08-27 R2 正向契约）
 
     by_domain = Counter(r["domain"] for r in rs.rules)
     assert by_domain["prose"] == 16, by_domain  # ADR-0011 新域整建制
