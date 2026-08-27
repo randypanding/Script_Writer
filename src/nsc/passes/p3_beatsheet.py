@@ -552,7 +552,11 @@ def _attach_setup_payoffs(
     for sp in raw_sps:
         entry = {
             "id": new_id(),
-            "kind": sp.get("kind", "promise"),
+            # 枚举机械归一(实证 R4 attempt1:NPC 把 Fact 的 type 值 'plot_event' 写进
+            # setup_payoff.kind 炸 literal 校验)——值域真相在 spec/ir SetupPayoff.kind
+            "kind": _coerce_enum(
+                sp.get("kind", "promise"), ("prop", "line", "promise", "secret", "skill"), "promise"
+            ),
             "description": str(sp.get("description", "")).strip() or "（缺伏笔描述）",
             "_slug": str(sp.get("slug", "")),
             "_episode_id": ep["id"],
