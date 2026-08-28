@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace as _dc_replace
 from itertools import pairwise
-from typing import Any
+from typing import Any, cast
 
 from spec.ir.nodes import Beat
 from spec.ir.overlays import BrandMoment, Fact
@@ -68,7 +68,7 @@ def _best_of_n(
     for i in range(n):
         ctx_i = _dc_replace(ctx, seed=(ctx.seed or 0) + i * 1000) if ctx.seed is not None else ctx
         try:
-            cands.append(Module()(ctx_i, with_diag(inputs, fragment)))
+            cands.append(cast(dict[str, Any], Module()(ctx_i, with_diag(inputs, fragment))))
         except PassFailure:
             continue
     if not cands:
