@@ -19,11 +19,14 @@ def _load_assets(profile_id: str, brand_id: str) -> tuple[dict, dict]:
 
 
 def _make_ctx(brief: dict, out_dir: Path, router: Any = None) -> Any:
+    from nsc.context.craft_shape import attach as attach_craft_shape
     from nsc.passes import PassContext
     from nsc.runtime.models import ModelRouter
     from nsc.runtime.provenance import RunsStore, spec_domain_fingerprints, spec_fingerprint
 
     profile, brand = _load_assets(brief.get("profile", ""), brief.get("brand", ""))
+    # round28：题材工艺形状（spec/craft_shape.yaml）随 profile 注入每个 Pass 与检查 bind
+    profile = attach_craft_shape(profile, brief)
     spec_files = list(Path("spec").rglob("*.py")) + list(Path("spec").rglob("*.yaml"))
     prompts = list(Path("prompts").glob("*.json")) if Path("prompts").exists() else []
     return PassContext(

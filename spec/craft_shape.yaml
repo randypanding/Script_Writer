@@ -1,0 +1,50 @@
+# 题材工艺形状（round28）· Lab W1 分题材锚 v2 的 SW 侧映射
+#
+# 证据：Lab mined/craft_anchors_v2.json（522 卡，k=3 多数票，标注器一致率 0.73）——
+# conflict_person 从 0.33（治愈成长）到 0.86（甜宠言情），cliffhanger_rd 0.27~0.69：
+# "爆款铁律"（antagonist 必有/威胁开局/赌注逐集升级）是高冲突桶的形状，
+# 强加给低冲突题材即锚错位（Lab round25 实证：R4 为拉 person 冲突把 transportation 打破地板）。
+#
+# 机制（src/nsc/context/craft_shape.py 只做机制，知识全在本文件）：
+#   cli._make_ctx 用 detect.keywords 对 brief 文本（project_title/raw_request/notes）计数，
+#   命中最多的题材取 shapes[genre]；零命中 → default_shape。结果写进 ctx.profile["craft_shape"]，
+#   随 profile_json 注入每个 Pass（各 Signature 按字段名引用），并供检查 bind 引用
+#   （如 CRAFT-001 的 @.__ctx.profile.craft_shape.antagonist_required）。
+#
+# 扩展约定：新题材先在 Lab 补锚（≥3 部或标注 provisional），再在此加 shape 并把
+# default_shape 之外的非默认桶逐个映射；未列出的桶一律落 default_shape。
+
+version: 1
+default_shape: 爆款通用
+detect:
+  keywords:
+    治愈成长: [治愈, 松弛, 温暖, 陪伴, 自在]
+    复仇爽文: [复仇, 打脸, 逆袭, 翻身, 虐渣]
+    甜宠言情: [甜宠, 恋爱, 霸总, 娇妻, 心动]
+    都市日常: [都市, 职场, 日常, 家庭]
+    悬疑探秘: [悬疑, 谜团, 真相, 案件]
+    玄幻仙侠: [修仙, 玄幻, 仙侠, 异能]
+    历史穿越: [穿越, 重生, 古代, 朝代]
+shapes:
+  爆款通用:
+    note: 现行正向契约（R2/R3，315 卡混题材实证）——非治愈题材一律用它，行为与 round28 之前逐字节一致
+    antagonist_required: true
+    ensemble_scene_required: true
+    hook_types: [威胁, 承诺, 颠覆]
+    hook_other_allowed: false
+    hook_quota_note: 攻击型钩子（威胁/承诺/颠覆）占爆款单元 75%（315 卡实证）
+    stakes_escalation: strict
+    arousal_peak: 0.8
+    ending_beats: [reveal, danger]
+  治愈成长:
+    note: 治愈锚 v2（hook 0.40 / person 0.33 / info_gap 0.47 / cliff 0.27 / turn 0.47，
+      张力 3.4/3.2/3.4；暂定锚 1 部 15 卡）——温暖低冲突，不需要反派与威胁开局；
+      攻击型钩子仅 40%，多数单元用悬念/平开（docs/craft_taxonomy_v2.md §1/§5）
+    antagonist_required: false
+    ensemble_scene_required: false
+    hook_types: [承诺, 颠覆, 威胁]
+    hook_other_allowed: true
+    hook_quota_note: 治愈系以承诺/颠覆为主、威胁为辅；允许悬念型温和开局（治愈锚攻击型仅 40%）
+    stakes_escalation: gentle
+    arousal_peak: 0.6
+    ending_beats: [reveal, resolution]
