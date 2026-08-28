@@ -260,6 +260,20 @@ def parse_json_loose(text: str, pass_name: str) -> dict[str, Any]:
     return data
 
 
+def parse_winner(text: str, n: int) -> int:
+    """从重排回复提取 winner 下标（R3/R4 监制重排共用）；解析失败/越界 → 0（保首候选，不退化）。"""
+    import re as _re
+
+    m = _re.search(r"\{[^{}]*\}", text or "", _re.DOTALL)
+    if not m:
+        return 0
+    try:
+        w = int(json.loads(m.group(0)).get("winner", 0))
+    except (ValueError, TypeError, AttributeError):
+        return 0
+    return w if 0 <= w < n else 0
+
+
 def generate_json(
     ctx: PassContext,
     pass_name: str,

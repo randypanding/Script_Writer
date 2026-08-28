@@ -16,6 +16,10 @@ class Bible(dspy.Signature):
 
     硬约束：
     - 必须包含至少一个 role=customer_proxy 的角色，其 persona_ref 指向 brand.audience 中的一个 persona。
+    - 必须包含至少一个 role=antagonist 的角色（对手方的人）：写明 TA 与主角的立场冲突、
+      TA 反对主角的具体理由。爆款短剧 83% 的冲突是人与人（315 卡实证）——没有对手的剧只有内心戏。
+    - 主要角色（protagonist/antagonist/ally）各带一个"知道但没说出口的信息"（写进 voice_notes
+      或 persona 描述），供后续信息差使用：爆款 72% 的单元存在信息差，没有人守着秘密的戏没有反讽引擎。
     - 角色总数不得超过 max_characters。
     - 每个角色必须有可区分的说话方式（voice_notes）与 1-3 个标记词（voice_tics）。
     - 地点必须从 brand.usage_scenes 中 shootable=true 的场景派生，或标注 cost_tier。
@@ -45,6 +49,12 @@ class Arc(dspy.Signature):
 
     硬约束：
     - 集数与单集时长由 profile 给定，不得更改。
+    - season_arc 首句必须是一句可复述的前提（premise：这个故事主张什么，一句话能讲完）；
+      每集 logline 必须能回答"本集如何推进或拷问这个前提"——只发生事情、不推进前提的集是流水账。
+    - 每集必须指定当场对手（antagonist 或本集临时对立角色）与赌注（主角失败会失去什么）；
+      赌注必须逐集升级，不许逐集持平（张力升级是爆款短剧的基本形状）。
+    - 第 1 集的 hook_promise 必须是威胁/承诺/颠覆型：直接的危险或损失逼近 / 明示即将兑现的爽点 /
+      既有预期立即被颠覆——不许只用悬念开局（爆款短剧攻击型钩子占 75%，315 卡实证）。
     - 每个 must_cover=true 的卖点必须被分配到至少一集，并给出该处植入的 modality 与 plot_connection 计划。
     - 全季至少 require_high_plot_connection 处 plot_connection=high。
     - 每集必须给出 hook_promise（本集向观众承诺解答的问题）；除末集外必须给出 cliffhanger。
@@ -86,6 +96,12 @@ class BeatSheet(dspy.Signature):
     - 最后一个 Beat 必须是 cliffhanger / resolution / cta。
     - 本集分配到的每个植入必须落成一个 beat_kind=brand_moment 的 Beat，且不得与 hook 相邻或落在 hook 上。
     - 每个 Beat 必须给出 emotion(valence, arousal) 与 est_duration_s，总时长贴近 duration_target_s。
+    - emotion.arousal 必须认真评分（不是全填 0.5）：本集情绪最高拍 arousal ≥0.8（对应观众张力 4/5）；
+      第 1 集是全季钩子，arousal 曲线必须高开——爆款短剧高开微降，低开慢热是网文曲线，用错形态必死。
+    - hook Beat 的 summary 首词必须用【威胁】【承诺】或【颠覆】标注钩型
+      （威胁=具体危险/损失逼近；承诺=明示即将兑现的爽点；颠覆=预期立即被打破）。
+    - 末拍（cliffhanger/resolution）优先落在"新信息被揭开"（reveal）或"危险逼近"（danger）——
+      爆款 70% 的集末是这两种（315 卡实证），单纯抛问题的收束力度不足。
     - 必须声明至少一组 setup→payoff；跨集回收时 payoff 写 "PENDING:<slug>"。
     - summary 必须采用事件模板（五要素一句话）：地点/人物/行动/冲突/反转，
       形如"茶饮店：林晚当众核对配料表，冲突是陈经理的说法相反，反转是标签背面另有代糖来源"；
@@ -123,6 +139,10 @@ class SceneCards(dspy.Signature):
     - 每个场景必须有非空的 goal / conflict / turn / entry / exit。
     - entry 必须是"最晚可以进入的时刻"，exit 必须是"最早可以离开的时刻"。
     - present_character_ids 必须覆盖该场景所有 Beat 涉及的角色。
+    - 每集至少一个场景让主角与 antagonist（或本集对立角色）同框对峙——
+      对手戏是短剧张力的主力引擎，没有同框就没有人与人的碰撞。
+    - 每集至少一个场景必须填写 knowledge_state（audience_knows/characters_know/hidden/new_evidence）：
+      明确观众知道什么、角色知道什么、谁被蒙在鼓里——优先"角色之间"的信息差。
     - 不得引入 Bible 之外的地点或角色。
     - 每个场景可附带节奏与知识状态字段（ADR-0012，可省略，省略即默认空）：
       opening_attractor（开场 3 秒吸引点）、escalation_beats（逐拍升级）、

@@ -55,6 +55,6 @@ model_tiers:
 # SW-05 / ADR-0017：p3 跨集上下文组成（缺省即原行为）
 context: {prev_summary_window: 1, known_fact_fields: [id, content, episode_no, status, type], inject_threads: false}
 # SW-07 / ADR-0016：管线策略（缺省即原代码常量；弱模型/强模型 profile 可分道调参）
-pipeline: {pass_attempts: 2, phase_attempts: 3}
+pipeline: {pass_attempts: 2, phase_attempts: 3, beats_best_of: 3, arc_best_of: 3}  # beats_best_of: R3 监制重排(缺省 1=单发)
 retrieval: {top_k: 3}
 revise: {self_check: true, gate_mode: lenient}

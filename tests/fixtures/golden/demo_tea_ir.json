@@ -123,6 +123,7 @@
       "interior": true,
       "present_character_ids": [
         "01M04ZEZEHE94S90HKBAFB2XCZ",
+        "01M04TVA6N7295ZS392CFZCAN7",
         "01M04ZEZEHE94S90HKBAFB2XD0"
       ],
       "goal": "小满想在下午三点前决定要不要拼单",
@@ -132,7 +133,13 @@
       "exit": "小满关掉拼单页面，抓起工牌下楼",
       "summary": "办公室工位，拼单与体检报告的拉锯",
       "provenance_id": "golden-p4-0001",
-      "locked": false
+      "locked": false,
+      "knowledge_state": {
+        "audience_knows": "宣传口径与配料表不一致",
+        "characters_know": "赵经理知道配料表真实内容",
+        "hidden": "",
+        "new_evidence": ""
+      }
     },
     {
       "id": "01M04ZEZEHE94S90HKBAFB2XDB",
@@ -165,6 +172,7 @@
       "interior": true,
       "present_character_ids": [
         "01M04ZEZEHE94S90HKBAFB2XCZ",
+        "01M04TVA6N7295ZS392CFZCAN7",
         "01M04ZEZEHE94S90HKBAFB2XD1",
         "01M04ZEZEHE94S90HKBAFB2XD0"
       ],
@@ -175,7 +183,13 @@
       "exit": "小满把配料表折好收进包里，说明天见",
       "summary": "门店吧台，一场兴师问罪变成当面约定",
       "provenance_id": "golden-p4-0001",
-      "locked": false
+      "locked": false,
+      "knowledge_state": {
+        "audience_knows": "宣传口径与配料表不一致",
+        "characters_know": "赵经理知道配料表真实内容",
+        "hidden": "",
+        "new_evidence": ""
+      }
     },
     {
       "id": "01M04ZEZEHE94S90HKBAFB2XFD",
@@ -187,6 +201,7 @@
       "interior": true,
       "present_character_ids": [
         "01M04ZEZEHE94S90HKBAFB2XCZ",
+        "01M04TVA6N7295ZS392CFZCAN7",
         "01M04ZEZEHE94S90HKBAFB2XD1"
       ],
       "goal": "小满要全程盯完一杯茶的制作",
@@ -196,7 +211,13 @@
       "exit": "小满停在门口，回头问那句话",
       "summary": "门店吧台，盯梢变成被记住",
       "provenance_id": "golden-p4-0001",
-      "locked": false
+      "locked": false,
+      "knowledge_state": {
+        "audience_knows": "宣传口径与配料表不一致",
+        "characters_know": "赵经理知道配料表真实内容",
+        "hidden": "",
+        "new_evidence": ""
+      }
     },
     {
       "id": "01M04ZEZEHE94S90HKBAFB2XGG",
@@ -208,6 +229,7 @@
       "interior": true,
       "present_character_ids": [
         "01M04ZEZEHE94S90HKBAFB2XCZ",
+        "01M04TVA6N7295ZS392CFZCAN7",
         "01M04ZEZEHE94S90HKBAFB2XD1",
         "01M04ZEZEHE94S90HKBAFB2XD0"
       ],
@@ -218,7 +240,13 @@
       "exit": "两人拎着杯子出门，赌约生效",
       "summary": "门店吧台，被记住的人和被征服的人",
       "provenance_id": "golden-p4-0001",
-      "locked": false
+      "locked": false,
+      "knowledge_state": {
+        "audience_knows": "宣传口径与配料表不一致",
+        "characters_know": "赵经理知道配料表真实内容",
+        "hidden": "",
+        "new_evidence": ""
+      }
     },
     {
       "id": "01M04ZEZEJRKTWDQEBC894KGFZ",
@@ -230,6 +258,7 @@
       "interior": true,
       "present_character_ids": [
         "01M04ZEZEHE94S90HKBAFB2XCZ",
+        "01M04TVA6N7295ZS392CFZCAN7",
         "01M04ZEZEHE94S90HKBAFB2XD0"
       ],
       "goal": "小满要完成一周打卡并面对复查",
@@ -239,7 +268,13 @@
       "exit": "打印机吐出报告单，边角卷起",
       "summary": "办公室工位，一周打卡与复查前夜",
       "provenance_id": "golden-p4-0001",
-      "locked": false
+      "locked": false,
+      "knowledge_state": {
+        "audience_knows": "宣传口径与配料表不一致",
+        "characters_know": "赵经理知道配料表真实内容",
+        "hidden": "",
+        "new_evidence": ""
+      }
     },
     {
       "id": "01M04ZEZEJRKTWDQEBC894KGH1",
@@ -251,6 +286,7 @@
       "interior": true,
       "present_character_ids": [
         "01M04ZEZEHE94S90HKBAFB2XCZ",
+        "01M04TVA6N7295ZS392CFZCAN7",
         "01M04ZEZEHE94S90HKBAFB2XD0"
       ],
       "goal": "小满要拆开这份等了一周的报告",
@@ -260,7 +296,13 @@
       "exit": "小满拉着阿珍下楼，说请大家喝一杯",
       "summary": "办公室工位，报告揭晓的一刻",
       "provenance_id": "golden-p4-0001",
-      "locked": false
+      "locked": false,
+      "knowledge_state": {
+        "audience_knows": "宣传口径与配料表不一致",
+        "characters_know": "赵经理知道配料表真实内容",
+        "hidden": "",
+        "new_evidence": ""
+      }
     },
     {
       "id": "01M04ZEZEJRKTWDQEBC894KGH2",
@@ -2990,6 +3032,22 @@
       "voice_notes": "慢，诚恳，先听完再回答",
       "voice_tics": [
         "您放心"
+      ],
+      "forbidden_words": [],
+      "persona_ref": ""
+    },
+    {
+      "id": "01M04TVA6N7295ZS392CFZCAN7",
+      "name": "赵经理",
+      "role": "antagonist",
+      "age_range": "25-32",
+      "want": "维护门店\"无糖也甜\"的宣传口径",
+      "need": "承认配料透明比话术更重要",
+      "flaw": "容易自己吓自己",
+      "arc": "从把喝一杯茶当罪恶，到把它当成照顾自己的方式",
+      "voice_notes": "短句，爱反问，喜欢先吐槽自己再吐槽别人",
+      "voice_tics": [
+        "说真的"
       ],
       "forbidden_words": [],
       "persona_ref": ""

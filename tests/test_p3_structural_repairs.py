@@ -158,3 +158,12 @@ def test_protagonist_present_is_noop():
 def test_empty_scenes_no_crash():
     _repair_protagonist_present([], _chars())
     _repair_protagonist_present([_scene(["c-sup1"])], [])  # 无主角定义也不崩
+
+
+def test_setup_payoff_kind_enum_coerced():
+    """R4 attempt1 实证:NPC 把 Fact 的 type 值 'plot_event' 写进 setup_payoff.kind 炸 literal。"""
+    from nsc.passes.p3_beatsheet import _coerce_enum
+
+    allowed = ("prop", "line", "promise", "secret", "skill")
+    assert _coerce_enum("plot_event", allowed, "promise") == "promise"
+    assert _coerce_enum("secret", allowed, "promise") == "secret"  # 合法值原样
