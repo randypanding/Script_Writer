@@ -61,15 +61,11 @@ def test_make_ctx_injects_shape(tmp_path: Path) -> None:
     assert ctx.profile["craft_shape"]["antagonist_required"] is False
 
 
-def test_craft001_waives_antagonist_for_healing(
-    profiles: dict, golden_ir: dict, tmp_path: Path
-) -> None:
-    """antagonist_required=false 时，无对手同场不触发；主角在场要求保留。"""
+def _craft001_report(ir_raw: dict, profile: dict):
     from nsc.checker.interpreter import RuleSet, evaluate
     from nsc.runtime.ir_io import build_view
 
     rule = yaml.safe_load(Path("spec/checks/structure/CRAFT-001.yaml").read_text("utf-8"))
-    profile = {**profiles["short_drama_v1"], "craft_shape": {"antagonist_required": False}}
     rs = RuleSet.load(
         profile_id="short_drama_v1",
         industry="beverage",
@@ -78,9 +74,47 @@ def test_craft001_waives_antagonist_for_healing(
         enabled_domains=["structure"],
     )
     rs.rules = [rule]
-    view = build_view(golden_ir, profile, {})
-    rep = evaluate(rs, view, ctx={"profile": profile, "brand": {}})
+    view = build_view(ir_raw, profile, {})
+    return evaluate(rs, view, ctx={"profile": profile, "brand": {}})
+
+
+@pytest.fixture()
+def fail_fixture() -> dict:
+    return json.loads((Path("tests/fixtures/checks/CRAFT-001/fail.json")).read_text("utf-8"))
+
+
+@pytest.fixture()
+def ant_absent_fixture(fail_fixture: dict) -> dict:
+    """主角在场、对手不在场:专测对手项豁免(fail.json 连主角也不在场,测不了豁免)。
+
+    集级在场由 build_view 从 scenes.present_character_ids 派生,须注到 scene 层。
+    """
+    raw = json.loads(json.dumps(fail_fixture))
+    pro = next(c["id"] for c in raw["characters"] if c["role"] == "protagonist")
+    for sc in raw["scenes"]:
+        sc["present_character_ids"] = sorted({*sc.get("present_character_ids", []), pro})
+    return raw
+
+
+def test_craft001_waives_antagonist_for_healing(profiles: dict, ant_absent_fixture: dict) -> None:
+    """antagonist_required=false 时,对手不在场不触发(主角在场已满足)。
+
+    round28 实证回归:JMESPath 的 `||` 对布尔 false 回退右值,`false || true` = true,
+    豁免被静默吞掉——bind 必须用 `!= false` 比较做缺省,且测试必须断言"不触发"而非仅无 errors。
+    """
+    profile = {**profiles["short_drama_v1"], "craft_shape": {"antagonist_required": False}}
+    rep = _craft001_report(ant_absent_fixture, profile)
     assert not rep.errors, rep.errors
+    assert not any(f.rule_id == "CRAFT-001" for f in rep.findings), (
+        "豁免失效:antagonist_required=false 时 CRAFT-001 仍触发(JMESPath 真值或回归)"
+    )
+
+
+def test_craft001_fires_when_required(profiles: dict, ant_absent_fixture: dict) -> None:
+    """显式 antagonist_required=true 时与旧行为一致：对手不在场即触发。"""
+    profile = {**profiles["short_drama_v1"], "craft_shape": {"antagonist_required": True}}
+    rep = _craft001_report(ant_absent_fixture, profile)
+    assert any(f.rule_id == "CRAFT-001" for f in rep.findings)
 
 
 def test_craft001_still_fires_without_shape(profiles: dict, golden_ir: dict) -> None:

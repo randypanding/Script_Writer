@@ -7,7 +7,9 @@ select: episodes[*]
 bind:
   pro: '@.__ctx.ir.characters[?role==''protagonist''].id'
   ant: '@.__ctx.ir.characters[?role==''antagonist''].id'
-  ant_req: "@.__ctx.profile.craft_shape.antagonist_required || `true`"
+  # 注意:JMESPath 的 `||` 对布尔 false 会回退到右值(false 是 falsy),不能用于
+  # "缺省回 true"的布尔缺省;改用 != false 比较(缺失=null!=false=true,false=false)
+  ant_req: "@.__ctx.profile.craft_shape.antagonist_required != `false`"
 assert: any_of(pro, 'x in item.__present_character_ids') and (not ant_req or any_of(ant,
   'x in item.__present_character_ids'))
 message: 第 {item.no} 集主角与对手（antagonist）未同场。爆款短剧 83% 的冲突是人与人（315
