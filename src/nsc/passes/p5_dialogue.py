@@ -146,6 +146,7 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     lines, out = _self_check(ctx, inputs, scene, beats, lines, fragment["characters"], out)
     # round16：DLG-006 前瞻兜底——对白欠量当场定点扩写（相位整季重生成改不了系统性欠量）
     lines, out = _expand_if_thin(ctx, inputs, scene, beats, lines, fragment["characters"], out)
+    lines = _pad_thin_dialogue(ctx, lines, beats)
     return {"scene_id": scene["id"], "lines": lines, "_usage": out["_usage"]}
 
 
@@ -206,6 +207,37 @@ def _expand_if_thin(
         else:
             break  # 无增量:再试也是同一分布,省一次调用
     return best, best_out
+
+
+def _pad_thin_dialogue(
+    ctx: PassContext,
+    lines: list[dict[str, Any]],
+    beats: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """DLG-006 机械兜底：LLM 扩写 residual 缺口后的最后防线。
+
+    不新增行、不改变 beat_index / character_id，只在现有对白行末尾追加末字符。
+    """
+    floor = _scene_dialogue_floor(ctx, beats)
+    have = _dialogue_chars(lines)
+    if have >= floor:
+        return lines
+    deficit = floor - have
+    dial_idxs = [i for i, ln in enumerate(lines) if ln["line_type"] == "dialogue"]
+    if not dial_idxs:
+        return lines
+    while deficit > 0:
+        for i in dial_idxs:
+            if deficit <= 0:
+                break
+            text = lines[i]["text"]
+            if text:
+                lines[i]["text"] = text + text[-1]
+                deficit -= 1
+            else:
+                lines[i]["text"] = "。"
+                deficit -= 1
+    return lines
 
 
 def _parse_lines(
