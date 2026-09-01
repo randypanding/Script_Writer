@@ -113,14 +113,15 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     line_ids = {ln["id"] for b in beats for ln in b.get("_lines", [])}
     if not isinstance(anchor_map, list):
         raise PassFailure(ep["id"], "p6_prose 输出的 anchor_map 应为列表")
+    # round14 方法论：结构性约束一律机械兜底。anchor_map 的 beat_id/line_ids 若引用不存在
+    # 的节点，直接过滤，不让 LLM 通过相位重试碰运气。
+    filtered = []
     for am in anchor_map:
         if am.get("beat_id") not in beat_ids:
-            raise PassFailure(
-                ep["id"], f"anchor_map 引用了不属于本集的 beat_id={am.get('beat_id')}"
-            )
-        bad = [x for x in am.get("line_ids", []) if x not in line_ids]
-        if bad:
-            raise PassFailure(ep["id"], f"anchor_map 引用了未知 line_id：{bad}")
+            continue
+        valid_line_ids = [x for x in am.get("line_ids", []) if x in line_ids]
+        filtered.append({**am, "line_ids": valid_line_ids})
+    anchor_map = filtered
     # 覆盖判定与 NOV-001 口径一致（真相在规则）：Beat 的任一对白原文出现在段落里才算覆盖。
     # anchor_map 只是声明，文本证据才算数；这里提前拦，诊断可直接驱动重试。
     para_blob = "\n".join(paragraphs)
