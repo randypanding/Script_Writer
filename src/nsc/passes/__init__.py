@@ -260,11 +260,27 @@ def parse_json_loose(text: str, pass_name: str) -> dict[str, Any]:
     return data
 
 
-#: 字段别名归一（运行时鲁棒性）：针对已知模型命名漂移，将别名映射回 signature 标准名。
+#: 字段别名归一（运行时鲁棒性）：针对已知模型命名漂移做通用归一。
+#: 规则：若 canonical 缺失，尝试以下 alias 源（按优先级）：
+#:   1. 显式别名表 _FIELD_ALIASES（针对 irregular 漂移）
+#:   2. 系统性漂移：<canonical 去掉 _json 后缀>_（glm-5.3-flash 实测模式）
 #: 仅映射已知安全的别名；若 canonical 与 alias 均缺失，下游仍按原逻辑 PassFailure。
 _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "missing_fields_json": ("missing_fields_",),
 }
+
+
+def _normalize_field_aliases(data: dict[str, Any], out_fields: list[str]) -> None:
+    for canonical in out_fields:
+        if canonical in data:
+            continue
+        candidates = list(_FIELD_ALIASES.get(canonical, ()))
+        if canonical.endswith("_json"):
+            candidates.append(canonical[:-5] + "_")
+        for alias in candidates:
+            if alias in data:
+                data[canonical] = data.pop(alias)
+                break
 
 
 def parse_winner(text: str, n: int) -> int:
@@ -314,12 +330,7 @@ def generate_json(
         seed=ctx.seed,
     )
     data = parse_json_loose(res.text, pass_name)
-    for _canonical, _aliases in _FIELD_ALIASES.items():
-        if _canonical not in data:
-            for _alias in _aliases:
-                if _alias in data:
-                    data[_canonical] = data.pop(_alias)
-                    break
+    _normalize_field_aliases(data, list(out_fields.keys()))
     missing = [k for k in out_fields if k not in data and k not in optional]
     if missing:
         raise PassFailure(None, f"{pass_name} 输出缺少字段 {missing}")
