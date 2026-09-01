@@ -4,12 +4,19 @@ schema_version: "1.0"
 
 # 2026-08-16 接入 LongCat-2.0（美团，OpenAI 兼容端点 api.longcat.chat）。
 # api_key 走环境变量 OPENAI_API_KEY，绝不落盘；api_base 是端点配置不是密钥。
+# 2026-09-01 failover：LongCat-2.0 key 聊天额度 402 枯竭，临时切换 bigmodel glm-5.3-flash。
+# 原 longcat 配置备查：
+#   tier_plan:    {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.8, max_tokens: 32000}
+#   tier_draft:   {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.9, max_tokens: 24000}
+#   tier_bulk:    {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.2, max_tokens: 24000}
+#   tier_judge:   {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.0, max_tokens: 16000}
+#   tier_reflect: {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 1.0, max_tokens: 32000}
 tiers:
-  tier_plan:    {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.8, max_tokens: 32000}
-  tier_draft:   {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.9, max_tokens: 24000}
-  tier_bulk:    {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.2, max_tokens: 24000}
-  tier_judge:   {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 0.0, max_tokens: 16000}
-  tier_reflect: {model: "openai/LongCat-2.0", api_base: "https://api.longcat.chat/openai", temperature: 1.0, max_tokens: 32000}
+  tier_plan:    {model: "openai/glm-5.3-flash", api_base: "https://open.bigmodel.cn/api/coding/paas/v4", temperature: 0.8, max_tokens: 32000}
+  tier_draft:   {model: "openai/glm-5.3-flash", api_base: "https://open.bigmodel.cn/api/coding/paas/v4", temperature: 0.9, max_tokens: 24000}
+  tier_bulk:    {model: "openai/glm-5.3-flash", api_base: "https://open.bigmodel.cn/api/coding/paas/v4", temperature: 0.2, max_tokens: 24000}
+  tier_judge:   {model: "openai/glm-5.3-flash", api_base: "https://open.bigmodel.cn/api/coding/paas/v4", temperature: 0.0, max_tokens: 16000}
+  tier_reflect: {model: "openai/glm-5.3-flash", api_base: "https://open.bigmodel.cn/api/coding/paas/v4", temperature: 1.0, max_tokens: 32000}
   tier_embed:   {model: "BAAI/bge-m3", local: true}
 
 # ⚠️ 历史核对记录：
@@ -17,6 +24,8 @@ tiers:
 #   - 2026-08-16：全部 tier 切换到 LongCat-2.0（单一可用模型）。litellm 不认识该模型的
 #     价格，成本统计用下方 cost_usd_per_mtok 兜底（限时折扣价 $0.30/$1.20 每 M token，
 #     输出含 reasoning token，见 longcat.chat/platform/docs/zh/api-pay-as-you-go）。
+#   - 2026-09-01：全部 tier failover 到 bigmodel glm-5.3-flash（OpenAI 兼容端点 open.bigmodel.cn）。
+#     glm-5.3-flash 价格未公开，成本统计仍沿用 LongCat-2.0 限时折扣价 $0.30/$1.20 兜底。
 #   - 本文件不参与语义门禁，只参与成本统计与可复现（进 provenance.model_id）。
 cost_usd_per_mtok: {input: 0.30, output: 1.20}
 
