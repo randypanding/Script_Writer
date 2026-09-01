@@ -187,7 +187,7 @@ def test_aggregate_l1_unchanged_with_perspectives():
         },
     ]
     agg = aggregate_l1(results, rubric)
-    assert agg["aggregate"] == pytest.approx(4.111, abs=0.001)  # 与 test_judge.py 同值
+    assert agg["aggregate"] == pytest.approx(3.857, abs=0.001)  # 与 test_judge.py 同值
 
 
 def test_judge_units_carries_perspectives():

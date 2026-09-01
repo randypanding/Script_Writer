@@ -2,7 +2,7 @@
 
 覆盖：输出解析/校验、成对协议（swap 相反→tie）、校准指标（一致率/κ/位置偏置）、
 门禁（JUDGE_GATE_ENABLED）、run_calibration 端到端（stub 判官）、L1 判分聚合、
-5 维 × ≥2 锚例存在性。全部无 LLM。
+7 维 × ≥2 锚例存在性。全部无 LLM。
 """
 
 from __future__ import annotations
@@ -334,7 +334,7 @@ def test_aggregate_l1_weighted():
         {"dimension": "hook_strength", "score": 3.0, "unit_kind": "beat"},
     ]
     agg = aggregate_l1(results, rubric)
-    assert agg["aggregate"] == pytest.approx(4.111, abs=0.001)
+    assert agg["aggregate"] == pytest.approx(3.857, abs=0.001)
     assert agg["per_dimension"]["naturalness"] == 5.0
 
 
@@ -358,5 +358,5 @@ def test_run_l1_judge_stub(tmp_path):
     text = report.read_text("utf-8")
     assert "聚合分" in text
     assert "门禁" in text
-    # 单位：episode(4 维适用)+scene(3 维)+beat(2 维)=9 判分
-    assert "9" in text
+    # 单位：episode(5 维适用)+scene(3 维)+beat(2 维)=10 判分
+    assert "10" in text
