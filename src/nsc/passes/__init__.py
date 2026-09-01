@@ -260,6 +260,13 @@ def parse_json_loose(text: str, pass_name: str) -> dict[str, Any]:
     return data
 
 
+#: 字段别名归一（运行时鲁棒性）：针对已知模型命名漂移，将别名映射回 signature 标准名。
+#: 仅映射已知安全的别名；若 canonical 与 alias 均缺失，下游仍按原逻辑 PassFailure。
+_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "missing_fields_json": ("missing_fields_",),
+}
+
+
 def parse_winner(text: str, n: int) -> int:
     """从重排回复提取 winner 下标（R3/R4 监制重排共用）；解析失败/越界 → 0（保首候选，不退化）。"""
     import re as _re
@@ -307,6 +314,12 @@ def generate_json(
         seed=ctx.seed,
     )
     data = parse_json_loose(res.text, pass_name)
+    for _canonical, _aliases in _FIELD_ALIASES.items():
+        if _canonical not in data:
+            for _alias in _aliases:
+                if _alias in data:
+                    data[_canonical] = data.pop(_alias)
+                    break
     missing = [k for k in out_fields if k not in data and k not in optional]
     if missing:
         raise PassFailure(None, f"{pass_name} 输出缺少字段 {missing}")
