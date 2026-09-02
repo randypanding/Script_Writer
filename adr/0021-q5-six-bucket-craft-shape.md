@@ -1,4 +1,4 @@
-# ADR-0020：Q5 六桶全量映射——craft_shape 题材参数化扩桶
+# ADR-0021：Q5 六桶全量映射——craft_shape 题材参数化扩桶
 
 - 状态：proposed
 - 日期：2026-09-02
