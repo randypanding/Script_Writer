@@ -28,6 +28,7 @@ detect:
 shapes:
   爆款通用:
     note: 现行正向契约（R2/R3，315 卡混题材实证）——非治愈题材一律用它，行为与 round28 之前逐字节一致
+    provisional: false
     antagonist_required: true
     ensemble_scene_required: true
     hook_types: [威胁, 承诺, 颠覆]
@@ -40,6 +41,17 @@ shapes:
     note: 治愈锚 v2（hook 0.40 / person 0.33 / info_gap 0.47 / cliff 0.27 / turn 0.47，
       张力 3.4/3.2/3.4；暂定锚 1 部 15 卡）——温暖低冲突，不需要反派与威胁开局；
       攻击型钩子仅 40%，多数单元用悬念/平开（docs/craft_taxonomy_v2.md §1/§5）
+    provisional: true
+    anchor:
+      hook_attack: 0.4
+      conflict_person: 0.33
+      info_gap: 0.47
+      cliffhanger_rd: 0.27
+      scene_turn: 0.47
+    tension_curve:
+    - 3.4
+    - 3.2
+    - 3.4
     antagonist_required: false
     ensemble_scene_required: false
     hook_types: [承诺, 颠覆, 威胁]
@@ -47,4 +59,124 @@ shapes:
     hook_quota_note: 治愈系以承诺/颠覆为主、威胁为辅；允许悬念型温和开局（治愈锚攻击型仅 40%）
     stakes_escalation: gentle
     arousal_peak: 0.6
+    ending_beats: [reveal, resolution]
+  历史穿越:
+    note: Lab shapes.yaml v2.1（n=7, 96 卡）——hook 0.52 / person 0.50 / info_gap 0.64 / cliff 0.44 / turn 0.57，张力 3.8/3.7/4.0
+    provisional: false
+    anchor:
+      hook_attack: 0.52
+      conflict_person: 0.5
+      info_gap: 0.64
+      cliffhanger_rd: 0.44
+      scene_turn: 0.57
+    tension_curve:
+    - 3.84
+    - 3.66
+    - 4.0
+    antagonist_required: false
+    ensemble_scene_required: false
+    hook_types: [承诺, 颠覆, 威胁]
+    hook_other_allowed: true
+    stakes_escalation: moderate
+    arousal_peak: 0.6
+    ending_beats: [reveal, resolution]
+  复仇爽文:
+    note: Lab shapes.yaml v2.1（n=6, 65 卡）——hook 0.71 / person 0.78 / info_gap 0.75 / cliff 0.66 / turn 0.66，张力 4.3/4.5/4.4
+    provisional: false
+    anchor:
+      hook_attack: 0.71
+      conflict_person: 0.78
+      info_gap: 0.75
+      cliffhanger_rd: 0.66
+      scene_turn: 0.66
+    tension_curve:
+    - 4.29
+    - 4.48
+    - 4.43
+    antagonist_required: true
+    ensemble_scene_required: true
+    hook_types: [威胁, 承诺, 颠覆]
+    hook_other_allowed: false
+    stakes_escalation: strict
+    arousal_peak: 0.9
+    ending_beats: [reveal, danger]
+  悬疑探秘:
+    note: Lab shapes.yaml v2.1（n=6, 62 卡）——hook 0.63 / person 0.55 / info_gap 0.85 / cliff 0.61 / turn 0.71，张力 4.4/4.1/4.3
+    provisional: false
+    anchor:
+      hook_attack: 0.63
+      conflict_person: 0.55
+      info_gap: 0.85
+      cliffhanger_rd: 0.61
+      scene_turn: 0.71
+    tension_curve:
+    - 4.35
+    - 4.05
+    - 4.32
+    antagonist_required: true
+    ensemble_scene_required: false
+    hook_types: [承诺, 颠覆, 威胁]
+    hook_other_allowed: true
+    stakes_escalation: moderate
+    arousal_peak: 0.7
+    ending_beats: [reveal, danger]
+  玄幻仙侠:
+    note: Lab shapes.yaml v2.1（n=8, 98 卡）——hook 0.62 / person 0.45 / info_gap 0.69 / cliff 0.59 / turn 0.64，张力 4.1/4.0/4.1
+    provisional: false
+    anchor:
+      hook_attack: 0.62
+      conflict_person: 0.45
+      info_gap: 0.69
+      cliffhanger_rd: 0.59
+      scene_turn: 0.64
+    tension_curve:
+    - 4.12
+    - 4.0
+    - 4.12
+    antagonist_required: true
+    ensemble_scene_required: true
+    hook_types: [威胁, 承诺, 颠覆]
+    hook_other_allowed: false
+    stakes_escalation: strict
+    arousal_peak: 0.85
+    ending_beats: [reveal, danger]
+  甜宠言情:
+    note: Lab shapes.yaml v2.1（n=5, 50 卡）——hook 0.72 / person 0.86 / info_gap 0.74 / cliff 0.58 / turn 0.72，张力 3.8/4.5/3.8
+    provisional: false
+    anchor:
+      hook_attack: 0.72
+      conflict_person: 0.86
+      info_gap: 0.74
+      cliffhanger_rd: 0.58
+      scene_turn: 0.72
+    tension_curve:
+    - 3.81
+    - 4.5
+    - 3.78
+    antagonist_required: true
+    ensemble_scene_required: true
+    hook_types: [承诺, 颠覆, 威胁]
+    hook_other_allowed: true
+    stakes_escalation: moderate
+    arousal_peak: 0.7
+    ending_beats: [reveal, resolution]
+  都市日常:
+    note: Lab shapes.yaml v2.1（n=7, 80 卡）——hook 0.78 / person 0.72 / info_gap 0.68 / cliff 0.62 / turn 0.72，张力 4.1/4.2/4.3
+    provisional: false
+    anchor:
+      hook_attack: 0.78
+      conflict_person: 0.72
+      info_gap: 0.68
+      cliffhanger_rd: 0.62
+      scene_turn: 0.72
+    tension_curve:
+    - 4.08
+    - 4.23
+    - 4.25
+    antagonist_required: false
+    ensemble_scene_required: true
+    hook_types: [承诺, 颠覆, 威胁]
+    hook_other_allowed: true
+    stakes_escalation: moderate
+    arousal_peak: 0.7
     ending_beats: [reveal, resolution]

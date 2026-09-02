@@ -146,3 +146,54 @@ def test_signatures_reference_shape(name: str) -> None:
     import spec.passes.signatures as sig
 
     assert "craft_shape" in (getattr(sig, name).__doc__ or "")
+
+
+SIX_BUCKETS = [
+    ("历史穿越", "穿越", "antagonist_required", False),
+    ("复仇爽文", "复仇", "antagonist_required", True),
+    ("悬疑探秘", "悬疑", "ensemble_scene_required", False),
+    ("玄幻仙侠", "修仙", "antagonist_required", True),
+    ("甜宠言情", "甜宠", "antagonist_required", True),
+    ("都市日常", "都市", "antagonist_required", False),
+]
+
+
+@pytest.mark.parametrize("genre,kw,field,expected", SIX_BUCKETS)
+def test_detect_six_buckets(genre: str, kw: str, field: str, expected: bool) -> None:
+    out = resolve({"raw_request": f"这是一个{genre}的故事", "notes": [kw]})
+    assert out["genre"] == genre
+    assert out[field] is expected
+
+
+@pytest.mark.parametrize("genre", [g for g, *_ in SIX_BUCKETS])
+def test_six_bucket_anchor_and_curve(genre: str) -> None:
+    spec = yaml.safe_load(Path("spec/craft_shape.yaml").read_text("utf-8"))
+    shape = spec["shapes"][genre]
+    assert "anchor" in shape
+    assert set(shape["anchor"].keys()) == {
+        "hook_attack", "conflict_person", "info_gap", "cliffhanger_rd", "scene_turn"
+    }
+    assert "tension_curve" in shape
+    assert isinstance(shape["tension_curve"], list)
+    assert len(shape["tension_curve"]) == 3
+    assert "provisional" in shape
+
+
+def test_healing_anchor_and_curve_present() -> None:
+    spec = yaml.safe_load(Path("spec/craft_shape.yaml").read_text("utf-8"))
+    shape = spec["shapes"]["治愈成长"]
+    assert "anchor" in shape
+    assert set(shape["anchor"].keys()) == {
+        "hook_attack", "conflict_person", "info_gap", "cliffhanger_rd", "scene_turn"
+    }
+    assert "tension_curve" in shape
+    assert len(shape["tension_curve"]) == 3
+    assert shape["provisional"] is True
+
+
+def test_default_shape_no_anchor() -> None:
+    out = resolve({"raw_request": "完全无关的随机普通故事", "notes": []})
+    assert out["genre"] == "爆款通用"
+    assert "anchor" not in out
+    assert "tension_curve" not in out
+    assert out.get("provisional") is False
