@@ -348,6 +348,13 @@ def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
     if isinstance(value, (list, dict)):
         return value
     text = str(value or "")
+    # 占位符/骨架检测：模型在 thinking 模式下可能输出 [{...}, ...] 之类承诺骨架
+    if _looks_like_placeholder(text):
+        raise PassFailure(
+            None,
+            f"{pass_name}.{field_name} 含有占位符/骨架（如 {{...}}、[...]、[...] 等省略号结构），"
+            f"禁止输出未展开的占位符；必须输出完整且真实的 JSON 内容。",
+        )
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
@@ -361,6 +368,24 @@ def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
             f"{pass_name}.{field_name} 不是合法 JSON：{e}；原始开头：{text[:100]!r}。"
             f"请重新输出完整且转义正确的 {field_name}。",
         ) from e
+
+
+def _looks_like_placeholder(text: str) -> bool:
+    """检测明显的骨架/占位符输出（模型偷懒时的省略号结构）。"""
+    import re
+
+    t = text.strip()
+    # [{...}, ...]、{...}、[...] 等纯省略号骨架
+    if re.search(r'\[\s*\.\.\.\s*\]', t):
+        return True
+    if re.search(r'\{\s*\.\.\.\s*\}', t):
+        return True
+    # 值级省略号：{"key": "..."}、{"key": ...}
+    if re.search(r':\s*"\.\.\.\s*"', t):
+        return True
+    if re.search(r':\s*\.\.\.\s*', t):
+        return True
+    return False
 
 
 def optional_json(out: Any, key: str, pass_name: str) -> Any:
