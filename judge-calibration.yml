@@ -6,6 +6,9 @@ metrics:
   kappa: 0.0
   kappa_verdict: 0.0
   n_items: 0
+  n_perspectives: 0
   pairwise_gate: 0.0
   pairwise_report: 0.0
+  perspective_disagreement_rate: 0.0
+  perspective_disagreements: 0
   position_bias: 0.0
