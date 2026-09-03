@@ -66,7 +66,6 @@ ignore = ["ANN401","E501","RUF001","RUF002","RUF003"]
 "spec/checks/compliance/_regulated_claims.yaml" = ["E501", "F821", "RUF001", "RUF002", "RUF003", "ANN", "T20", "B", "SIM", "UP", "N", "I", "E", "F"]
 # craft_shape.yaml 含中文与正则，ruff YAML 解析器存在误报
 "spec/craft_shape.yaml" = ["E501", "F821", "RUF001", "RUF002", "RUF003", "ANN", "T20", "B", "SIM", "UP", "N", "I", "E", "F"]
->>>>>>> d08fd57 (fix: lint cleanup for q5 craft shape)
 
 [tool.pyright]
 include = ["src", "spec", "tests", "scripts"]
