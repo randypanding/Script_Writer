@@ -252,7 +252,6 @@ _FIELD_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
->>>>>>> 1c7e7e4 (fix(p0): alias normalize missing_fields_ -> missing_fields_json for glm-5.3-flash compat)
 def parse_winner(text: str, n: int) -> int:
     """从重排回复提取 winner 下标（R3/R4 监制重排共用）；解析失败/越界 → 0（保首候选，不退化）。"""
     import re as _re
@@ -312,7 +311,6 @@ def generate_json(
                 if _alias in data:
                     data[_canonical] = data.pop(_alias)
                     break
->>>>>>> 1c7e7e4 (fix(p0): alias normalize missing_fields_ -> missing_fields_json for glm-5.3-flash compat)
     missing = [k for k in out_fields if k not in data and k not in optional]
     if missing:
         raise PassFailure(None, f"{pass_name} 输出缺少字段 {missing}")
