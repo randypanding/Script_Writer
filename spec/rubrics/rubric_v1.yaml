@@ -9,7 +9,7 @@ default_mode: pairwise
 dimensions:
   - id: naturalness
     name: 台词自然度
-    weight: 0.25
+    weight: 0.15
     applies_to: [line, scene, chapter]
     question: "这些台词像真人在这个情境下会说的话吗？还是像在念台词/念广告？"
     positive_signals: [口语省略, 打断与重叠, 信息不对称, 潜台词, 角色间语气差异]
@@ -37,7 +37,7 @@ dimensions:
 
   - id: placement_integration
     name: 植入自然度与信息达成
-    weight: 0.20
+    weight: 0.15
     applies_to: [beat, scene, episode]
     question: "产品是长在剧情里的，还是贴上去的？商家要的卖点信息真的传达到了吗？"
     construct_ref: "modality × plot-connection congruence；见 docs/BORROW_MAP.md #15"
@@ -56,13 +56,23 @@ dimensions:
 
   - id: prose_craft
     name: 文笔与反AI味
-    weight: 0.10
+    weight: 0.25
     applies_to: [chapter]
     question: "小说叙述文笔像'写出来的人话'吗？还是露出机器味（抽象情绪标签、空话套话、弱化词堆叠、流水账时间）？"
     construct_ref: "show-don't-tell + 反AI语言指纹；吸收自 story-craft 技能，见 adr/0010-story-craft-absorption.md"
     positive_signals: [情绪用身体与感官呈现, 具体动作与数字, 长短句交错, 留白与潜台词, 感官锚点绑定抽象概念]
     negative_signals: [直接给情绪命名, 空话套话, 仿佛/似乎堆叠, 第X天…等距时间罗列, 对白墙]
     anchors_file: anchors/prose_craft.yaml
+
+  - id: reading_attraction
+    name: 阅读吸引力·追读性
+    weight: 0.15
+    applies_to: [chapter, episode]
+    question: "这段读完想不想翻下一页？有没有一个具体可转述的记忆点？"
+    construct_ref: "追读性 / 翻页欲；对应 Lab ADR-0004 Q1，见 criteria/reading_attraction.md"
+    positive_signals: [章末钩具体可感, 悬念指向具体对象, 情绪有起伏落差, 存在可转述名场面, 节奏有张弛节拍]
+    negative_signals: [章末无钩, 悬念空泛, 情绪平直, 读完无记忆点, 匀速推进无节拍]
+    anchors_file: anchors/reading_attraction.yaml
 
 aggregate:
   formula: "weighted_mean"
