@@ -25,7 +25,14 @@ class _Stub:
     def resolve(self, tier: str) -> dict[str, Any]:
         return {"model": "stub", "temperature": 0.0, "max_tokens": 4000}
 
-    def complete(self, tier: str, messages: list[dict[str, Any]], *, json_mode: bool = False, seed: int | None = None) -> LLMResult:
+    def complete(
+        self,
+        tier: str,
+        messages: list[dict[str, Any]],
+        *,
+        json_mode: bool = False,
+        seed: int | None = None,
+    ) -> LLMResult:
         return LLMResult(
             text=json.dumps(self.payload, ensure_ascii=False),
             model_id="stub",

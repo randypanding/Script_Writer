@@ -83,18 +83,18 @@ def _mk_out(episodes_json: str) -> dict[str, Any]:
 
 # ---------- 直接测 helper ----------
 
+
 def test_fallback_preserves_non_empty_hook_promise():
     """已有非空 hook_promise 不得被覆盖。"""
-    assert p2._fallback_hook_promise(
-        {"hook_promise": "林晚的体检报告藏了什么？", "logline": "x"}, 1
-    ) == "林晚的体检报告藏了什么？"
+    assert (
+        p2._fallback_hook_promise({"hook_promise": "林晚的体检报告藏了什么？", "logline": "x"}, 1)
+        == "林晚的体检报告藏了什么？"
+    )
 
 
 def test_fallback_fills_empty_from_logline():
     """空 hook_promise 从 logline 确定性派生,且非空。"""
-    got = p2._fallback_hook_promise(
-        {"hook_promise": "   ", "logline": "林晚发现体检报告异常"}, 1
-    )
+    got = p2._fallback_hook_promise({"hook_promise": "   ", "logline": "林晚发现体检报告异常"}, 1)
     assert chars(got) >= 6  # 必过 STR-011 门槛
     assert "林晚" in got  # 派生应包含 logline 语义
 
@@ -115,44 +115,42 @@ def test_fallback_falls_back_to_title_when_logline_empty():
 
 def test_fallback_none_hook_promise():
     """None 不是合法 hook_promise,应回退到 logline 派生。"""
-    got = p2._fallback_hook_promise(
-        {"hook_promise": None, "logline": "林晚发现体检报告异常"}, 1
-    )
+    got = p2._fallback_hook_promise({"hook_promise": None, "logline": "林晚发现体检报告异常"}, 1)
     assert chars(got) >= 6
     assert "林晚" in got
 
 
 def test_fallback_zero_hook_promise():
     """数字 0 也不是合法 hook_promise,应回退到 logline 派生。"""
-    got = p2._fallback_hook_promise(
-        {"hook_promise": 0, "logline": "林晚发现体检报告异常"}, 1
-    )
+    got = p2._fallback_hook_promise({"hook_promise": 0, "logline": "林晚发现体检报告异常"}, 1)
     assert chars(got) >= 6
 
 
 def test_fallback_list_hook_promise():
     """列表/对象等非字符串值应回退,不得原样返回。"""
-    got = p2._fallback_hook_promise(
-        {"hook_promise": [], "logline": "林晚发现体检报告异常"}, 1
-    )
+    got = p2._fallback_hook_promise({"hook_promise": [], "logline": "林晚发现体检报告异常"}, 1)
     assert chars(got) >= 6
 
 
 def test_fallback_dict_hook_promise():
     """字典原样返回通常过短,应回退到 logline 派生。"""
-    got = p2._fallback_hook_promise(
-        {"hook_promise": {}, "logline": "林晚发现体检报告异常"}, 1
-    )
+    got = p2._fallback_hook_promise({"hook_promise": {}, "logline": "林晚发现体检报告异常"}, 1)
     assert chars(got) >= 6
 
 
 # ---------- 端到端:经 run() ----------
 
+
 def test_run_repairs_all_empty_hook_promises(monkeypatch):
     """W4 实证场景:6 集 hook_promise 全空,run() 后全部被机械补成非空。"""
     monkeypatch.setenv("NSC_NO_CACHE", "1")
     specs = [
-        {"no": i + 1, "title": f"第{i+1}集", "logline": f"第{i+1}集 logline 内容", "hook_promise": ""}
+        {
+            "no": i + 1,
+            "title": f"第{i + 1}集",
+            "logline": f"第{i + 1}集 logline 内容",
+            "hook_promise": "",
+        }
         for i in range(6)
     ]
     fake_out = _mk_out(_episodes(*specs))

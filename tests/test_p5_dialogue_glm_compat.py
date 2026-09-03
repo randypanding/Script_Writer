@@ -55,6 +55,6 @@ def test_inner_json_accepts_valid_json_string():
 def test_inner_json_detects_truncated_json():
     """被截断的 JSON 应给出截断诊断。"""
     with pytest.raises(PassFailure) as excinfo:
-        inner_json("[{\"beat_index\": 0, \"text\": \"", "p5_dialogue", "lines_json")
+        inner_json('[{"beat_index": 0, "text": "', "p5_dialogue", "lines_json")
     msg = str(excinfo.value)
     assert "lines_json" in msg

@@ -6,20 +6,18 @@
 
 from __future__ import annotations
 
-import copy
-import json
+from pathlib import Path
 
 import pytest
 import yaml
-from pathlib import Path
 
 from nsc.checker.interpreter import RuleSet, evaluate
 from nsc.runtime.ir_io import build_view
 
-
 # ---------------------------------------------------------------------------
 # 最小 IR 工厂（继承 PR#18 的 _make_ir 并扩展 overrides）
 # ---------------------------------------------------------------------------
+
 
 def _load_yaml(name: str) -> dict:
     return yaml.safe_load(Path(f"spec/checks/compliance/{name}").read_text("utf-8"))
@@ -150,6 +148,7 @@ def _load_rule(rel_path: str) -> dict:
 
 def _rule_fires(rule: dict, ir: dict, profile: dict, brand: dict) -> bool:
     brand_id = brand.get("id", brand.get("brand_id"))
+    assert isinstance(brand_id, str)
     rs = RuleSet.load(
         profile_id=profile["id"],
         industry="beverage",
@@ -166,6 +165,7 @@ def _rule_fires(rule: dict, ir: dict, profile: dict, brand: dict) -> bool:
 # ---------------------------------------------------------------------------
 #  fixture 上下文（与 conftest.py 一致）
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def profiles():
@@ -185,6 +185,7 @@ def demo_brand():
 # CMP-001：绝对化用语（英文/数字混排）
 # ---------------------------------------------------------------------------
 
+
 def test_red_team_cmp001_mixed_english(profiles, demo_brand):
     rule = _load_rule("spec/checks/compliance/CMP-001.yaml")
     text = "This is the NO.1 最好喝的茶，绝对唯一。"
@@ -198,15 +199,16 @@ def test_red_team_cmp001_mixed_english(profiles, demo_brand):
 # CMP-002：疗效表述绕行（谐音 / 拆字 / 英文混排 / 拼音 / 异体字 / emoji）
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "text",
     [
-        "每天一杯，轻松酱糖。",          # 谐音：降→酱
-        "白-月-巴 也能喝。",             # 拆字：肥
-        "reducing blood sugar naturally.", # 英文混排
-        "jiang tang 稳定，不怕胖。",       # 拼音
-        "療效显著，癒合创伤。",           # 异体字
-        "降🩸糖、控🩸糖，一身轻松。",     # emoji 插入
+        "每天一杯，轻松酱糖。",  # 谐音：降→酱
+        "白-月-巴 也能喝。",  # 拆字：肥
+        "reducing blood sugar naturally.",  # 英文混排
+        "jiang tang 稳定，不怕胖。",  # 拼音
+        "療效显著，癒合创伤。",  # 异体字
+        "降🩸糖、控🩸糖，一身轻松。",  # emoji 插入
     ],
 )
 def test_red_team_cmp002_evasions(profiles, demo_brand, text):
@@ -220,6 +222,7 @@ def test_red_team_cmp002_evasions(profiles, demo_brand, text):
 # ---------------------------------------------------------------------------
 # BM-001：品牌植入密度超限
 # ---------------------------------------------------------------------------
+
 
 def test_red_team_bm001_density_overflow(profiles, demo_brand):
     rule = _load_rule("spec/checks/brand/BM-001.yaml")
@@ -264,6 +267,7 @@ def test_red_team_bm001_density_overflow(profiles, demo_brand):
 # BM-007：必提台词原文出现
 # ---------------------------------------------------------------------------
 
+
 def test_red_team_bm007_must_include_missing(profiles, demo_brand):
     rule = _load_rule("spec/checks/brand/BM-007.yaml")
     # 文本中没有"不额外加蔗糖"，改写为"无蔗糖"
@@ -278,6 +282,7 @@ def test_red_team_bm007_must_include_missing(profiles, demo_brand):
 # BM-011：竞品名零出现
 # ---------------------------------------------------------------------------
 
+
 def test_red_team_bm011_competitor_injection(profiles, demo_brand):
     rule = _load_rule("spec/checks/brand/BM-011.yaml")
     text = "连茗香茶语的老顾客都转来喝清野轻乳茶。"
@@ -291,6 +296,7 @@ def test_red_team_bm011_competitor_injection(profiles, demo_brand):
 # FCT-001：产品参数必须来自 BrandBrief
 # ---------------------------------------------------------------------------
 
+
 def test_red_team_fct001_hallucinated_param(profiles, demo_brand):
     rule = _load_rule("spec/checks/fact/FCT-001.yaml")
     text = "这款茶热量只有15千卡，比普通奶茶低一半。"
@@ -303,6 +309,7 @@ def test_red_team_fct001_hallucinated_param(profiles, demo_brand):
 # ---------------------------------------------------------------------------
 # STR-001：每集恰好 1 个 Hook Beat 且位于前 20%
 # ---------------------------------------------------------------------------
+
 
 def test_red_team_str001_hook_missing(profiles, demo_brand):
     rule = _load_rule("spec/checks/structure/STR-001.yaml")
@@ -331,6 +338,7 @@ def test_red_team_str001_hook_missing(profiles, demo_brand):
 # ---------------------------------------------------------------------------
 # STR-002：每集必须有终态 Beat（cliffhanger / resolution / cta）
 # ---------------------------------------------------------------------------
+
 
 def test_red_team_str002_terminal_missing(profiles, demo_brand):
     rule = _load_rule("spec/checks/structure/STR-002.yaml")
@@ -370,6 +378,7 @@ def test_red_team_str002_terminal_missing(profiles, demo_brand):
 # ---------------------------------------------------------------------------
 # PRD-001：场地成本不超预算档
 # ---------------------------------------------------------------------------
+
 
 def test_red_team_prd001_cost_overflow(profiles, demo_brand):
     rule = _load_rule("spec/checks/producibility/PRD-001.yaml")
@@ -417,6 +426,7 @@ def test_red_team_prd001_cost_overflow(profiles, demo_brand):
 # DLG-001：禁用词零出现
 # ---------------------------------------------------------------------------
 
+
 def test_red_team_dlg001_banned_word(profiles, demo_brand):
     rule = _load_rule("spec/checks/dialogue/DLG-001.yaml")
     text = "这款茶养胃又促消化，空腹也能喝。"
@@ -429,6 +439,7 @@ def test_red_team_dlg001_banned_word(profiles, demo_brand):
 # ---------------------------------------------------------------------------
 # DLG-003：说话人必须在场
 # ---------------------------------------------------------------------------
+
 
 def test_red_team_dlg003_speaker_absent(profiles, demo_brand):
     rule = _load_rule("spec/checks/dialogue/DLG-003.yaml")
@@ -455,6 +466,7 @@ def test_red_team_dlg003_speaker_absent(profiles, demo_brand):
 # ---------------------------------------------------------------------------
 # NOV-001：小说章节必须 100% 覆盖对应 Beat
 # ---------------------------------------------------------------------------
+
 
 def test_red_team_nov001_coverage_gap(profiles, demo_brand):
     rule = _load_rule("spec/checks/novel/NOV-001.yaml")
