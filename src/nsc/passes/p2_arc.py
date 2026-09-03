@@ -168,7 +168,10 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
                 "title": str(ep.get("title", "")).strip() or f"第{i + 1}集",
                 "logline": str(ep.get("logline", "")).strip() or "（缺 logline）",
                 "duration_target_s": int(ep.get("duration_target_s") or target),
-                "hook_promise": str(ep.get("hook_promise", "")).strip(),
+                # W4 demo_tea 实证(p2 空 hook×6)与 round14 方法论:结构性约束一律机械兜底。
+                # STR-011 能检出空值,但修正靠 LLM 重试不可靠——此处让"每集 hook_promise 非空"
+                # 在构造阶段必然成立,下游 p3 钩子节拍才有依据(空则抛 PassFailure 带 node_id)。
+                "hook_promise": _fallback_hook_promise(ep, i + 1),
                 "cliffhanger": str(ep.get("cliffhanger", "") or ""),
                 # ADR-0012：回收声明机械过滤，保证 INV-20（引用存在且严格更早）
                 "responds_to": _coerce_responds_to(ep.get("responds_to"), no=i + 1),
@@ -185,6 +188,26 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         "dark_threads": _coerce_dark_threads(optional_json(out, "dark_threads_json", "p2_arc")),
         "_usage": out["_usage"],
     }
+
+
+def _fallback_hook_promise(ep: dict[str, Any], no: int) -> str:
+    """机械兜底:空 hook_promise 从 logline/title 确定性派生一句非空承诺问句。
+
+    实证 W4 demo_tea(p2 空 hook×6 是五类死因之一):随机后端反复省略 hook_promise,
+    STR-011(after_p2,block)能检出,但修正靠 LLM 重试——相位重试只复述诊断不改结构
+    (round14 方法论:结构性约束一律机械兜底,指令只负责语义质量)。
+    此处让"每集 hook_promise 非空"在构造阶段必然成立(经 chars ≥ 6,必过 STR-011),
+    下游 p3 钩子节拍才有依据;已有非空值保留不动。
+    """
+    hook_promise = ep.get("hook_promise")
+    if isinstance(hook_promise, str) and hook_promise.strip():
+        return hook_promise.strip()
+    anchor = (
+        str(ep.get("logline", "")).strip()
+        or str(ep.get("title", "")).strip()
+        or f"第{no}集"
+    )
+    return f"这一集里{anchor}，接下来会怎样？"
 
 
 def _coerce_responds_to(refs: Any, *, no: int) -> list[int]:
