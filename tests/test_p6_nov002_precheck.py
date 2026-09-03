@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -44,7 +45,7 @@ class _Stub:
         )
 
 
-def _make_ctx(tmp_path: str, payload: dict[str, object]) -> PassContext:
+def _make_ctx(tmp_path: str, payload: Mapping[str, object]) -> PassContext:
     os.environ["NSC_NO_CACHE"] = "1"
     profile = yaml.safe_load(Path("profiles/short_drama_v1.yaml").read_text("utf-8"))
     brand = yaml.safe_load(Path("brands/demo_tea/brand.yaml").read_text("utf-8"))
