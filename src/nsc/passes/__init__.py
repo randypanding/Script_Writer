@@ -391,14 +391,14 @@ def _looks_like_placeholder(text: str) -> bool:
 
     t = text.strip()
     # [{...}, ...]、{...}、[...] 等纯省略号骨架
-    if re.search(r'\[\s*\.\.\.\s*\]', t):
+    if re.search(r"\[\s*\.\.\.\s*\]", t):
         return True
-    if re.search(r'\{\s*\.\.\.\s*\}', t):
+    if re.search(r"\{\s*\.\.\.\s*\}", t):
         return True
     # 值级省略号：{"key": "..."}、{"key": ...}
     if re.search(r':\s*"\.\.\.\s*"', t):
         return True
-    return bool(re.search(r':\s*\.\.\.\s*', t))
+    return bool(re.search(r":\s*\.\.\.\s*", t))
 
 
 def optional_json(out: Any, key: str, pass_name: str) -> Any:

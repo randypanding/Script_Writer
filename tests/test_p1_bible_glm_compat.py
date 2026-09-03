@@ -53,55 +53,70 @@ class GlmCompatRouter:
 def _minimal_bible() -> dict[str, object]:
     """最小可过 p1_bible 的 5 字段 JSON（别名 *_ 形式）。"""
     return {
-        "characters_": json.dumps([
+        "characters_": json.dumps(
+            [
+                {
+                    "name": "测试角色",
+                    "role": "protagonist",
+                    "age_range": "26-30",
+                    "want": "测试动机",
+                    "need": "测试需求",
+                    "flaw": "测试缺陷",
+                    "arc": "测试弧线",
+                    "voice_notes": "测试声音",
+                    "voice_tics": [],
+                    "forbidden_words": [],
+                    "persona_ref": "office_woman_28",
+                    "mental_models": [],
+                    "decision_heuristics": [],
+                    "honest_boundaries": [],
+                    "expression_dna": None,
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        "locations_": json.dumps(
+            [
+                {
+                    "name": "测试地点",
+                    "interior": True,
+                    "description": "测试描述",
+                    "cost_tier": "free",
+                    "shoot_notes": "测试备注",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        "props_": json.dumps(
+            [
+                {
+                    "name": "测试道具",
+                    "is_brand_product": False,
+                    "sku_ref": "",
+                    "cost_tier": "free",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        "motifs_": json.dumps(
+            [
+                {
+                    "name": "测试母题",
+                    "description": "测试描述",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        "tone_": json.dumps(
             {
-                "name": "测试角色",
-                "role": "protagonist",
-                "age_range": "26-30",
-                "want": "测试动机",
-                "need": "测试需求",
-                "flaw": "测试缺陷",
-                "arc": "测试弧线",
-                "voice_notes": "测试声音",
-                "voice_tics": [],
-                "forbidden_words": [],
-                "persona_ref": "office_woman_28",
-                "mental_models": [],
-                "decision_heuristics": [],
-                "honest_boundaries": [],
-                "expression_dna": None,
-            }
-        ], ensure_ascii=False),
-        "locations_": json.dumps([
-            {
-                "name": "测试地点",
-                "interior": True,
-                "description": "测试描述",
-                "cost_tier": "free",
-                "shoot_notes": "测试备注",
-            }
-        ], ensure_ascii=False),
-        "props_": json.dumps([
-            {
-                "name": "测试道具",
-                "is_brand_product": False,
-                "sku_ref": "",
-                "cost_tier": "free",
-            }
-        ], ensure_ascii=False),
-        "motifs_": json.dumps([
-            {
-                "name": "测试母题",
-                "description": "测试描述",
-            }
-        ], ensure_ascii=False),
-        "tone_": json.dumps({
-            "tone_words": ["真诚"],
-            "banned_words": [],
-            "register": "colloquial",
-            "humor": "light",
-            "reference_works": [],
-        }, ensure_ascii=False),
+                "tone_words": ["真诚"],
+                "banned_words": [],
+                "register": "colloquial",
+                "humor": "light",
+                "reference_works": [],
+            },
+            ensure_ascii=False,
+        ),
     }
 
 

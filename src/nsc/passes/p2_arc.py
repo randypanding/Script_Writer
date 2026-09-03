@@ -202,11 +202,7 @@ def _fallback_hook_promise(ep: dict[str, Any], no: int) -> str:
     hook_promise = ep.get("hook_promise")
     if isinstance(hook_promise, str) and hook_promise.strip():
         return hook_promise.strip()
-    anchor = (
-        str(ep.get("logline", "")).strip()
-        or str(ep.get("title", "")).strip()
-        or f"第{no}集"
-    )
+    anchor = str(ep.get("logline", "")).strip() or str(ep.get("title", "")).strip() or f"第{no}集"
     return f"这一集里{anchor}，接下来会怎样？"
 
 
