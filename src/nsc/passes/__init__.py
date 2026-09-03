@@ -260,6 +260,29 @@ def parse_json_loose(text: str, pass_name: str) -> dict[str, Any]:
     return data
 
 
+#: 字段别名归一（运行时鲁棒性）：针对已知模型命名漂移做通用归一。
+#: 规则：若 canonical 缺失，尝试以下 alias 源（按优先级）：
+#:   1. 显式别名表 _FIELD_ALIASES（针对 irregular 漂移）
+#:   2. 系统性漂移：<canonical 去掉 _json 后缀>_（glm-5.3-flash 实测模式）
+#: 仅映射已知安全的别名；若 canonical 与 alias 均缺失，下游仍按原逻辑 PassFailure。
+_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "missing_fields_json": ("missing_fields_",),
+}
+
+
+def _normalize_field_aliases(data: dict[str, Any], out_fields: list[str]) -> None:
+    for canonical in out_fields:
+        if canonical in data:
+            continue
+        candidates = list(_FIELD_ALIASES.get(canonical, ()))
+        if canonical.endswith("_json"):
+            candidates.append(canonical[:-5] + "_")
+        for alias in candidates:
+            if alias in data:
+                data[canonical] = data.pop(alias)
+                break
+
+
 def parse_winner(text: str, n: int) -> int:
     """从重排回复提取 winner 下标（R3/R4 监制重排共用）；解析失败/越界 → 0（保首候选，不退化）。"""
     import re as _re
@@ -306,7 +329,14 @@ def generate_json(
         json_mode=True,
         seed=ctx.seed,
     )
+    if _is_truncated(res, ctx, pass_name):
+        raise PassFailure(
+            None,
+            f"{pass_name} 输出疑似被 max_tokens 截断（finish_reason={getattr(res, 'finish_reason', '')},"
+            f" tokens_out={res.tokens_out}）；请精简思考，直接输出完整 JSON。",
+        )
     data = parse_json_loose(res.text, pass_name)
+    _normalize_field_aliases(data, list(out_fields.keys()))
     missing = [k for k in out_fields if k not in data and k not in optional]
     if missing:
         raise PassFailure(None, f"{pass_name} 输出缺少字段 {missing}")
@@ -319,11 +349,27 @@ def generate_json(
     return data
 
 
+def _is_truncated(res: Any, ctx: PassContext, pass_name: str) -> bool:
+    """检测输出是否疑似被 max_tokens 截断。"""
+    if getattr(res, "finish_reason", "") == "length":
+        return True
+    cfg = ctx.router.resolve(ctx.tier_of(pass_name))
+    max_tokens = int(cfg.get("max_tokens", 0) or 0)
+    return bool(max_tokens > 0 and res.tokens_out >= int(max_tokens * 0.95))
+
+
 def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
     """输出字段里的嵌套 JSON 字符串 → Python 对象。坏串先试平衡扫描修复；失败诊断可直接喂重试。"""
     if isinstance(value, (list, dict)):
         return value
     text = str(value or "")
+    # 占位符/骨架检测：模型在 thinking 模式下可能输出 [{...}, ...] 之类承诺骨架
+    if _looks_like_placeholder(text):
+        raise PassFailure(
+            None,
+            f"{pass_name}.{field_name} 含有占位符/骨架（如 {{...}}、[...]、[...] 等省略号结构），"
+            f"禁止输出未展开的占位符；必须输出完整且真实的 JSON 内容。",
+        )
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
@@ -337,6 +383,22 @@ def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
             f"{pass_name}.{field_name} 不是合法 JSON：{e}；原始开头：{text[:100]!r}。"
             f"请重新输出完整且转义正确的 {field_name}。",
         ) from e
+
+
+def _looks_like_placeholder(text: str) -> bool:
+    """检测明显的骨架/占位符输出（模型偷懒时的省略号结构）。"""
+    import re
+
+    t = text.strip()
+    # [{...}, ...]、{...}、[...] 等纯省略号骨架
+    if re.search(r'\[\s*\.\.\.\s*\]', t):
+        return True
+    if re.search(r'\{\s*\.\.\.\s*\}', t):
+        return True
+    # 值级省略号：{"key": "..."}、{"key": ...}
+    if re.search(r':\s*"\.\.\.\s*"', t):
+        return True
+    return bool(re.search(r':\s*\.\.\.\s*', t))
 
 
 def optional_json(out: Any, key: str, pass_name: str) -> Any:
