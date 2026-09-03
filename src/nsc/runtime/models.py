@@ -43,6 +43,7 @@ class LLMResult:
     cost_usd: float
     wall_ms: int
     trace_id: str = ""
+    finish_reason: str = ""
 
 
 def _has_json(text: str) -> bool:
@@ -203,6 +204,12 @@ class ModelRouter:
                 + tokens_out * float(self.cost_per_mtok.get("output", 0.0))
             ) / 1_000_000
         self._record_transcript(tier, cfg["model"], messages, text, tokens_in, tokens_out, cost)
+        finish_reason = ""
+        if data is not None:
+            try:
+                finish_reason = str(getattr(data.choices[0], "finish_reason", "") or "")
+            except Exception:
+                pass
         return LLMResult(
             text=text,
             model_id=cfg["model"],
@@ -211,6 +218,7 @@ class ModelRouter:
             cost_usd=cost,
             wall_ms=wall_ms,
             trace_id=self._trace(tier, cfg["model"], text),
+            finish_reason=finish_reason,
         )
 
     def _trace(self, tier: str, model_id: str, text: str) -> str:

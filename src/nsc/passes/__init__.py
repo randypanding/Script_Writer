@@ -329,6 +329,12 @@ def generate_json(
         json_mode=True,
         seed=ctx.seed,
     )
+    if _is_truncated(res, ctx, pass_name):
+        raise PassFailure(
+            None,
+            f"{pass_name} 输出疑似被 max_tokens 截断（finish_reason={getattr(res, 'finish_reason', '')},"
+            f" tokens_out={res.tokens_out}）；请精简思考，直接输出完整 JSON。",
+        )
     data = parse_json_loose(res.text, pass_name)
     _normalize_field_aliases(data, list(out_fields.keys()))
     missing = [k for k in out_fields if k not in data and k not in optional]
@@ -341,6 +347,17 @@ def generate_json(
         "trace_id": res.trace_id,
     }
     return data
+
+
+def _is_truncated(res: Any, ctx: PassContext, pass_name: str) -> bool:
+    """检测输出是否疑似被 max_tokens 截断。"""
+    if getattr(res, "finish_reason", "") == "length":
+        return True
+    cfg = ctx.router.resolve(ctx.tier_of(pass_name))
+    max_tokens = int(cfg.get("max_tokens", 0) or 0)
+    if max_tokens > 0 and res.tokens_out >= int(max_tokens * 0.95):
+        return True
+    return False
 
 
 def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
