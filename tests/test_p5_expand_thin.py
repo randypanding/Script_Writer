@@ -5,7 +5,6 @@
 """
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -113,7 +112,12 @@ def test_run_short_stub_meets_floor(tmp_path, monkeypatch):
     }
     beats = [
         {"id": "beat:001", "beat_kind": "setup", "summary": "beat 1", "est_duration_s": 50.0},
-        {"id": "beat:002", "beat_kind": "complication", "summary": "beat 2", "est_duration_s": 40.0},
+        {
+            "id": "beat:002",
+            "beat_kind": "complication",
+            "summary": "beat 2",
+            "est_duration_s": 40.0,
+        },
     ]
     characters = [{"id": "char:001", "name": "Alice"}]
     fragment = {

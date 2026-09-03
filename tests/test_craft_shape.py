@@ -171,7 +171,11 @@ def test_six_bucket_anchor_and_curve(genre: str) -> None:
     shape = spec["shapes"][genre]
     assert "anchor" in shape
     assert set(shape["anchor"].keys()) == {
-        "hook_attack", "conflict_person", "info_gap", "cliffhanger_rd", "scene_turn"
+        "hook_attack",
+        "conflict_person",
+        "info_gap",
+        "cliffhanger_rd",
+        "scene_turn",
     }
     assert "tension_curve" in shape
     assert isinstance(shape["tension_curve"], list)
@@ -184,7 +188,11 @@ def test_healing_anchor_and_curve_present() -> None:
     shape = spec["shapes"]["治愈成长"]
     assert "anchor" in shape
     assert set(shape["anchor"].keys()) == {
-        "hook_attack", "conflict_person", "info_gap", "cliffhanger_rd", "scene_turn"
+        "hook_attack",
+        "conflict_person",
+        "info_gap",
+        "cliffhanger_rd",
+        "scene_turn",
     }
     assert "tension_curve" in shape
     assert len(shape["tension_curve"]) == 3

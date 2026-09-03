@@ -12,9 +12,7 @@ from nsc.runtime.ir_io import build_view
 
 
 def _load_cmp002_rule() -> dict:
-    return yaml.safe_load(
-        Path("spec/checks/compliance/CMP-002.yaml").read_text("utf-8")
-    )
+    return yaml.safe_load(Path("spec/checks/compliance/CMP-002.yaml").read_text("utf-8"))
 
 
 def _make_ir(text: str) -> dict:

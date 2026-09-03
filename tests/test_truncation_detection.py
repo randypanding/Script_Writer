@@ -58,7 +58,9 @@ def ctx(tmp_path, monkeypatch):
         brief=brief,
         router=TruncationRouter(
             {
-                "normalized_brief": json.dumps({"schema_version": "1.0", "brand_id": "demo_tea"}, ensure_ascii=False),
+                "normalized_brief": json.dumps(
+                    {"schema_version": "1.0", "brand_id": "demo_tea"}, ensure_ascii=False
+                ),
                 "missing_fields_json": "[]",
             },
             max_tokens=24000,
@@ -87,11 +89,16 @@ def test_no_truncation_when_tokens_not_at_limit():
     from nsc.passes.p0_intake import run as p0_run
 
     class OkRouter:
-        def resolve(self, tier): return {"model": "openai/glm-5.3", "temperature": 0.2, "max_tokens": 24000}
+        def resolve(self, tier):
+            return {"model": "openai/glm-5.3", "temperature": 0.2, "max_tokens": 24000}
+
         def complete(self, tier, messages, *, json_mode=False, seed=None):
             from nsc.runtime.models import LLMResult
+
             return LLMResult(
-                text=json.dumps({"normalized_brief": "{}", "missing_fields_json": "[]"}, ensure_ascii=False),
+                text=json.dumps(
+                    {"normalized_brief": "{}", "missing_fields_json": "[]"}, ensure_ascii=False
+                ),
                 model_id="openai/glm-5.3",
                 tokens_in=100,
                 tokens_out=100,
@@ -100,8 +107,8 @@ def test_no_truncation_when_tokens_not_at_limit():
                 finish_reason="stop",
             )
 
-
     from nsc.runtime.provenance import RunsStore
+
     ctx = PassContext(
         profile=yaml.safe_load(Path("profiles/short_drama_v1.yaml").read_text("utf-8")),
         brand=yaml.safe_load(Path("brands/demo_tea/brand.yaml").read_text("utf-8")),
