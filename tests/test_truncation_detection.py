@@ -100,9 +100,8 @@ def test_no_truncation_when_tokens_not_at_limit():
                 finish_reason="stop",
             )
 
-    import nsc.runtime.cache as cache_mod
+
     from nsc.runtime.provenance import RunsStore
-    import diskcache
     ctx = PassContext(
         profile=yaml.safe_load(Path("profiles/short_drama_v1.yaml").read_text("utf-8")),
         brand=yaml.safe_load(Path("brands/demo_tea/brand.yaml").read_text("utf-8")),

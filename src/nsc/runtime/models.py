@@ -8,6 +8,7 @@ best-effort——写库失败静默降级，绝不影响路由本身。
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -206,10 +207,8 @@ class ModelRouter:
         self._record_transcript(tier, cfg["model"], messages, text, tokens_in, tokens_out, cost)
         finish_reason = ""
         if data is not None:
-            try:
+            with contextlib.suppress(Exception):
                 finish_reason = str(getattr(data.choices[0], "finish_reason", "") or "")
-            except Exception:
-                pass
         return LLMResult(
             text=text,
             model_id=cfg["model"],

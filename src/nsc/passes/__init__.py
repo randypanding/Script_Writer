@@ -355,9 +355,7 @@ def _is_truncated(res: Any, ctx: PassContext, pass_name: str) -> bool:
         return True
     cfg = ctx.router.resolve(ctx.tier_of(pass_name))
     max_tokens = int(cfg.get("max_tokens", 0) or 0)
-    if max_tokens > 0 and res.tokens_out >= int(max_tokens * 0.95):
-        return True
-    return False
+    return bool(max_tokens > 0 and res.tokens_out >= int(max_tokens * 0.95))
 
 
 def inner_json(value: Any, pass_name: str, field_name: str) -> Any:
@@ -400,9 +398,7 @@ def _looks_like_placeholder(text: str) -> bool:
     # 值级省略号：{"key": "..."}、{"key": ...}
     if re.search(r':\s*"\.\.\.\s*"', t):
         return True
-    if re.search(r':\s*\.\.\.\s*', t):
-        return True
-    return False
+    return bool(re.search(r':\s*\.\.\.\s*', t))
 
 
 def optional_json(out: Any, key: str, pass_name: str) -> Any:

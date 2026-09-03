@@ -7,11 +7,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from nsc.passes import inner_json, PassFailure
+from nsc.passes import PassFailure, inner_json
 
 
 def test_inner_json_accepts_real_json():
