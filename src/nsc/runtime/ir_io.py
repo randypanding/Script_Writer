@@ -65,9 +65,10 @@ def _load_compliance() -> dict[str, Any]:
         r"治疗|治愈|根治|抗癌|降血糖|降血压|减肥|瘦身|排毒|提高免疫|防癌",
     ]
     base = {"absolute_terms": terms, "regulated_claim_patterns": regulated}
-    # `_platform_terms.yaml` 等合规域附加词表并入 compliance（ADR-0011 泛化加载）。
+    # `_platform_terms.yaml` / `_regulated_claims.yaml` 等合规域附加词表并入 compliance
+    # （ADR-0011 泛化加载）。YAML 存在时覆盖本处兜底默认值。
     extra = _load_domain_extras().get("compliance", {})
-    return {**extra, **base}
+    return {**base, **extra}
 
 
 def _brand_view(brand: dict[str, Any]) -> dict[str, Any]:

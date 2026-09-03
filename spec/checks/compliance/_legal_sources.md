@@ -13,7 +13,7 @@
 功效/疗效类表述（"治疗/根治/降血糖/防癌"等）。
 - 出处：待登记
 - 核对人 / 日期：（待填）
-- 词表文件：`spec/checks/compliance/regulated_claims.yaml`
+- 词表文件：`spec/checks/compliance/_regulated_claims.yaml`
 
 ## 平台规则
 各短视频平台对商业内容的标注要求（如是否需标记"广告"）。
