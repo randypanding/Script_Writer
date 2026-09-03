@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -45,7 +44,7 @@ class _Stub:
         )
 
 
-def _make_ctx(tmp_path: str, payload: Mapping[str, object]) -> PassContext:
+def _make_ctx(tmp_path: str, payload: dict[str, object]) -> PassContext:
     os.environ["NSC_NO_CACHE"] = "1"
     profile = yaml.safe_load(Path("profiles/short_drama_v1.yaml").read_text("utf-8"))
     brand = yaml.safe_load(Path("brands/demo_tea/brand.yaml").read_text("utf-8"))
@@ -114,7 +113,7 @@ def test_long_paragraph_containing_dialogue_triggers_passfailure(tmp_path: str) 
     paragraph += "「这茶真好喝」"
     paragraph += "，然后低下头，继续用指腹摩挲温热的杯壁，似乎想把这瞬间的质感多留一秒是一秒。"
 
-    payload = {
+    payload: dict[str, object] = {
         "chapter_title": "章",
         "paragraphs_json": json.dumps([paragraph], ensure_ascii=False),
         "anchor_map_json": json.dumps(
@@ -146,7 +145,7 @@ def test_short_paragraph_containing_dialogue_passes(tmp_path: str) -> None:
     line_text = "这茶真好喝"
     paragraph = "小满说：「这茶真好喝。」"
 
-    payload = {
+    payload: dict[str, object] = {
         "chapter_title": "章",
         "paragraphs_json": json.dumps([paragraph], ensure_ascii=False),
         "anchor_map_json": json.dumps(
