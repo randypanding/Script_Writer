@@ -142,6 +142,32 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             "请重写段落，让这些 Beat 的台词原文出现在小说里。",
         )
 
+    # NOV-002 生成侧机械预检：段落过长会把 fuzz.ratio(line, para) 拉穿 0.7。
+    # 当 line 是 para 的子串时，ratio ≈ len(line)/len(para)；因此用 len(para)/len(line)
+    # 作为快速上界，超过 5 倍即视为高风险，直接 phase retry。
+    line_by_id = {ln["id"]: ln for b in beats for ln in b.get("_lines", [])}
+    para_of = {}
+    for am in anchor_map:
+        idx = am.get("paragraph_index")
+        if not isinstance(idx, int) or idx < 0 or idx >= len(paragraphs):
+            continue
+        para_of.setdefault(idx, []).extend(am.get("line_ids", []))
+    for idx, para in enumerate(paragraphs):
+        for lid in para_of.get(idx, []):
+            ln = line_by_id.get(lid)
+            if not ln or ln.get("line_type") != "dialogue":
+                continue
+            text = str(ln.get("text") or "")
+            if not text or text not in para:
+                continue
+            if len(para) > len(text) * 5:
+                raise PassFailure(
+                    ep["id"],
+                    f"Beat [{ln.get('parent_id', '?')}] 的 Line [{lid}] 对白所在段落过长"
+                    f"（段落 {len(para)} 字 vs 对白 {len(text)} 字），"
+                    "NOV-002 相似度会被拉低；请缩短段落或将对话独立成段。",
+                )
+
     chapter = {
         "id": new_id(),
         "episode_id": ep["id"],
