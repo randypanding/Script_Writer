@@ -62,6 +62,8 @@ ignore = ["ANN401","E501","RUF001","RUF002","RUF003"]
 "src/nsc/eval/gate.py" = ["T201"]
 "src/nsc/metrics/northstar_alert.py" = ["T201"]
 "scripts/*.py" = ["T201"]
+# YAML 合规词表含正则表达式，ruff YAML 解析器存在误报
+"spec/checks/compliance/_regulated_claims.yaml" = ["E501", "F821", "RUF001", "RUF002", "RUF003", "ANN", "T20", "B", "SIM", "UP", "N", "I", "E", "F"]
 
 [tool.pyright]
 include = ["src", "spec", "tests", "scripts"]

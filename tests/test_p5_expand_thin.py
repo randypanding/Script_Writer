@@ -6,7 +6,6 @@
 
 import json
 from pathlib import Path
->>>>>>> 63f6c87 (feat(p5): add DLG-006 mechanical fallback _pad_thin_dialogue)
 from types import SimpleNamespace
 from typing import cast
 
