@@ -12,8 +12,6 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, cast
 
-import pytest
-
 import nsc.passes.p2_arc as p2
 from nsc.checker.registry import chars
 from nsc.passes import PassContext
