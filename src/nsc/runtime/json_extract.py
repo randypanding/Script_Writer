@@ -48,6 +48,57 @@ def _balanced_candidates(text: str) -> list[str]:
     return out
 
 
+def repair_json_quotes(text: str) -> str:
+    """有界修复：转义 JSON 字符串值内被模型写成裸 ASCII 双引号的对白引号。
+
+    启发式：扫描器处于字符串值内时，若遇到未转义的 '"' 且其后紧跟
+    非空白字符不是 JSON 结构性字符（: , ] }），则视为值内引号，转义为 \\"。
+    该规则仅处理确定场景，不触碰合法的 JSON 字符串终结符。
+    """
+    result: list[str] = []
+    in_str = False
+    escape = False
+    n = len(text)
+    i = 0
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if escape:
+                result.append(ch)
+                escape = False
+                i += 1
+                continue
+            if ch == "\\":
+                result.append(ch)
+                i += 1
+                if i < n:
+                    result.append(text[i])
+                    i += 1
+                continue
+            if ch == '"':
+                j = i + 1
+                while j < n and text[j] in " \t\n\r":
+                    j += 1
+                if j < n and text[j] not in ":,]}":
+                    result.append('\\"')
+                    i += 1
+                    continue
+                in_str = False
+                result.append(ch)
+                i += 1
+                continue
+            result.append(ch)
+            i += 1
+            continue
+        else:
+            if ch == '"':
+                in_str = True
+            result.append(ch)
+            i += 1
+            continue
+    return "".join(result)
+
+
 def extract_json(text: str) -> Any:
     """从任意文本提取首个合法 JSON 对象/数组；失败返回 None。"""
     import json
@@ -57,6 +108,10 @@ def extract_json(text: str) -> Any:
         t = t.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     try:
         return json.loads(t)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return json.loads(repair_json_quotes(t))
     except json.JSONDecodeError:
         pass
     for cand in _balanced_candidates(t):
