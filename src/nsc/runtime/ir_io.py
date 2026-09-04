@@ -16,7 +16,7 @@ from spec.ir.container import NarrativeIR
 # ------------------------------------------------------------------ 合规上下文
 
 _NUM_RE = re.compile(
-    r"\d+(?:\.\d+)?\s*(?:%|万|毫升|ml|ML|克|g|G|毫克|mg|元|杯|卡|千卡|kcal|mm|cm)?"
+    r"\d+(?:\.\d+)?(?::\d+)?\s*(?:%|万|毫升|ml|ML|克|g|G|毫克|mg|元|杯|卡|千卡|kcal|mm|cm)?"
 )
 
 #: cost_tier → 场地成本权重（PRD-001 用）
@@ -79,7 +79,19 @@ def _brand_view(brand: dict[str, Any]) -> dict[str, Any]:
     banned = list(brand.get("banned_words", [])) + list(legal.get("banned_words", []))
     for sp in selling_points:
         banned += sp.get("forbidden_phrasings", [])
-    facts_vals = [v for p in products for v in p.get("facts", {}).values() if isinstance(v, str)]
+    facts_vals = [
+        "".join(v.split())
+        for p in products
+        for v in p.get("facts", {}).values()
+        if isinstance(v, str)
+    ]
+    for p in products:
+        price = p.get("price_cny")
+        if price is not None:
+            if isinstance(price, float) and price == int(price):
+                facts_vals.append(f"{int(price)}元")
+            else:
+                facts_vals.append(f"{price}元")
     canonical = [p.get("canonical_name") or p.get("name") for p in products if p.get("name")]
     # 错误写法 = 别名中非 canonical 的写法。别名含规范名子串也没关系：
     # BM-009 用 contains_name_variant（被规范名覆盖的出现不算违规，见 ADR-0009）。
@@ -391,6 +403,8 @@ def build_view(
         all_line_text + all_action_scene + [c.get("title", "") for c in ir.get("chapters", [])]
     )
     numeric_claims = [{"value": m.group(0)} for t in all_text for m in _NUM_RE.finditer(t)]
+    time_re = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?$")
+    numeric_claims = [c for c in numeric_claims if not time_re.match(c["value"])]
 
     lines_by_beat: dict[str, list[dict[str, Any]]] = {}
     for ln in ir.get("lines", []):

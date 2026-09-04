@@ -306,6 +306,33 @@ def test_red_team_fct001_hallucinated_param(profiles, demo_brand):
     )
 
 
+def test_red_team_fct001_time_not_block(profiles, demo_brand):
+    rule = _load_rule("spec/checks/fact/FCT-001.yaml")
+    text = "下午三点整，打卡钟刚响，她就把杯子塞进了文件夹。"
+    ir = _make_ir(text=text)
+    assert not _rule_fires(rule, ir, profiles["short_drama_v1"], demo_brand), (
+        f"FCT-001 误拦时间表达式: {text}"
+    )
+
+
+def test_red_team_fct001_brand_price_not_block(profiles, demo_brand):
+    rule = _load_rule("spec/checks/fact/FCT-001.yaml")
+    text = "清野轻乳茶16元一杯，比连锁便宜。"
+    ir = _make_ir(text=text)
+    assert not _rule_fires(rule, ir, profiles["short_drama_v1"], demo_brand), (
+        f"FCT-001 误拦品牌价格: {text}"
+    )
+
+
+def test_red_team_fct001_brand_fact_not_block(profiles, demo_brand):
+    rule = _load_rule("spec/checks/fact/FCT-001.yaml")
+    text = "每杯500毫升，刚好够一下午。"
+    ir = _make_ir(text=text)
+    assert not _rule_fires(rule, ir, profiles["short_drama_v1"], demo_brand), (
+        f"FCT-001 误拦品牌规格: {text}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # STR-001：每集恰好 1 个 Hook Beat 且位于前 20%
 # ---------------------------------------------------------------------------
