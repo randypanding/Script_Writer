@@ -65,6 +65,113 @@ def _slim_profile(profile: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in profile.items() if k in _PROFILE_KEYS}
 
 
+def split_dialogue_paragraphs(
+    paragraphs: list[str],
+    anchor_map: list[dict[str, Any]],
+    beats: list[dict[str, Any]],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """把含对白原文的段落机械拆成独立段，同步更新 anchor_map。
+
+    - 对白原文单独成段，叙事部分保留为前后段。
+    - 空段丢弃。
+    - 同一段出现多条对白时，按出现顺序逐条拆出。
+    - 对白在段首/段尾时，不产生空前导/后置段。
+    """
+    line_by_id: dict[str, dict[str, Any]] = {}
+    line_beat_id: dict[str, str] = {}
+    for b in beats:
+        for ln in b.get("_lines", []):
+            line_by_id[ln["id"]] = ln
+            line_beat_id[ln["id"]] = b["id"]
+
+    new_paragraphs: list[str] = []
+    new_anchor_map: list[dict[str, Any]] = []
+
+    for idx, para in enumerate(paragraphs):
+        # 收集本段中出现的所有对白 line_id 及其原文位置
+        found: list[tuple[int, int, str]] = []
+        for line_id, line in line_by_id.items():
+            if line.get("line_type") != "dialogue":
+                continue
+            text = str(line.get("text") or "")
+            if not text:
+                continue
+            pos = para.find(text)
+            if pos != -1:
+                found.append((pos, pos + len(text), line_id))
+
+        # 按位置排序，去重（保留首现，跳过重叠）
+        found.sort(key=lambda x: x[0])
+        filtered: list[tuple[int, int, str]] = []
+        last_end = 0
+        for start, end, line_id in found:
+            if start < last_end:
+                continue
+            filtered.append((start, end, line_id))
+            last_end = end
+
+        if not filtered:
+            new_paragraphs.append(para)
+            for am in anchor_map:
+                if am.get("paragraph_index") == idx:
+                    new_anchor_map.append({**am, "paragraph_index": len(new_paragraphs) - 1})
+            continue
+
+        # 拆段：叙事+对白+叙事...
+        parts: list[tuple[int, int, str | None]] = []
+        last = 0
+        for start, end, line_id in filtered:
+            if start > last:
+                parts.append((last, start, None))
+            parts.append((start, end, line_id))
+            last = end
+        if last < len(para):
+            parts.append((last, len(para), None))
+
+        new_indices: list[tuple[int, str | None]] = []
+        for part_start, part_end, part_line_id in parts:
+            part_text = para[part_start:part_end]
+            if not part_text or not any(c.isalnum() for c in part_text):
+                continue
+            new_idx = len(new_paragraphs)
+            new_paragraphs.append(part_text)
+            new_indices.append((new_idx, part_line_id))
+
+        old_ams = [am for am in anchor_map if am.get("paragraph_index") == idx]
+        if not old_ams:
+            # 原 anchor_map 无有效条目，不补建；NOV-001 会在后续拦对话漏覆盖。
+            continue
+
+        dialogue_line_ids_in_para = {lid for _, _, lid in filtered}
+
+        for new_idx, part_line_id in new_indices:
+            if part_line_id is not None:
+                new_anchor_map.append(
+                    {
+                        "paragraph_index": new_idx,
+                        "beat_id": line_beat_id[part_line_id],
+                        "line_ids": [part_line_id],
+                    }
+                )
+            else:
+                for am in old_ams:
+                    narrative_line_ids = [
+                        lid
+                        for lid in am.get("line_ids", [])
+                        if lid not in dialogue_line_ids_in_para
+                    ]
+                    if narrative_line_ids:
+                        new_anchor_map.append(
+                            {
+                                "paragraph_index": new_idx,
+                                "beat_id": am["beat_id"],
+                                "line_ids": narrative_line_ids,
+                            }
+                        )
+
+    return new_paragraphs, new_anchor_map
+
+
 @cached_pass("p6_prose")
 def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
     ep = fragment["episode"]
@@ -122,6 +229,10 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
         valid_line_ids = [x for x in am.get("line_ids", []) if x in line_ids]
         filtered.append({**am, "line_ids": valid_line_ids})
     anchor_map = filtered
+
+    # p6 对白机械拆段：把含对白原文的段落拆成独立段，避免 fuzz.ratio 被长度拉穿。
+    paragraphs, anchor_map = split_dialogue_paragraphs(paragraphs, anchor_map, beats)
+
     # 覆盖判定与 NOV-001 口径一致（真相在规则）：Beat 的任一对白原文出现在段落里才算覆盖。
     # anchor_map 只是声明，文本证据才算数；这里提前拦，诊断可直接驱动重试。
     para_blob = "\n".join(paragraphs)
@@ -141,32 +252,6 @@ def run(ctx: PassContext, fragment: dict[str, Any]) -> dict[str, Any]:
             f"以下 Beat 的对白未逐字织入章节段落（NOV-001 覆盖率不足）：{desc}。"
             "请重写段落，让这些 Beat 的台词原文出现在小说里。",
         )
-
-    # NOV-002 生成侧机械预检：段落过长会把 fuzz.ratio(line, para) 拉穿 0.7。
-    # 当 line 是 para 的子串时，ratio ≈ len(line)/len(para)；因此用 len(para)/len(line)
-    # 作为快速上界，超过 5 倍即视为高风险，直接 phase retry。
-    line_by_id = {ln["id"]: ln for b in beats for ln in b.get("_lines", [])}
-    para_of = {}
-    for am in anchor_map:
-        idx = am.get("paragraph_index")
-        if not isinstance(idx, int) or idx < 0 or idx >= len(paragraphs):
-            continue
-        para_of.setdefault(idx, []).extend(am.get("line_ids", []))
-    for idx, para in enumerate(paragraphs):
-        for lid in para_of.get(idx, []):
-            ln = line_by_id.get(lid)
-            if not ln or ln.get("line_type") != "dialogue":
-                continue
-            text = str(ln.get("text") or "")
-            if not text or text not in para:
-                continue
-            if len(para) > len(text) * 5:
-                raise PassFailure(
-                    ep["id"],
-                    f"Beat [{ln.get('parent_id', '?')}] 的 Line [{lid}] 对白所在段落过长"
-                    f"（段落 {len(para)} 字 vs 对白 {len(text)} 字），"
-                    "NOV-002 相似度会被拉低；请缩短段落或将对话独立成段。",
-                )
 
     chapter = {
         "id": new_id(),
